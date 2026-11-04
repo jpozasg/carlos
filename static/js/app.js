@@ -6,7 +6,7 @@ import { $, esc, num, store, toast, yrs } from './ui.js';
 
 export const S = { me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
   fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null };
-export const THEMES = ['blueprint', 'cluster', 'retro', 'clean'];
+export const THEMES = ['blueprint', 'cluster', 'retro', 'clean', 'garage', 'swiss', 'terminal', 'ledger', 'nordic', 'rally', 'olive', 'contrast'];
 const PAGES = {
   compare: () => import('./pages/compare.js'), ranking: () => import('./pages/ranking.js'), listing: () => import('./pages/dossier.js'),
   models: () => import('./pages/models.js'), sources: () => import('./pages/sources.js'), settings: () => import('./pages/settings.js'),
