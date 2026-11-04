@@ -78,7 +78,7 @@
  "since_date": "od {d}",
  "units_lead": "Każde auto na sprzedaż w zestawieniu z Twoim: koszty w wybranym okresie, {n} składników kosztów i wynik z wag Twojego rankingu.",
  "ranking_hint": "Wynik pochodzi z kwestionariusza i wag na stronie Ranking.",
- "no_units": "Nie ma jeszcze aut. Agent dodaje ogłoszenia przez API.",
+ "no_units": "Brak aut. Auta dodaje się, przechwytując ogłoszenie (robi to agent na podstawie wysłanego linku).",
  "cv_nav": "Widoki porównania",
  "cv_overview": "Tabela",
  "cv_costs": "Koszty",
@@ -213,7 +213,7 @@
  "cb_mileage": "Stan licznika z ogłoszenia.",
  "c_age": "Wiek",
  "cb_age": "Lata od pierwszej rejestracji.",
- "c_reliability": "Punkty niezawodności",
+ "c_reliability": "Niezawodność (znane słabe punkty)",
  "cb_reliability": "Punkty wagi udokumentowanych punktów uwagi dla wariantu, jego silnika i generacji (HIGH 3, MEDIUM 2, LOW-MEDIUM 1, LOW 0,5, HIGH IF APPLICABLE 1,5). Mniej znaczy lepiej.",
  "c_inspection": "Ustalenia z oględzin",
  "cb_inspection": "Pozycje listy kontrolnej oznaczone jako problem podczas oględzin; nieznane, dopóki nic nie sprawdzono.",
@@ -554,7 +554,7 @@
  "sl_insurance": "Zakres, historia i zniżki: reszta tego, czego potrzebuje wycena.",
  "st_workshop": "Co naprawiasz sam(a)?",
  "sl_workshop": "Prace wykonywane samodzielnie liczone są tylko jako części, a godziny pokazywane osobno. Wszystko inne liczone jest po cenach warsztatu.",
- "st_priorities": "Jak myślisz o samochodach?",
+ "st_priorities": "Które auto byś kupił(a)?",
  "sl_priorities": "Dwanaście szybkich wyborów między trzema autami, około trzech minut. Za każdym razem stuknij auto, które byś kupił(a), a potem to, które na końcu.",
  "st_done": "Gotowe",
  "done_lead": "Z tym będzie pracować Carlos. Wszystko możesz później zmienić w Ustawieniach albo uruchamiając konfigurację ponownie.",
@@ -734,5 +734,9 @@
  "tally_line": "Pokazane {s}×: kupione jako pierwsze {b}×, jako ostatnie {w}×.",
  "tally_none": "Pominięto każdy wybór, w którym się pojawiło.",
  "prio_retired_title": "Nowe pytania.",
- "prio_retired_text": "Twoje wcześniejsze odpowiedzi dotyczyły poprzedniej wersji pytań, więc wszystkie kryteria liczą się tak samo, dopóki nie dokonasz dwunastu nowych wyborów (około trzech minut)."
+ "prio_retired_text": "Twoje wcześniejsze odpowiedzi dotyczyły poprzedniej wersji pytań, więc wszystkie kryteria liczą się tak samo, dopóki nie dokonasz dwunastu nowych wyborów (około trzech minut).",
+ "ruler_waiting": "Nie znamy jeszcze kosztów żadnego auta. Uzupełniają się w miarę badania każdego auta (spalanie, serwis, ryzyka, opony, podatek, ubezpieczenie); otwórz auto, aby zobaczyć, czego brakuje.",
+ "prof_head": "Najczęściej wybierane: {l}.",
+ "provisional_note": "Wyniki oznaczone ? są wstępne: dla tego auta znamy jeszcze mniej niż połowę tego, co ważysz. Utrwalą się w miarę postępu badań.",
+ "provisional_hint": "Wstępny: znana jest mniej niż połowa ważonych danych."
 }

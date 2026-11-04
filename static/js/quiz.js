@@ -70,7 +70,9 @@ export function quiz(el, { tasks, answers = {}, params = {}, onDone, onCancel, d
 export function profileHtml(R, { explain = true } = {}) {
   const rows = Object.keys(R.criteria).map(k => ({ k, w: R.weights[k], x: R.tally?.[k] || { shown: 0, best: 0, worst: 0 } }))
     .sort((a, b) => b.w - a.w || b.x.best - a.x.best);
-  return `<ol class="prof">${rows.map(({ k, w, x }) => `<li class="${w ? '' : 'zero'}"><div class="prof-h"><b>${esc(t('c_' + k))}</b><span class="prof-w num" aria-label="${esc(t('weight_of', { w }))}">${w}<small>/5</small></span></div>
+  const top = rows.filter(r => r.w >= 4).slice(0, 3).map(r => t('c_' + r.k));
+  const head = R.answered && top.length ? `<p class="prof-head">${esc(t('prof_head', { l: top.join(', ') }))}</p>` : '';
+  return `${head}<ol class="prof">${rows.map(({ k, w, x }) => `<li class="${w ? '' : 'zero'}"><div class="prof-h"><b>${esc(t('c_' + k))}</b><span class="prof-w num" aria-label="${esc(t('weight_of', { w }))}">${w}<small>/5</small></span></div>
     <div class="prof-bar" aria-hidden="true">${[1, 2, 3, 4, 5].map(n => `<i class="${n <= w ? 'on' : ''}"></i>`).join('')}</div>
     ${explain ? `<p class="prof-why small">${x.shown ? esc(t('tally_line', { s: x.shown, b: x.best, w: x.worst })) : `<span class="muted">${R.answered ? t('tally_none') : esc(t('cb_' + k))}</span>`}</p>` : ''}</li>`).join('')}</ol>`;
 }

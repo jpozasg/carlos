@@ -420,3 +420,6 @@ fieldset.person legend{padding:0 6px;margin:0}
 @media (max-width:640px){.bw{grid-template-columns:1fr}.bw-car{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){.bw-car{transition:none}}
 fieldset.person>.btn{justify-self:start}
+.prof-head{margin:0 0 12px;font-weight:600;font-size:15px}
+.score.provisional{color:var(--text-3)}.score small{font-size:.7em;margin-left:1px}
+.rank-list+*,.note+.rank-list{margin-top:10px}
