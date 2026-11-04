@@ -14,6 +14,7 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 | `js/charts.js` | cost composition bars and the break-even SVG |
 | `js/pages/*.js` | one module per page, each exporting `render(main, route)` |
 | `i18n/en.json`, `es.json`, `de.json`, `pl.json` | the strings; `en.json` is the reference, the others must have the same keys |
+| `fonts/` | Bricolage Grotesque (SIL OFL), self-hosted, the one UI family |
 | `brand/` | `mark.svg` (symbol used in the header, coloured by the theme), `favicon.svg`, `logo.svg`, `icon-192.png`, `icon-512.png`; `manifest.webmanifest` |
 
 ## Rules

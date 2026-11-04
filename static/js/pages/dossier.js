@@ -12,8 +12,8 @@ const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, mileage
 
 function viewer(d) {
   PHOTOS = d.media.map(m => m.file_path); cur = 0;
-  if (!PHOTOS.length) return `<div class="card span2"><div class="hero" style="cursor:default;aspect-ratio:21/9"><span class="nophoto"><span>${CAR_SVG}${t('no_photos_unit')}</span></span></div></div>`;
-  return `<div class="card span2 viewer" style="padding:12px">
+  if (!PHOTOS.length) return `<div class="card"><div class="hero" style="cursor:default;aspect-ratio:16/10"><span class="nophoto"><span>${CAR_SVG}${t('no_photos_unit')}</span></span></div></div>`;
+  return `<div class="card viewer" style="padding:12px">
     <div style="position:relative"><button class="main" type="button" data-zoom aria-label="${t('zoom')}"><img id="vMain" src="${media(PHOTOS[0])}" alt="${t('photo_n', { n: 1 })} · ${unitName(d)}"><span class="count" id="vCount">1 / ${PHOTOS.length}</span></button>
       ${PHOTOS.length > 1 ? `<button class="navbtn prev" type="button" data-step="-1" aria-label="${t('prev_photo')}">‹</button><button class="navbtn next" type="button" data-step="1" aria-label="${t('next_photo')}">›</button>` : ''}</div>
     <div class="strip" role="group" aria-label="${t('thumbnails')}">${PHOTOS.map((p, i) => `<button type="button" data-photo="${i}" aria-current="${i === 0}" aria-label="${t('photo_n', { n: i + 1 })}"><img src="${media(p)}" alt="" loading="lazy"></button>`).join('')}</div></div>`;
@@ -30,6 +30,20 @@ lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.co
 document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !document.contains(root)) return; if (e.target.closest('input,textarea,select')) return;
   if (e.key === 'ArrowRight') { showPhoto(cur + 1); e.preventDefault(); } else if (e.key === 'ArrowLeft') { showPhoto(cur - 1); e.preventDefault(); } });
 
+function plate(d) {
+  const row = (k, v, cls = '') => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`;
+  return `<aside class="plate"><span class="rv"></span><h3>${t('plate_title')}</h3><dl>
+    ${row(t('plate_cost'), d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month) + t('per_month'), 'hi')}
+    ${d.is_reference ? '' : row(t('asking_price'), eP(d.price_eur))}
+    ${row(t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km')}
+    ${row(t('registration'), d.first_registration ? esc(d.first_registration) : PEND())}
+    ${row(t('engine'), esc(d.engine_code))}
+    ${row(t('power'), d.power_ps == null ? PEND() : num(d.power_ps, 0) + ' PS')}
+    ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' l/100 km')}
+    ${d.is_reference ? '' : row(t('plate_rank'), d.rank ? `#${d.rank} · ${num(d.score, 0)}` : `<span class="pending">${t('not_ranked')}</span>`)}
+    ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>
+    ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;
+}
 function valuationRow(v) {
   const r = v.low_eur != null && v.high_eur != null && v.high_eur > v.low_eur ? `<div class="range" aria-hidden="true"><i style="left:${(v.expected_eur - v.low_eur) / (v.high_eur - v.low_eur) * 100}%"></i></div><div class="small muted" style="display:flex;justify-content:space-between"><span>${euro(v.low_eur)}</span><span>${euro(v.high_eur)}</span></div>` : '';
   return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px"><b class="small">${v.kind === 'sale_today' ? t('sale_today') : t('resale_end')}${v.horizon_years ? ` (${yrs(v.horizon_years)})` : ''}</b><b>${euro(v.expected_eur)}</b></div>${r}<div class="small muted">${esc(tv(v.status))} · ${t('source')} ${esc(v.source_id)}${v.notes ? ' · ' + esc(v.notes) : ''}</div></div>`;
@@ -56,7 +70,7 @@ function rankCard(d) {
     <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>${t('criterion')}</th><th class="n">${t('weight')}</th><th class="n">${t('value')}</th><th>${t('score')}</th></tr></thead><tbody>${rows}</tbody></table></div>
     <details style="margin-top:10px"><summary class="small" style="cursor:pointer">${t('evidence_title', { n: ev.length })}</summary><div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>${t('ev_table')}</th><th>${t('status')}</th><th>${t('quality')}</th><th class="n">${t('ev_points')}</th></tr></thead><tbody>${ev.map(e => `<tr><td>${esc(tv(e.table))} #${e.id}</td><td>${esc(tv(e.status) ?? '—')}</td><td>${qTag(e.quality)}</td><td class="n">${num(e.points, 2)}</td></tr>`).join('')}</tbody></table></div>
       ${rel.length ? `<p class="small" style="margin:8px 0 0"><b>${t('c_reliability')}:</b> ${rel.map(r => `${esc(r.component)} ${sevTag(r.severity)} ${num(r.points, 1)}`).join(' · ')}</p>` : ''}</details>
-    <p class="small muted" style="margin:8px 0 0"><a href="#/ranking">${t('ranking_edit')} →</a></p></div>`;
+    <p class="small muted" style="margin:8px 0 0"><a href="#/ranking">${t('ranking_edit')}</a></p></div>`;
 }
 const srcLink = (d, id) => { const x = d.sources.find(s => s.id === id); return x ? qTag(x.quality, x.title + (x.limitations ? ' — ' + x.limitations : '')) : ''; };
 function maintenanceCard(d) {
@@ -116,9 +130,9 @@ async function draw(id) {
   let d; try { d = await get('/api/listings/' + id); } catch (e) { root.innerHTML = picker + `<div class="card err">${t('dossier_failed', { m: esc(e.message) })}</div>`; return; }
   D = d;
   const claim = x => x == null ? PEND() : `${esc(x)} <span class="tag">${t('claimed')}</span>`;
-  root.innerHTML = picker + `<div class="grid">${viewingPanel()}${viewer(d)}
-    <div class="card span2"><div class="unit-head"><div><div class="unit-name">${unitName(d)} ${esc(d.trim ?? '')}</div><div class="unit-sub">${unitSub(d)} · ${esc(tv(d.listing_status) ?? '')} · <a href="#/models/${d.vehicle_id}">${t('open_model')} →</a></div></div>
-      <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')} ↗</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
+  root.innerHTML = picker + `<div class="dossier-top">${viewer(d)}${plate(d)}</div><div class="grid">${viewingPanel()}
+    <div class="card span2"><div class="unit-head"><div><div class="unit-name">${unitName(d)} ${esc(d.trim ?? '')}</div><div class="unit-sub">${unitSub(d)} · ${esc(tv(d.listing_status) ?? '')} <a href="#/models/${d.vehicle_id}" style="margin-left:8px">${t('open_model')}</a></div></div>
+      <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')}</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
       ${gaps(S.todo.listings.find(x => x.listing_id === d.id)?.todo)}
       <div style="margin-top:12px">${facts([[t('asking_price'), d.is_reference ? t('owned') : eP(d.price_eur)], [t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km'], [t('registration'), d.first_registration ? esc(d.first_registration) : PEND()],
         [t('engine'), `${esc(d.engine_code)} · ${esc(d.engine_description ?? '')}`], [t('generation'), `${esc(d.generation)} ${d.generation_start_year ?? '?'}–${d.generation_end_year ?? '?'}`],
