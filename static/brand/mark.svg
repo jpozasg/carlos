@@ -1,9 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <!-- Carlos mark: a C that is also a road, and the small car that is missing from the Spaniard's garage -->
-  <symbol id="mark" viewBox="0 0 64 64">
-    <rect width="64" height="64" rx="14" fill="var(--accent,#1f4f8f)"/>
-    <path d="M45 19.5A17 17 0 1 0 45 44.5" fill="none" stroke="var(--accent-contrast,#fff)" stroke-width="8" stroke-linecap="round"/>
-    <g fill="var(--accent-contrast,#fff)"><path d="M33.5 38h21.5l-3.2-6.2h-6.5l-3.1-3.3h-5.6l-3.4 3.3h-2.6a1.5 1.5 0 0 0-1.5 1.5v3.2a1.5 1.5 0 0 0 1.5 1.5z"/><circle cx="38.5" cy="40.5" r="3"/><circle cx="50.5" cy="40.5" r="3"/></g>
-  </symbol>
+  <!-- Carlos mark: a car the way a child draws it, wobbly lines, uneven wheels, a puff of exhaust -->
+  <symbol id="mark" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="var(--accent,#1f4f8f)"/><path d="M11 41c1-7 3-10 6-11l6-1c3-5 6-9 12-9 6 0 9 4 13 9l7 1c3 1 4 4 4 11l-2 3H13l-2-3z" fill="none" stroke="var(--accent-contrast,#fff)" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M25 29c2-5 5-7 10-7 4 0 7 2 10 7" fill="none" stroke="var(--accent-contrast,#fff)" stroke-width="2.6" stroke-linecap="round"/><path d="M35 23v7" fill="none" stroke="var(--accent-contrast,#fff)" stroke-width="2.4" stroke-linecap="round"/><circle cx="22" cy="45" r="5.6" fill="var(--accent-contrast,#fff)"/><circle cx="46" cy="45" r="6.3" fill="var(--accent-contrast,#fff)"/><circle cx="22" cy="45" r="2" fill="var(--accent,#1f4f8f)"/><circle cx="46" cy="45" r="2.3" fill="var(--accent,#1f4f8f)"/><circle cx="55" cy="36" r="1.9" fill="var(--accent-contrast,#fff)"/><path d="M8 33c-2 0-4-1-4-3s2-3 4-2" fill="none" stroke="var(--accent-contrast,#fff)" stroke-width="2.2" stroke-linecap="round"/><path d="M4 26c-1-2 0-4 2-4" fill="none" stroke="var(--accent-contrast,#fff)" stroke-width="2" stroke-linecap="round"/></symbol>
   <use href="#mark"/>
 </svg>
