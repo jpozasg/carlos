@@ -5,12 +5,12 @@ import { t } from './i18n.js';
 import { $, esc, num, store, toast, yrs } from './ui.js';
 
 export const S = { me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
-  fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null };
+  fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null, prefs: {} };
 export const THEMES = ['cluster', 'friendly', 'garage', 'retro', 'olive', 'terminal', 'kawaii', 'circuit', 'arcade', 'hyrule'];
 const PAGES = {
   compare: () => import('./pages/compare.js'), ranking: () => import('./pages/ranking.js'), listing: () => import('./pages/dossier.js'),
   models: () => import('./pages/models.js'), sources: () => import('./pages/sources.js'), settings: () => import('./pages/settings.js'),
-  admin: () => import('./pages/admin.js') };
+  admin: () => import('./pages/admin.js'), start: () => import('./pages/start.js') };
 const NAV = ['compare', 'ranking', 'models', 'sources', 'settings'];
 
 export function applyTheme(theme = store.get('theme', 'cluster'), mode = store.get('mode', 'auto')) {
@@ -27,9 +27,10 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => appl
 export async function setLang(l) { await i18n.load(l); renderShell(); route(); }
 
 export async function loadAll() {
-  const [me, p, tco, st, td, ss] = await Promise.all([get('/api/auth/me'), get('/api/parameters'), get('/api/tco'), get('/api/storage'), get('/api/todo'), get('/api/sources')]);
+  const [me, p, tco, st, td, ss, pr] = await Promise.all([get('/api/auth/me'), get('/api/parameters'), get('/api/tco'), get('/api/storage'), get('/api/todo'), get('/api/sources'), get('/api/preferences')]);
   Object.assign(S, { me, p, saved: p, preview: false, units: tco.listings, components: tco.components, ranking: tco.ranking, budget: tco.budget,
-    fuelStale: tco.fuel_price_stale, storage: st, todo: td, sources: ss, models: null });
+    fuelStale: tco.fuel_price_stale, storage: st, todo: td, sources: ss, models: null,
+    prefs: Object.fromEntries(pr.map(x => [x.preference_key, x.preference_value])) });
 }
 export async function refreshTco(query = '') {
   const d = await get('/api/tco' + query);
@@ -94,6 +95,8 @@ window.addEventListener('hashchange', route);
   await i18n.load(i18n.initialLang());
   try { await loadAll(); } catch (e) { $('main').innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p></div>`; }
   renderShell();
-  if (!location.hash) location.replace('#/compare');
+  // first run: the setup wizard until it was finished or put off (preference onboarding_done)
+  if (S.me && !S.prefs.onboarding_done && (!location.hash || location.hash === '#/compare')) location.replace('#/start');
+  else if (!location.hash) location.replace('#/compare');
   route();
 })();

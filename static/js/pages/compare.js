@@ -1,7 +1,7 @@
 // Compare: overview table, cost composition, break-even, detail table, photo cards. State in S (app.js).
 import { S, refreshTco, go } from '../app.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, unitSub, statusTags, CAR_SVG, media } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media } from '../ui.js';
 import { costStack, beChart, beTable, beHover, beColors } from '../charts.js';
 
 const RUNNING = ['fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres'];
@@ -85,7 +85,7 @@ function unitCard(u) {
       ${u.photo_count ? `<span class="count">📷 ${u.photo_count}</span>` : ''}${u.is_reference ? `<span class="tag ref reftag">${t('reference')}</span>` : ''}
       ${u.rank ? `<span class="rankbadge">${t('rank_n', { n: u.rank })} · ${num(u.score, 0)}</span>` : ''}</a>
     ${tagsHtml(u)}
-    <div class="unit-head"><div><div class="unit-name">${unitName(u)}</div><div class="unit-sub">${esc(u.trim ?? '')} · ${unitSub(u)}</div></div></div>
+    <div class="unit-head"><div><div class="unit-name">${carLink(u, unitName(u))}</div><div class="unit-sub">${esc(u.trim ?? '')} · ${unitSub(u)}</div></div></div>
     <div class="kv">${u.is_reference ? `<span>${t('owned')}</span>` : `<span>${t('asking_price')} <b>${eP(u.price_eur)}</b></span>`}<span>${t('km')} <b>${u.mileage_km == null ? PEND() : num(u.mileage_km, 0)}</b></span><span>${t('age')} <b>${u.metrics.age == null ? PEND() : yrs(u.metrics.age)}</b></span>${u.metrics.km_per_year != null ? `<span>${t('km_per_year')} <b>${num(u.metrics.km_per_year, 0)}</b></span>` : ''}</div>
     <div><div class="small muted">${u.tco_complete ? t('tco_complete') : t('subtotal_partial')}</div><div class="big">${eP(u.known_cost_subtotal)}</div>
       <div class="small muted">${u.known_cost_per_month == null ? '' : euro(u.known_cost_per_month) + t('per_month') + ' · ' + num(u.known_cost_per_km, 3) + ' €/km'}</div></div>
@@ -123,7 +123,7 @@ function details(us) {
       [t('range'), u => u.tco_pessimistic == null ? PEND() : euro(u.tco_pessimistic) + ' – ' + euro(u.tco_optimistic)],
       [`<abbr title="${esc(t('delta_help'))}">${t('delta')}</abbr>`, u => u.is_reference ? dash : u.delta_vs_reference == null ? `<span class="pending">${t('needs_tco')}</span>` : `<span class="${u.delta_vs_reference > 0 ? 'up' : 'down'}">${u.delta_vs_reference > 0 ? '▲ +' : '▼ '}${euro(u.delta_vs_reference)}</span>`],
       [t('outlay'), u => u.is_reference ? dash : eP(u.initial_outlay)], [t('diy_hours'), u => u.diy_hours == null ? PEND() : num(u.diy_hours, 1) + ' h']]]];
-  const head = `<tr><th scope="col">${t('concept')}</th>${us.map(u => `<th scope="col" class="n${u.is_reference ? ' refcol' : ''}"><span class="who" style="justify-content:flex-end">${thumb(u, 'sm')}<span>${unitName(u)}${u.is_reference ? ` <span class="tag ref">${t('ref_short')}</span>` : ''}</span></span></th>`).join('')}</tr>`;
+  const head = `<tr><th scope="col">${t('concept')}</th>${us.map(u => `<th scope="col" class="n${u.is_reference ? ' refcol' : ''}"><span class="who" style="justify-content:flex-end">${thumb(u, 'sm')}<span>${carLink(u, unitName(u))}${u.is_reference ? ` <span class="tag ref">${t('ref_short')}</span>` : ''}</span></span></th>`).join('')}</tr>`;
   const body = groups.map(([g, rows]) => `<tr class="grp"><td>${g}</td><td colspan="${us.length}"></td></tr>` + rows.map(([l, f, cls]) => `<tr class="${cls || ''}"><td>${l}</td>${us.map(u => `<td class="n${u.is_reference ? ' refcol' : ''}">${f(u)}</td>`).join('')}</tr>`).join('')).join('');
   return `<div class="tablewrap"><table class="cmp"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
@@ -132,7 +132,7 @@ function breakeven(us) {
   const ref = S.units.find(u => u.is_reference), cands = us.filter(u => !u.is_reference);
   if (!ref || !cands.length) return `<p class="empty">${t('select_one')}</p>`;
   const ready = cands.filter(u => u.breakeven.ready), notReady = cands.filter(u => !u.breakeven.ready);
-  const miss = notReady.length ? `<div class="card" style="margin-top:12px"><b class="small">${t('be_missing_title')}</b>${notReady.map(u => `<details style="margin-top:10px"><summary style="cursor:pointer"><span class="who" style="display:inline-flex">${thumb(u, 'sm')}<span><b>${unitName(u)}</b> <span class="muted small">${esc(u.listing_id ?? '')}</span> <span class="tag warn">${t('n_missing', { n: u.breakeven.missing.length })}</span></span></span></summary><ul class="missing-list">${u.breakeven.missing.map(m => `<li>${MISS(m)}</li>`).join('')}</ul></details>`).join('')}</div>` : '';
+  const miss = notReady.length ? `<div class="card" style="margin-top:12px"><b class="small">${t('be_missing_title')}</b>${notReady.map(u => `<details style="margin-top:10px"><summary style="cursor:pointer"><span class="who" style="display:inline-flex">${thumb(u, 'sm')}<span><b>${unitName(u)}</b> <a class="small" href="#/listing/${u.id}">${esc(u.listing_id ?? t('open_dossier'))}</a> <span class="tag warn">${t('n_missing', { n: u.breakeven.missing.length })}</span></span></span></summary><ul class="missing-list">${u.breakeven.missing.map(m => `<li>${MISS(m)}</li>`).join('')}</ul></details>`).join('')}</div>` : '';
   return `<div class="section"><h2>${t('be_title')}</h2><p class="lead">${t('be_lead')}</p>${ready.length ? beChart(ref, ready, beHi) + beTable(ready) : ''}${miss}</div>`;
 }
 function selBar(all) {

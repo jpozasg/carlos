@@ -22,7 +22,7 @@ Before writing, read `variant(V)`: rows already inherited must not be written ag
 
 ## Period and shared conventions
 - Window: `km_now` (listing) to `km_now + annual_km × ownership_years` (the account's parameters). Time-based items use the same number of years.
-- **DIY** = the jobs the owner does, from `project_preferences.diy_skills` (default: engine oil and filters, spark plugs, yearly service, brake pads/discs, battery, bulbs, wipers). Everything else is **workshop** (timing drive, coolant, brake fluid, clutch, engine internals). DIY items carry parts price + hours; workshop items carry the total job price. Hours are shown separately and never priced.
+- **DIY** = the jobs the owner does, from `project_preferences.diy_jobs` (the setup wizard's list; `diy_skills` is an older free-text note; default: engine oil and filters, spark plugs, yearly service, brake pads/discs, battery, bulbs, wipers). Everything else is **workshop** (timing drive, coolant, brake fluid, clutch, engine internals). DIY items carry parts price + hours; workshop items carry the total job price. Hours are shown separately and never priced.
 - **HU/AU** every 24 months at the regional fee (`agent_tools.HU_FEE_EUR`; adjust from the local inspection organisation's fee table and cite it).
 - **Tyres:** one set of all-season tyres; standard size of the variant; price = median of 4–5 mid-range all-season tyres in that size; tread life and fitting from `agent_tools` defaults (ADAC tests, tyre shops), cited.
 - **Purchase/sale:** the same items for every car for sale (`purchase_sale_defaults`): re-registration, plates, pre-purchase check, with the regional fees from an official fee table cited as a shared source. Deregistration for the reference car.

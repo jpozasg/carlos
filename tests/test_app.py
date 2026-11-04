@@ -377,25 +377,42 @@ class AppTest(unittest.TestCase):
         self.assertEqual(ex['age']['why_missing'], 'weight 0')
 
     def test_questionnaire_weights(self):
-        w = ranking.weights_from_answers({})
-        self.assertEqual(w, ranking.weights_from_answers(ranking.DEFAULT_ANSWERS))
-        w = ranking.weights_from_answers({'cash': 'tight', 'running': 'decisive', 'trouble': 'peace', 'evidence': 'prefer_backed'})
-        self.assertEqual((w['cash_now'], w['cost_month'], w['reliability'], w['confidence']), (4, 4, 4, 4))
-        self.assertEqual(ranking.weights_from_answers({'wear': 'costs_only', 'drive': 'irrelevant'})['power'], 0)
+        C = ranking.CRITERIA
+        self.assertEqual(set(ranking.weights_from_answers({}).values()), {ranking.NEUTRAL_WEIGHT})   # no answers: neutral
+        for q in ranking.QUESTIONS:                                       # every answer only names real criteria
+            self.assertTrue(all(set(pts) <= set(C) for pts in q['answers'].values()), q['id'])
+        fed = {k: sum(1 for q in ranking.QUESTIONS if any(k in pts for pts in q['answers'].values())) for k in C}
+        self.assertTrue(all(n >= 2 for n in fed.values()), fed)          # no criterion hangs on one question
+        tight = dict(windfall='cushion', listing_eye='price', twins='cheaper', budget_shape='savings_thin', five_years='used_up')
+        w = ranking.weights_from_answers(tight)
+        self.assertEqual((w['cash_now'], w['power']), (5, 0))           # the strongest preference is scaled to 5
+        w = ranking.weights_from_answers({'motorway': 'surge', 'five_years': 'still_fun', 'gadgets': 'progress', 'windfall': 'treat'})
+        self.assertEqual(max(w, key=w.get), 'power')
+        self.assertEqual(ranking.known_answers({'cash': 'tight', 'motorway': 'surge', 'twins': 'warp'}), {'motorway': 'surge'})
         with self.assertRaises(ValueError):
-            ranking.check_answers({'cash': 'maybe'})
+            ranking.check_answers({'motorway': 'maybe'})
         st, d = self.req('GET', '/api/ranking')
-        self.assertEqual((st, d['answered'], d['manual'], len(d['questions'])), (200, False, False, 8))
-        st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'drive': 'lively'}})
+        self.assertEqual((st, d['answered'], d['manual'], len(d['questions'])), (200, False, False, len(ranking.QUESTIONS)))
+        st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'motorway': 'surge', 'twins': 'per_month'}})
         self.assertEqual(st, 200)
         d = self.req('GET', '/api/ranking')[1]
-        self.assertEqual((d['answered'], d['weights']['power'], d['answers']['drive'], d['answers']['cash']), (True, 3, 'lively', 'some_room'))
-        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'drive': 'warp'}})[0], 400)
-        self.req('POST', '/api/parameters', {'ranking_weights': {'power': 5}})
+        self.assertEqual((d['answered'], d['weights']['power'], d['weights']['cost_month'], d['answers']), (True, 5, 4, {'motorway': 'surge', 'twins': 'per_month'}))
+        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'motorway': 'warp'}})[0], 400)
+        self.req('POST', '/api/parameters', {'ranking_weights': {'power': 2}})
         d = self.req('GET', '/api/ranking')[1]
-        self.assertEqual((d['manual'], d['weights']['power'], d['derived_weights']['power']), (True, 5, 3))
+        self.assertEqual((d['manual'], d['weights']['power'], d['derived_weights']['power']), (True, 2, 5))
         self.req('POST', '/api/parameters', {'ranking_weights': None})                 # back to the answers
         self.assertEqual(self.req('GET', '/api/ranking')[1]['manual'], False)
+
+    def test_preferences_upsert(self):
+        st, d = self.req('POST', '/api/preferences', {'search_radius': '100', 'diy_jobs': 'oil and filters, brakes'})
+        self.assertEqual(st, 200)
+        self.assertEqual({r['preference_key']: r['preference_value'] for r in d}['search_radius'], '100')
+        st, d = self.req('POST', '/api/preferences', {'search_radius': '50', 'diy_jobs': None})
+        prefs = {r['preference_key']: r['preference_value'] for r in d}
+        self.assertEqual((prefs['search_radius'], 'diy_jobs' in prefs), ('50', False))
+        self.assertEqual(self.req('POST', '/api/preferences', {'Bad Key': 'x'})[0], 400)
+        self.assertEqual(self.req('POST', '/api/preferences', ['x'])[0], 400)
 
     def test_budget_ranking_api_and_weights(self):
         st, l = self.agent('POST', 'listings', {'vehicle_id': V_B2, 'source_id': SRC_LISTING, 'platform': 'Test', 'listing_id': 'B2',

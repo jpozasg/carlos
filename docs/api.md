@@ -24,7 +24,7 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 | Path | Result |
 |---|---|
 | `GET /api/parameters` | the account's parameters |
-| `GET /api/preferences` | the account's `project_preferences` rows |
+| `GET /api/preferences` | the account's `project_preferences` rows (keys written by the setup wizard: see `data-model.md`) |
 | `GET /api/tco` (alias `/api/listings`) | everything the Compare page needs: `parameters`, `components` (the eight keys), `listings` (every car with `components`, `known_cost_subtotal`, `known_cost_per_month`, `tco_complete`, `missing_components`, `metrics`, `score`, `rank`, `coverage`, `score_parts`, `explain`, `evidence`, `reliability_detail`, `breakeven`, `budget_status`, `price_history`, `price_change`, `stale`, `cover`, `photo_count`, `inspection_counts`, `delta_vs_reference`, `initial_outlay`, `cost_detail`), `budget`, `ranking` (`answers`, `answered`, `weights`, `derived_weights`, `manual`, `criteria`, `questions`, `candidates`), `fuel_price_stale`. Query parameters among `annual_km`, `ownership_years`, `fuel_price_eur_l`, `diesel_price_eur_l`, `budget_ideal_eur`, `budget_max_eur` preview other assumptions without saving (`preview: true`). |
 | `GET /api/listings/<id>` | one car with everything above plus `valuations`, `unit_costs`, `maintenance_resets`, `inspection`, `events`, `snapshots`, `media`, the resolved knowledge rows with their `level` (`maintenance`, `repair_risks` with the expected cost per risk, `maintenance_plan` with occurrences and cost per job, `reliability`, `insurance`, `tax`, `observations`, `tyres`), `engine_row`, `generation_row`, `sources` |
 | `GET /api/models` | the tree `makes[] → models[] → generations[] → engines[] → variants[]` with each variant's `listings` and the count of knowledge rows per table |
@@ -39,6 +39,7 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 ## Writing
 | Method and path | Body | Notes |
 |---|---|---|
+| `POST /api/preferences` | object `preference_key → value` (keys snake_case, at most 50 per call, values ≤ 1000 characters; `null` or empty removes the key) | upsert per account; returns all rows |
 | `POST /api/parameters` | any subset of the parameters; `ranking_answers` (object question → answer id), `ranking_weights` (object criterion → 0–5, or `null` to go back to the answers) | validated: `annual_km`, `ownership_years`, `fuel_price_eur_l` > 0; dates ISO; `budget_ideal_eur ≤ budget_max_eur` |
 | `POST /api/agent/<table>` | a row (JSON object) | inserts; `owner_id` is set by the server; referenced parent ids must belong to the account; knowledge tables need exactly one of `vehicle_id`, `engine_id`, `generation_id`; tables in `source_required_on_insert` need `source_id` |
 | `PATCH /api/agent/<table>/<id>` | the changed columns | updates; `source_id` cannot be removed; there is no DELETE |

@@ -21,6 +21,10 @@ export const media = fp => '/media/' + esc(fp);
 export const CAR_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 40v-8l6-12a4 4 0 0 1 3.6-2.2h28.8A4 4 0 0 1 50 20l6 12v8a3 3 0 0 1-3 3H11a3 3 0 0 1-3-3Z"/><path d="M12 32h40"/><circle cx="19" cy="43" r="5"/><circle cx="45" cy="43" r="5"/></svg>';
 export const thumb = (u, cls = '') => u.cover ? `<img class="thumb ${cls}" src="${media(u.cover)}" alt="" loading="lazy">` : `<span class="thumb ${cls}" aria-hidden="true"></span>`;
 export const unitName = u => `${esc(u.make)} ${esc(u.model)}`;
+// every car, model or engine name links somewhere: a listing to its dossier, a variant to its model page, a model or
+// engine to the models tree filtered to it
+export const modelsHref = f => '#/models?' + new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
+export const carLink = (u, html = carLabel(u)) => `<a class="carlink" href="#/listing/${u.id}">${html}</a>`;
 // short, unambiguous car name: model, engine size and first-registration year
 export const carShort = u => `${esc(u.model)}${u.displacement_cc ? ' ' + (u.displacement_cc / 1000).toFixed(1) : ''}${u.first_registration ? ' · ' + esc(String(u.first_registration).slice(0, 4)) : ''}`;
 export const carLabel = u => `${esc(u.make)} ${carShort(u)}`;
