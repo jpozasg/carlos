@@ -32,7 +32,7 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 | `GET /api/vehicles/<id>` | one variant: its fields, `engine_row`, `generation_row`, every knowledge table resolved with `level`, `siblings` (variants sharing the engine or the generation), `listings`, `sources` |
 | `GET /api/generations`, `GET /api/engines`, `GET /api/sources` | the account's rows |
 | `GET /api/ranking` | the questionnaire state (`answers`, `weights`, `derived_weights`, `manual`, `criteria`, `questions`) |
-| `GET /api/todo` (alias `/api/agent/todo`) | what is still missing per listing and per variant (English texts, see `AGENTS.md`) |
+| `GET /api/todo` (alias `/api/agent/todo`) | what is still missing: `account` (setup, ranking choices, fuel price age, the insurance profile a quote needs), per listing and per variant (English texts, see `AGENTS.md`) |
 | `GET /api/storage`, `GET /api/health` | disk use; integrity, schema version, number of listings, storage ratio |
 | `GET /api/agent/schema` | the writable tables with their columns and types, which need `source_id`, the code formats, the fixed codes, the scoped tables and the rules |
 
