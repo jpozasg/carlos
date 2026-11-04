@@ -1,6 +1,6 @@
 // Settings: calculation parameters (with live preview), insurance profile, appearance (theme, light/dark, language),
 // account (password, agent token).
-import { S, THEMES, applyTheme, loadAll, renderShell, refreshTco, setLang } from '../app.js';
+import { S, THEMES, applyTheme, loadAll, renderShell } from '../app.js';
 import { post, get } from '../api.js';
 import * as i18n from '../i18n.js';
 import { t } from '../i18n.js';
@@ -50,12 +50,12 @@ function paramUi() {
 async function preview() {
   const q = new URLSearchParams(); for (const k of CALC) { const v = $(k).value; if (v !== '') q.set(k, v); }
   const same = CALC.every(k => String(val(k) ?? '') === String(S.saved[k] ?? ''));
-  try { const r = await fetch('/api/tco' + (same ? '' : '?' + q)), d = await r.json();
-    if (!r.ok) { const k = CALC.find(k => (d.error || '').startsWith(k)); if (k) $(k).setAttribute('aria-invalid', 'true'); if (k === 'budget_ideal_eur') $('budget_max_eur').setAttribute('aria-invalid', 'true'); return; }
-    CALC.forEach(k => $(k).removeAttribute('aria-invalid'));
-    Object.assign(S, { p: d.parameters, units: d.listings, ranking: d.ranking, preview: d.preview, fuelStale: d.fuel_price_stale });
-    renderShell(); paramUi();
-  } catch (e) { toast(e.message, true); }
+  let d;
+  try { d = await get('/api/tco' + (same ? '' : '?' + q)); }
+  catch (e) { const k = CALC.find(k => e.message.startsWith(k)); if (k) { $(k).setAttribute('aria-invalid', 'true'); if (k === 'budget_ideal_eur') $('budget_max_eur').setAttribute('aria-invalid', 'true'); } else toast(e.message, true); return; }
+  CALC.forEach(k => $(k).removeAttribute('aria-invalid'));
+  Object.assign(S, { p: d.parameters, units: d.listings, ranking: d.ranking, preview: d.preview, fuelStale: d.fuel_price_stale });
+  renderShell(); paramUi();
 }
 function appearance() {
   const theme = store.get('theme', 'friendly'), mode = store.get('mode', 'auto');

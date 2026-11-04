@@ -30,6 +30,7 @@ class AppTest(unittest.TestCase):
         config.DATA_DIR, config.DB, config.MD_DIR, config.MEDIA_DIR = d, d / 'cars.sqlite', d / 'dossiers', d / 'media'
         fx.build(config.DB)
         auth.FAILS.clear()
+        from carlos import agent as agent_mod; agent_mod._STORAGE.update(at=0.0, value=None)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -582,8 +583,18 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=cookie)[0], 401)
         for _ in range(auth.LOGIN_MAX_FAILS):
             self.login(password='wrong')
-        self.assertEqual(self.login()[0], 429)                                # locked even with the right password
+        self.assertEqual(self.login()[0], 429)                                # this client is locked, even with the right password
         self.assertEqual(self.sql('SELECT count(*) FROM sessions')[0][0], 0)
+        self.assertEqual(len(auth.FAILS), 1)                                  # keyed by client, not by the names tried
+        auth.FAILS['127.0.0.1'].update(until=0.0, last=0.0)                   # the lock expired long ago: purged on the next call
+        self.assertEqual(self.login()[0], 200)
+        self.assertNotIn('127.0.0.1', auth.FAILS)
+
+    def test_json_body_size_is_capped(self):
+        r = urllib.request.Request(self.base + '/api/auth/login', b'{}', {'Content-Type': 'application/json', 'Content-Length': str(server.MAX_JSON_BYTES + 1)}, method='POST')
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(r)
+        self.assertEqual(cm.exception.code, 400)
 
     def test_password_change_and_agent_token(self):
         st, cookie = self.login()
@@ -647,6 +658,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=c2)[0], 401)
         self.assertEqual(self.req('GET', '/api/tco', token=t2)[0], 401)
         self.assertEqual(self.req('PATCH', '/api/admin/users/1', {'is_active': 0}, token=None, cookie=cookie)[0], 400)
+        self.assertEqual(self.req('PATCH', '/api/admin/users/1', {'role': 'user'}, token=None, cookie=cookie)[0], 400)   # no self-demotion
         self.assertEqual(self.req('POST', '/api/admin/users/2/invite', {}, token=None, cookie=cookie)[0], 201)
 
     def test_bootstrap_prints_invite_and_sets_admin_token(self):

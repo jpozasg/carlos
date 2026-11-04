@@ -465,7 +465,7 @@
  "pw_change": "Passwort ändern",
  "pw_changed": "Passwort geändert",
  "agent_token": "Agent-Token",
- "agent_token_hint": "Der Token, mit dem ein Agent Daten in dieses Konto schreibt (Authorization: Bearer). Er wird nur einmal angezeigt; ein neuer deaktiviert den alten.",
+ "agent_token_hint": "Der Token, mit dem ein Agent Daten in dieses Konto schreibt (Authorization: Bearer). Er wird nur einmal angezeigt; ein neuer deaktiviert den alten. Ein neues Token macht auch das in .env ungültig; gib deinem Agenten das neue.",
  "token_create": "Token erstellen",
  "token_renew": "Neuen Token erstellen",
  "token_shown_once": "Kopiere ihn jetzt; er wird nicht noch einmal angezeigt.",

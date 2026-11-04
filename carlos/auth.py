@@ -6,7 +6,7 @@ import datetime, hashlib, hmac, secrets, time
 SESSION_DAYS, INVITE_HOURS = 30, 72
 COOKIE = 'carlos_session'
 LOGIN_MAX_FAILS, LOGIN_LOCK_SECONDS = 10, 300
-FAILS = {}  # shortcut: per-username lock in memory; resets on restart (single process)
+FAILS = {}  # shortcut: per-client lock in memory; resets on restart (single process)
 OWNED = ('generations', 'engines', 'vehicles', 'sources', 'listings', 'project_parameters', 'project_preferences')
 _KNOW = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data')
 _LISTING_CHILDREN = ('valuations', 'unit_costs', 'inspection_items', 'listing_events', 'listing_snapshots', 'listing_media', 'maintenance_resets')
@@ -61,23 +61,27 @@ def user_by_token(c, token):
     return c.execute('SELECT * FROM main.users WHERE api_token_hash=? AND is_active=1', (digest(token),)).fetchone()
 
 
-def locked(username):
-    f = FAILS.get(username)
+def locked(client):
+    f = FAILS.get(client)
     return bool(f and time.time() < f['until'])
 
 
-def login(c, username, password):
-    """Returns the session cookie value, or None. Ten wrong passwords lock the username for five minutes."""
-    if locked(username):
+def login(c, username, password, client='local'):
+    """Returns the session cookie value, or None. Ten wrong passwords from one client address lock that client for
+    five minutes (not the username, so a stranger cannot lock a user out). Stale entries are purged on every call."""
+    now_ = time.time()
+    for k in [k for k, f in FAILS.items() if f['until'] < now_ and f['last'] < now_ - LOGIN_LOCK_SECONDS]:
+        del FAILS[k]
+    if locked(client):
         return None
     u = c.execute('SELECT * FROM main.users WHERE username=? AND is_active=1', (username,)).fetchone()
     if u is None or not u['password_hash'] or not check_password(u['password_hash'], password):
-        f = FAILS.setdefault(username, {'count': 0, 'until': 0.0})
-        f['count'] += 1
+        f = FAILS.setdefault(client, {'count': 0, 'until': 0.0, 'last': now_})
+        f['count'] += 1; f['last'] = now_
         if f['count'] >= LOGIN_MAX_FAILS:
-            f.update(count=0, until=time.time() + LOGIN_LOCK_SECONDS)
+            f.update(count=0, until=now_ + LOGIN_LOCK_SECONDS)
         return None
-    FAILS.pop(username, None)
+    FAILS.pop(client, None)
     return new_session(c, u['id'])
 
 

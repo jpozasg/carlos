@@ -26,6 +26,9 @@ STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
                 '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2'}
 
 
+MAX_JSON_BYTES = 1_000_000  # no JSON body of this API comes near it; stops unauthenticated memory floods
+
+
 class Forbidden(Exception):
     pass
 
@@ -41,8 +44,11 @@ def detail(c, listing_id, p):
 
 
 def export_markdown(c, user_id):
-    """Dossiers of one account in dossiers/<user id>/ (every write of that account regenerates them)."""
-    return markdown_export.export_all(c, config.MD_DIR / str(user_id), params(c), detail)
+    """Dossiers of one account in dossiers/<user id>/ (every write of that account regenerates them).
+    The costs and ranking of all listings are computed once and shared by every dossier."""
+    p = params(c)
+    rows = ranked_rows(c, p)[0]
+    return markdown_export.export_all(c, config.MD_DIR / str(user_id), p, lambda c, lid, p: listing_detail(c, lid, p, rows))
 
 
 def clean_params(data):
@@ -107,7 +113,10 @@ class Handler(BaseHTTPRequestHandler):
         # Requiring JSON forces a CORS preflight in browsers: another site cannot write.
         if not self.headers.get('Content-Type', '').startswith('application/json'):
             raise UnsupportedMediaType('Content-Type must be application/json')
-        data = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))))
+        length = int(self.headers.get('Content-Length', '0'))
+        if length > MAX_JSON_BYTES:
+            raise ValueError(f'Body too large: {length} bytes, maximum {MAX_JSON_BYTES}')
+        data = json.loads(self.rfile.read(length))
         if not isinstance(data, dict):
             raise ValueError('Expected a JSON object')
         return data
@@ -193,9 +202,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(auth.public(u) if u else {'error': 'Login required'}, 200 if u else 401)
         elif path == '/api/auth/login' and method == 'POST':
             d = self.read_json()
-            raw = auth.login(c, str(d.get('username') or ''), str(d.get('password') or ''))
+            client = (self.headers.get('X-Forwarded-For') or self.client_address[0]).split(',')[0].strip()
+            raw = auth.login(c, str(d.get('username') or ''), str(d.get('password') or ''), client)
             if raw is None:
-                self.send_json({'error': 'Wrong username or password'}, 429 if auth.locked(str(d.get('username') or '')) else 401); return
+                self.send_json({'error': 'Wrong username or password'}, 429 if auth.locked(client) else 401); return
             u = auth.user_by_session(c, raw)
             self.send_json(auth.public(u), cookie=self.session_cookie(raw))
         elif path == '/api/auth/logout' and method == 'POST':
@@ -392,8 +402,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'invite': self.invite_url(auth.new_invite(c, int(m[1]), admin['id']))}, 201)
         elif m and not m[2] and method == 'PATCH':
             d = self.read_json()
-            if int(m[1]) == admin['id'] and d.get('is_active') == 0:
-                raise ValueError('You cannot deactivate your own account')
+            if int(m[1]) == admin['id'] and (d.get('is_active') == 0 or d.get('role') == 'user'):
+                raise ValueError('You cannot deactivate or demote your own account')
             if set(d) - {'is_active', 'role'} or d.get('is_active') not in (None, 0, 1) or d.get('role') not in (None, 'admin', 'user'):
                 raise ValueError('Only is_active (0/1) and role (admin/user) can be changed')
             with c:

@@ -465,7 +465,7 @@
  "pw_change": "Change the password",
  "pw_changed": "Password changed",
  "agent_token": "Agent token",
- "agent_token_hint": "The token an agent uses to write data into this account (Authorization: Bearer). It is shown once; creating a new one disables the old one.",
+ "agent_token_hint": "The token an agent uses to write data into this account (Authorization: Bearer). It is shown once; creating a new one disables the old one. Creating a new token also invalidates the one in .env; give the new one to your agent.",
  "token_create": "Create a token",
  "token_renew": "Create a new token",
  "token_shown_once": "Copy it now; it will not be shown again.",
