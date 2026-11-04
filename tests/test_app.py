@@ -105,7 +105,8 @@ class AppTest(unittest.TestCase):
         c = sqlite3.connect(db)
         self.assertEqual(c.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
         self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(), [])
-        self.assertEqual(c.execute('SELECT count(*) FROM listings WHERE is_reference=1').fetchone()[0], 1)
+        # at most one reference car per account (every account owns its data)
+        self.assertEqual(c.execute('SELECT max(n) FROM (SELECT count(*) n FROM listings WHERE is_reference=1 GROUP BY owner_id)').fetchone()[0], 1)
         c.close()
 
     def test_failed_migration_rolls_back(self):
