@@ -4,6 +4,8 @@ export const esc = s => s == null ? '' : String(s).replace(/[&<>"']/g, c => ({ '
 export const safeUrl = u => /^https?:\/\//i.test(u || '') ? esc(u) : '#';
 export const euro = n => n == null ? '—' : new Intl.NumberFormat(locale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0, useGrouping: 'always' }).format(n);
 export const num = (n, d = 2) => n == null ? '—' : new Intl.NumberFormat(locale(), { maximumFractionDigits: d, useGrouping: 'always' }).format(n);
+// a score from less than half of the weighted data is provisional (Ranking page explains it)
+export const scoreTxt = u => `${num(u.score, 0)}${u.coverage != null && u.coverage < 0.5 ? `<abbr class="prov" title="${esc(t('provisional_hint'))}">?</abbr>` : ''}`;
 export const PEND = () => `<span class="pending">${t('pending')}</span>`;
 export const eP = n => n == null ? PEND() : euro(n);
 export const yrs = n => `${num(n, 1)} ${t('years', { n })}`;

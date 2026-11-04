@@ -1,7 +1,7 @@
 // Compare: overview table, cost composition, break-even, detail table, photo cards. State in S (app.js).
 import { S, refreshTco, go } from '../app.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media, scoreTxt } from '../ui.js';
 import { costStack, beChart, beTable, beHover, beColors } from '../charts.js';
 
 const RUNNING = ['fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres'];
@@ -66,7 +66,7 @@ function overview(all) {
       <td>${u.is_reference ? '' : `<input type="checkbox" ${on ? 'checked' : ''} data-toggle="${u.id}" aria-label="${esc(t('compare'))}: ${esc(u.make + ' ' + u.model)}">`}</td>
       <td class="n">${u.rank ? `<b>${u.rank}</b>` : dash}</td>
       <td><a class="linkbtn car" href="#/listing/${u.id}" title="${t('open_dossier')}">${thumb(u, 'sm')}<span>${esc(u.make)} ${carShort(u)}<small>${u.is_reference ? t('your_car') : esc(u.location ?? u.platform ?? '')}</small></span></a></td>
-      <td><div class="sc">${u.score == null ? dash : `<div class="scorebar" aria-hidden="true"><i style="width:${u.score}%"></i></div><b>${num(u.score, 0)}</b>`}</div></td>
+      <td><div class="sc">${u.score == null ? dash : `<div class="scorebar" aria-hidden="true"><i style="width:${u.score}%"></i></div><b>${scoreTxt(u)}</b>`}</div></td>
       <td class="n">${u.is_reference ? `<span class="muted">${t('owned')}</span>` : eP(u.price_eur)}</td>
       <td class="n">${u.mileage_km == null ? PEND() : num(u.mileage_km, 0)}</td>
       <td class="n">${u.metrics.age == null ? PEND() : num(u.metrics.age, 1)}</td>
@@ -84,7 +84,7 @@ function unitCard(u) {
     <a class="hero" href="#/listing/${u.id}" aria-label="${esc(t('open_dossier_aria', { u: u.make + ' ' + u.model }))}">
       ${u.cover ? `<img src="${media(u.cover)}" alt="${unitName(u)}" loading="lazy">` : `<span class="nophoto"><span>${CAR_SVG}${t('no_photos')}</span></span>`}
       ${u.photo_count ? `<span class="count">📷 ${u.photo_count}</span>` : ''}${u.is_reference ? `<span class="tag ref reftag">${t('reference')}</span>` : ''}
-      ${u.rank ? `<span class="rankbadge">${t('rank_n', { n: u.rank })} · ${num(u.score, 0)}</span>` : ''}</a>
+      ${u.rank ? `<span class="rankbadge">${t('rank_n', { n: u.rank })} · ${scoreTxt(u)}</span>` : ''}</a>
     ${tagsHtml(u)}
     <div class="unit-head"><div><div class="unit-name">${carLink(u, unitName(u))}</div><div class="unit-sub">${esc(u.trim ?? '')} · ${unitSub(u)}</div></div></div>
     <div class="kv">${u.is_reference ? `<span>${t('owned')}</span>` : `<span>${t('asking_price')} <b>${eP(u.price_eur)}</b></span>`}<span>${t('km')} <b>${u.mileage_km == null ? PEND() : num(u.mileage_km, 0)}</b></span><span>${t('age')} <b>${u.metrics.age == null ? PEND() : yrs(u.metrics.age)}</b></span>${u.metrics.km_per_year != null ? `<span>${t('km_per_year')} <b>${num(u.metrics.km_per_year, 0)}</b></span>` : ''}</div>
@@ -114,7 +114,7 @@ function details(us) {
       [t('power'), u => u.power_ps == null ? PEND() : num(u.power_ps, 0) + ' PS'], [t('insurance_year'), u => eP(u.annual_insurance)], [t('tax_year'), u => eP(u.annual_tax)],
       [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : num(u.metrics.reliability, 1)], [t('c_simplicity'), u => u.metrics.simplicity == null ? PEND() : num(u.metrics.simplicity, 1) + ' / 4'],
       [t('c_confidence'), u => u.metrics.confidence == null ? PEND() : num(u.metrics.confidence, 0) + ' %'],
-      [t('score'), u => u.is_reference ? dash : u.score == null ? `<span class="pending">${t('not_ranked')}</span>` : `<b>${num(u.score, 0)}</b> <span class="muted">${t('rank_n', { n: u.rank })} · ${num(u.coverage * 100, 0)}% ${t('coverage_short')}</span>`],
+      [t('score'), u => u.is_reference ? dash : u.score == null ? `<span class="pending">${t('not_ranked')}</span>` : `<b>${scoreTxt(u)}</b> <span class="muted">${t('rank_n', { n: u.rank })} · ${num(u.coverage * 100, 0)}% ${t('coverage_short')}</span>`],
       [t('consumption'), u => u.consumption == null ? PEND() : `${num(u.consumption)} l/100 km<br><span class="muted">${num(u.consumption_min)}–${num(u.consumption_max)} · n=${u.consumption_sample ?? '?'}</span>`]]],
     [t('g_use'), ['fuel', 'insurance', 'tax', 'maintenance'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
     [t('g_own'), ['repairs', 'tyres', 'purchase_sale'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
