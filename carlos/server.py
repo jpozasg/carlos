@@ -311,6 +311,20 @@ class Handler(BaseHTTPRequestHandler):
                     c.execute(f'UPDATE main.project_parameters SET {",".join(f"{k}=?" for k in data)} WHERE owner_id=?', [*data.values(), uid])
                 export_markdown(c, uid)  # dossiers show the period and prices of the saved parameters
             self.send_json(params(c))
+        elif path == '/api/preferences' and method == 'POST':
+            # upsert {key: value}; null removes the key. Free text for agents to read (docs/data-model.md)
+            d = self.read_json()
+            if not isinstance(d, dict) or any(not re.fullmatch(r'[a-z][a-z0-9_]{0,49}', str(k)) for k in d) or len(d) > 50:
+                raise ValueError('Expected an object of preference_key (snake_case) → value')
+            with c:
+                for k, v in d.items():
+                    if v is None or str(v).strip() == '':
+                        c.execute('DELETE FROM main.project_preferences WHERE owner_id=? AND preference_key=?', (uid, k))
+                    else:
+                        c.execute('INSERT INTO main.project_preferences (owner_id, preference_key, preference_value) VALUES (?,?,?) '
+                                  'ON CONFLICT (owner_id, preference_key) DO UPDATE SET preference_value=excluded.preference_value',
+                                  (uid, k, str(v).strip()[:1000]))
+            self.send_json(rows(c, 'SELECT * FROM project_preferences ORDER BY preference_key'))
         elif path == '/api/account/password' and method == 'POST':
             d = self.read_json()
             if not auth.check_password(user['password_hash'], str(d.get('old') or '')):

@@ -21,18 +21,35 @@ Price, consumption, insurance and tax are still shown as information but are not
 For each criterion with weight > 0 and at least two candidates with a value: `score = (value − worst) / (best − worst)` (0–1, best = 1, all equal = 1). Car score = `Σ weight × score / Σ weight of the criteria this car has a value for`, × 100. **Coverage** = Σ weight of the criteria with a value ÷ Σ all weights: a car with missing data is scored on what is known and shows a lower coverage; missing data never counts as 0. `GET /api/tco` returns per car `score`, `rank`, `coverage`, `score_parts` and `explain` (value, bounds, weight, score, contribution, why a criterion is missing).
 
 ## Weights
-Weights are integers 0–5 per criterion. They come from the questionnaire (`ranking_answers`, eight fixed questions with fixed answers, `GET /api/ranking` lists ids; the UI translates them): each answer adds points to criteria, the sum is clamped to 5. The user may still edit weights by hand (`ranking_weights`); the API then reports `manual: true` and keeps the derived weights for comparison; `ranking_weights: null` returns to the answers.
+Weights are integers 0–5 per criterion. They come from the questionnaire (`ranking_answers`), or are set by hand (`ranking_weights`); the API then reports `manual: true` and keeps the derived weights for comparison; `ranking_weights: null` returns to the answers.
+
+### The questionnaire (indirect, scenario-based)
+Twelve everyday situations instead of "how important is X" (issue #13): the person answers what they would do, not what they think they should value, and Carlos infers the priorities from the pattern. While answering, no points are shown; afterwards the Ranking page and the setup wizard show every criterion's weight with the answers that produced it ("because you said …"), so the inference is never hidden.
+
+Rules that keep it sound:
+- every answer adds points to one or more criteria (or none: a neutral answer);
+- every criterion is fed by at least two questions (a test enforces it), so no single answer decides it;
+- per criterion, the points earned are divided by the most it could have earned from the questions answered (share 0–1); the largest share becomes 5 and the others scale with it (`round(5 × share / top share)`). Only the relative weights matter to the score, so scaling the strongest preference to 5 loses nothing;
+- no answers at all: every criterion gets 3 (neutral); answers to retired questions are ignored when read.
+
+The mapping (ids in `carlos/ranking.py`, texts in `static/i18n/*.json`):
 
 | Question | Answers → points |
 |---|---|
-| `cash` how tight is the cash for buying | `tight` cash_now 4 · `some_room` cash_now 2 · `long_run` cash_now 1, cost_month 1 |
-| `running` how much the monthly running costs matter | `decisive` cost_month 4 · `important` 2 · `secondary` 1 |
-| `trouble` attitude to unplanned repairs | `peace` reliability 4, confidence 1 · `some_risk` reliability 2 · `diy` reliability 1 |
-| `wear` mileage and age beyond their cost effect | `fresh` mileage 3, age 2 · `somewhat` mileage 2, age 1 · `costs_only` nothing |
-| `drive` performance | `lively` power 3 · `enough` power 1 · `irrelevant` nothing |
-| `simple` simple mechanics | `strongly` simplicity 3 · `nice` simplicity 1 · `no_preference` nothing |
-| `viewing` findings at viewings | `decisive` inspection 4 · `important` 2 · `not_yet` 1 |
-| `evidence` well-documented data over estimates | `prefer_backed` confidence 3 · `a_little` 1 · `ignore` nothing |
+| `windfall` An unexpected €1,000 lands in your account. What happens to it? | `cushion` cash_now 2, reliability 1 · `car_fund` mileage 1, age 1 · `invest` cost_month 2 · `treat` power 1 |
+| `no_start` Monday, 7:40. Your car won't start. What goes through your head? | `toolbox` simplicity 2 · `call` reliability 1 · `nightmare` reliability 3, confidence 1 · `shrug` nothing |
+| `listing_eye` You open a car listing. Where does your eye go first? | `price` cash_now 2 · `km_year` mileage 2, age 1 · `history` confidence 1, reliability 1, inspection 1 · `engine` simplicity 1, power 1 |
+| `twins` Two cars, same model, same condition. One is €1,500 cheaper but has 60,000 km more. Which do you take? | `cheaper` cash_now 3 · `fewer_km` mileage 3 · `per_month` cost_month 3 |
+| `old_gem` A 15-year-old car in excellent condition, one careful owner. Your gut says… | `condition` inspection 2 · `if_cheap` cash_now 1, age 1 · `no_old` age 3 |
+| `motorway` Joining the motorway behind a lorry, traffic coming fast. You want the car to… | `surge` power 3 · `manage` power 1 · `patient` cost_month 1 |
+| `gadgets` Turbo, direct injection, dual-clutch gearbox, start-stop. Your first thought? | `progress` power 1 · `breakable` simplicity 3, reliability 1 · `indifferent` nothing |
+| `oil_stain` The seller is friendly and the car is spotless, but there's a fresh drop of oil under the engine. You… | `walk` inspection 3, reliability 1 · `haggle` inspection 1, cash_now 1 · `workshop` inspection 2, confidence 1 · `normal` nothing |
+| `friend_tip` A friend swears by their car's model. Opinions online are mixed. You… | `statistics` confidence 2, reliability 1 · `trust` nothing · `see_one` inspection 2 |
+| `budget_shape` Which sentence fits your finances best? | `monthly_tight` cost_month 3 · `savings_thin` cash_now 3 · `relaxed` nothing |
+| `five_years` Five years from now, you'd be happiest if this car… | `no_surprises` reliability 2, mileage 1, age 1 · `resell` cost_month 2, mileage 1 · `used_up` cash_now 1, cost_month 1 · `still_fun` power 2 |
+| `two_quotes` Car A is estimated at €230 a month, but half of the figures are guesses. Car B comes to €250 a month, every figure documented. You… | `cheaper_guess` cost_month 2 · `documented` confidence 2, cost_month 1 · `dig_deeper` confidence 1, inspection 1 |
+
+Why these answers point where they do, in short: the emergency fund, the price-first glance, the cheaper twin, thin savings and "drive it into the ground" read as cash sensitivity (`cash_now`); investing, "cheaper per month", a tight monthly budget, resale and "B, documented" read as cost over time (`cost_month`); fearing a breakdown, service history, distrust of complex technology, statistics and "no surprises" read as reliability; "bonnet up" (DIY) and distrust of turbo/direct injection read as a wish for simple mechanics; leaving at an oil drop, a workshop check and "condition beats age" read as weight on what a viewing finds (`inspection`); low kilometres, "old is old" and resale read as `mileage`/`age`; enjoyment answers read as `power`; statistics, documented figures and "want the missing figures" read as `confidence`. The weights were checked against archetypes (tight budget, enthusiast, peace of mind, DIY tinkerer, rational TCO) before release; `tests/test_app.py` keeps the structural rules.
 
 ## Objectivity rules for agents (the same for every car)
 The score is only as fair as the data. These rules keep the inputs comparable:

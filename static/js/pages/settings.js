@@ -74,6 +74,7 @@ function account() {
 }
 function draw() {
   root.innerHTML = `<div class="section"><h2>${t('tab_settings')}</h2><p class="lead">${t('settings_lead')}</p>
+    <div class="callout"><p>${t('setup_again_text')}</p><a class="btn ghost sm" href="#/start">${t('setup_again')}</a></div>
     <div class="grid" style="grid-template-columns:1fr"><div class="card">${form()}</div></div>
     <div class="grid" style="margin-top:16px">${appearance()}${account()}</div></div>`;
   paramUi();

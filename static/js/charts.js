@@ -1,6 +1,6 @@
 // Charts: cost composition (stacked bars with 2px surface gaps) and the break-even line chart (SVG).
 import { t, comp } from './i18n.js';
-import { esc, euro, num, PEND, thumb, unitName, carShort, carLabel, store } from './ui.js';
+import { esc, euro, num, PEND, thumb, unitName, carShort, carLabel, carLink, store } from './ui.js';
 
 export function costStack(us, comps, costSel, p, selCost) {
   const on = k => costSel.has(k), idx = k => comps.indexOf(k) + 1;
@@ -11,7 +11,7 @@ export function costStack(us, comps, costSel, p, selCost) {
       return `<div class="segm" style="flex:${v} 1 0;background:var(--s${idx(k)})" data-tip="${esc(comp(k))}: ${esc(euro(v))} (${num(v / pos(u) * 100, 0)} %)"></div>`; }).join('');
     const neg = comps.filter(on).filter(k => (u.components[k] ?? 0) < 0);
     const sc = selCost(u), miss = sc.missing.length, nsel = comps.filter(on).length;
-    return `<div class="crow"><div class="lbl who">${thumb(u)}<span>${unitName(u)}<small>${u.is_reference ? t('reference') : esc(u.listing_id ?? '')}</small></span></div>
+    return `<div class="crow"><div class="lbl who">${thumb(u)}<span>${carLink(u, unitName(u))}<small>${u.is_reference ? t('reference') : esc(u.listing_id ?? '')}</small></span></div>
       <div class="track"><div class="cstack" style="width:${pos(u) / max * 100}%">${segs}</div></div>
       <div class="after"><span class="tot">${miss && miss === nsel ? PEND() : euro(sc.sum)}${sc.complete ? ` <span class="muted small">· ${euro(sc.sum / (p.ownership_years * 12))}${t('per_month')}</span>` : ''}</span>
         ${miss && miss < nsel ? `<span class="gap" title="${esc(sc.missing.map(comp).join(', '))}"><i class="segm hatch"></i>+${t('pendings', { n: miss })}</span>` : ''}
@@ -64,7 +64,7 @@ export function beChart(ref, ready, beHi) {
 }
 export function beTable(ready) {
   return `<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>${t('g_unit')}</th><th class="n">${t('be_upfront')}</th><th class="n">${t('be_running')}</th><th class="n">${t('be_saving')}</th><th class="n">${t('be_payback')}</th><th class="n">${t('be_end')}</th></tr></thead><tbody>
-    ${ready.map(u => { const b = u.breakeven, sv = b.ref_monthly - b.monthly; return `<tr><td>${carLabel(u)}</td><td class="n">${euro(b.upfront)}</td><td class="n">${euro(b.monthly)}${t('per_month')}</td>
+    ${ready.map(u => { const b = u.breakeven, sv = b.ref_monthly - b.monthly; return `<tr><td>${carLink(u)}</td><td class="n">${euro(b.upfront)}</td><td class="n">${euro(b.monthly)}${t('per_month')}</td>
       <td class="n"><span class="${sv > 0 ? 'down' : 'up'}">${euro(sv)}${t('per_month')}</span></td><td class="n">${b.payback_months == null ? t('never') : b.payback_months > b.months ? t('after_period', { n: num(b.payback_months, 0) }) : t('n_months', { n: num(b.payback_months, 0) })}</td>
       <td class="n"><span class="${b.end_advantage >= 0 ? 'down' : 'up'}">${b.end_advantage >= 0 ? t('be_switch_better', { v: euro(b.end_advantage) }) : t('be_keep_better', { v: euro(-b.end_advantage) })}</span></td></tr>`; }).join('')}</tbody></table></div>`;
 }
