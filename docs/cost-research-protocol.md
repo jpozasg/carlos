@@ -34,6 +34,8 @@ Before writing, read `variant(V)`: rows already inherited must not be written ag
 - **Statuses:** `ESTIMATED` for anything derived (say how in `notes`), `VERIFIED` only for official/primary figures for this engine or variant, `PENDING` while unknown (never with a number).
 
 ## Steps for one car
+**New account:** run `shared_sources()` once first; it registers the shared reference sources (registration and plate fees, pre-purchase check, depreciation rule of thumb, HU/AU fee, tyre test) that `purchase_sale_defaults`, `hu`, `tyres` and `resale_rule_of_thumb` cite, and does nothing when they exist.
+
 Start with `todo(listing_id=L)` and `todo(vehicle_id=V)`, read the listing (`listing(L)`: description, attributes, claims, photo count) and the variant (`variant(V)`: engine, generation, inherited rows).
 
 1. **Identify the car**: PATCH `generations/<id>` (name and code, start/end of sale, facelift year), `engines/<id>` (code, description, fuel, displacement, power, aspiration, injection, timing drive) and `vehicles/V` (trim, gearbox, body, emissions, CO2, HSN/TSN). Sources: ADAC Autokatalog (HSN/TSN, tyres, engine), Wikipedia, manufacturer data, dieversicherer.de for HSN/TSN candidates. A TSN not on the listing is recorded as the best candidate with "assumed" in `notes`; the user confirms it from the registration document (field 2.2). Set `status`/`technical_status` to `VERIFIED` (two agreeing sources) or `PARTIAL`.

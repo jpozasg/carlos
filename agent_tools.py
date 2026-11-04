@@ -51,6 +51,27 @@ def src(**row):
     return post('sources', {'accessed_date': DAY, **row})
 
 
+SHARED_SOURCES = [  # public reference sources every account needs once (fees, HU, tyres, depreciation); regional: Bavaria 2026
+    {"title": "Registration fees (BayernPortal) — Umschreibung / Außerbetriebsetzung eines Fahrzeugs", "url": "https://www.bayernportal.de/dokumente/leistung/0666452463", "quality": "A", "source_type": "fees_official", "supports": "Re-registration on change of owner: 23.60 € keeping the plate, 30.00 € with new plates (+10.20 € Wunschkennzeichen); KBA fee 1.20–4.40 €, seals 0.30 € each. Deregistration (leistung/0888766265): 15.90 € at the office, 2.10 € online.", "limitations": "State-wide Bavarian fees (Stand 09/2026); Würzburg-specific page not found.", "accessed_date": "2026-11-03"},
+    {"title": "Number plates (uamr.de) — Was kostet ein Autokennzeichen", "url": "https://www.uamr.de/was-kostet-ein-autokennzeichen/", "quality": "C", "source_type": "fees_secondary", "supports": "Plate makers next to the registration office: up to 35–40 € per pair; online much cheaper.", "limitations": "Undated guide.", "accessed_date": "2026-11-03"},
+    {"title": "Pre-purchase check (fahrzeugschein.de) — Gebrauchtwagencheck Kosten", "url": "https://www.fahrzeugschein.de/blog/artikel/gebrauchtwagencheck-kosten", "quality": "C", "source_type": "fees_secondary", "supports": "ADAC Nordbayern Premium check 159 € members / 189 € non-members; TÜV SÜD about 79 €; DEKRA 90–150 €.", "limitations": "Seller of its own checks; May 2026. Confirm at the ADAC Nordbayern test centre.", "accessed_date": "2026-11-03"},
+    {"title": "Allianz — Wertverlust Auto; AUTO BILD — Händler oder privat", "url": "https://www.allianz.de/auto/kfz-versicherung/wertverlust-auto/", "quality": "C", "source_type": "depreciation_reference", "supports": "Old cars lose about 5–6% of their value per year (Allianz, 07/2026). For cars around 3,000 € dealers often offer about 50% of market value (AUTO BILD 2016, https://www.autobild.de/artikel/gebrauchtwagenverkauf-haendler-oder-privat--8504551.html).", "limitations": "General rules of thumb, no model data; Allianz cites no study. Used only for estimates.", "accessed_date": "2026-11-03"},
+    {"title": "HU/AU price TÜV SÜD Bavaria 2026 (AutoScout24 guide; ADAC average)", "url": "https://www.autoscout24.de/informieren/ratgeber/autorecht/hauptuntersuchung-fristen-informatives/", "quality": "C", "source_type": "fees_secondary", "supports": "HU incl. AU 163.00 € at TÜV SÜD in Bavaria (01–12/2026), same for petrol and diesel; ADAC: national average 163 € (2026). Every 24 months for cars older than 3 years.", "limitations": "Official TÜV SÜD fee page not reachable (403); prices at partner stations may differ.", "accessed_date": "2026-11-03"},
+    {"title": "ADAC all-season tyre test 2025 (tread life) via motor1; fitting prices (repareo)", "url": "https://www.motor1.com/", "quality": "B", "source_type": "tyres_reference", "supports": "ADAC 2025 all-season test predicted tread life 34,700–68,000 km, average ~48,000 km; fitting and balancing about 55–60 € per set (repareo city tables, up to 17\").", "limitations": "Test size 225/45 R17, not the sizes of these cars; motor1 article URL not recorded precisely; fitting price from search snippets.", "accessed_date": "2026-11-03"},
+]
+
+
+def shared_sources():
+    """Creates the shared reference sources a new account lacks (by title prefix); returns {prefix: id}. Run once per
+    account before the first purchase_sale_defaults()/hu()/tyres()/resale_rule_of_thumb(). Adapt fees to the region."""
+    have, out = get('/api/sources'), {}
+    for row in SHARED_SOURCES:
+        prefix = row['title'].split(' (')[0].split(' —')[0]
+        hit = [x for x in have if (x.get('title') or '').startswith(prefix)]
+        out[prefix] = max(hit, key=lambda x: x['id'])['id'] if hit else post('sources', dict(row))
+    return out
+
+
 def shared_source(title_prefix):
     """Id of the newest shared source whose title starts with title_prefix (fees, HU, tyres, depreciation, ...)."""
     rows = [s for s in get('/api/sources') if (s.get('title') or '').startswith(title_prefix)]
