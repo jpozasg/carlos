@@ -6,7 +6,7 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 |---|---|
 | `index.html` | the shell (header, main, footer, lightbox, toast); applies the saved theme before the first paint |
 | `auth.html` | sign-in and invite page (served at `/login` and `/invite/<token>`) |
-| `css/tokens.css` | design tokens and the four themes; `css/app.css` layout and components |
+| `css/tokens.css` | design tokens and the themes; `css/app.css` layout and components |
 | `js/app.js` | state `S`, data loading, hash router (`#/compare?view=…`, `#/ranking`, `#/listing/<id>`, `#/models`, `#/models/<variant id>`, `#/sources`, `#/settings`, `#/admin`), header, theme and language switching |
 | `js/api.js` | `get`, `post`, `patch`, `send`; a 401 sends the browser to `/login` |
 | `js/i18n.js` | `t(key, vars)`, plural objects `{one, other}`, `tv(code)` for fixed database codes, language detection |
