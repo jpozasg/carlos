@@ -14,7 +14,7 @@ let root, previewTimer;
 const val = k => { const e = $(k); return e.type === 'number' ? (e.value === '' ? null : Number(e.value)) : e.value; };
 const dirty = () => KEYS.some(k => String(val(k) ?? '').replace(/\.0$/, '') !== String(S.saved[k] ?? '').replace(/\.0$/, ''));
 const THEME_SW = { friendly: ['#f5f7fb', '#2f6fed', '#1f2933'], garage: ['#0e0e0e', '#f5d60a', '#f4f4f0'], cluster: ['#0b0d10', '#f5a524', '#f2f3f5'], retro: ['#f3e7cf', '#d35400', '#5f7d2a'],
-  olive: ['#efe9d8', '#5c6b2a', '#b08a3a'], terminal: ['#000000', '#9cff9c', '#ffb000'], kawaii: ['#fff0f6', '#ff6fa5', '#5fd6b4'], circuit: ['#0b2b1e', '#b87333', '#e0a24a'], arcade: ['#000000', '#2121de', '#ffe100'] };
+  olive: ['#efe9d8', '#5c6b2a', '#b08a3a'], terminal: ['#000000', '#9cff9c', '#ffb000'], kawaii: ['#fff0f6', '#ff6fa5', '#5fd6b4'], circuit: ['#0b2b1e', '#b87333', '#e0a24a'], arcade: ['#000000', '#2121de', '#ffe100'], hyrule: ['#ece2c4', '#2e6b2f', '#c9a227'] };
 
 function form() {
   const p = S.saved, f = (k, label, extra = '') => `<div class="field"><label for="${k}">${label}</label>${extra}</div>`;

@@ -87,7 +87,7 @@ abbr{text-decoration:underline dotted;cursor:help}
 .tablewrap{overflow-x:auto;border:var(--border-w) solid var(--border);border-radius:var(--radius);background:var(--surface)}
 table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
 th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}
-thead th{position:sticky;top:0;background:var(--surface-2);font-weight:600;color:var(--text-2);white-space:nowrap;letter-spacing:var(--label-spacing);text-transform:var(--label-case);font-size:12px}
+thead th{background:var(--surface-2);font-weight:600;color:var(--text-2);white-space:nowrap;letter-spacing:var(--label-spacing);text-transform:var(--label-case);font-size:12px}
 td.n,th.n{text-align:right;white-space:nowrap}
 tbody tr:last-child td{border-bottom:0}
 tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
@@ -117,7 +117,7 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 .nophoto svg{width:56px;height:56px;opacity:.45;display:block;margin:0 auto 6px}
 
 /* compare bar and views */
-.cbar{position:sticky;top:0;z-index:4;background:var(--bg);padding:8px 0 4px;margin-bottom:10px;border-bottom:1px solid var(--border)}
+.cbar{position:sticky;top:var(--hdr,0px);z-index:4;background:var(--bg);padding:8px 0 4px;margin-bottom:10px;border-bottom:1px solid var(--border)}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:8px}
 .toolbar label{font-size:13px;color:var(--text-2);display:inline-flex;align-items:center;gap:6px}
 .views{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
@@ -248,6 +248,9 @@ code,.mono{font-family:var(--font-mono);font-size:12px}
 .token-box{font-family:var(--font-mono);font-size:13px;word-break:break-all;background:var(--surface-2);padding:10px;border-radius:var(--radius-s)}
 
 /* theme decorations */
+:root[data-theme="hyrule"] h2::before{content:"▲ ";color:#c9a227}
+:root[data-theme="hyrule"] .card{border-color:var(--border-strong)}
+:root[data-theme="hyrule"] .rank-list li:first-child .rank-pos{background:#c9a227;color:#1a1403}
 :root[data-theme="kawaii"] .tag{border-color:currentColor;background:var(--surface)}
 :root[data-theme="kawaii"] h2::after{content:" ♡";color:var(--accent)}
 :root[data-theme="kawaii"] .btn{box-shadow:0 3px 0 var(--accent-ink)}
@@ -273,6 +276,7 @@ code,.mono{font-family:var(--font-mono);font-size:12px}
 
 @media (max-width:640px){
   header.top{position:static}
+  .cbar{position:static}
   .grid{grid-template-columns:1fr}
   .crow{grid-template-columns:1fr auto;gap:4px 12px}.crow .lbl{grid-column:1/-1}
   .big{font-size:24px}

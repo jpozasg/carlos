@@ -444,6 +444,8 @@
  "theme_circuit_hint": "PCB green, copper traces, LED statuses; dark only",
  "theme_arcade": "Arcade",
  "theme_arcade_hint": "Black maze, blue walls, pellet dots, Pac-Man yellow; dark only",
+ "theme_hyrule": "Hyrule",
+ "theme_hyrule_hint": "Parchment, forest green, triforce gold",
  "theme_retro": "Seventies brochure",
  "theme_retro_hint": "Cream, burnt orange, avocado",
  "theme_garage": "Garage night",

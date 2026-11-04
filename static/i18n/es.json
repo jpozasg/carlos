@@ -444,6 +444,8 @@
  "theme_circuit_hint": "Verde PCB, pistas de cobre, estados LED; solo oscuro",
  "theme_arcade": "Arcade",
  "theme_arcade_hint": "Laberinto negro, muros azules, bolitas, amarillo Pac-Man; solo oscuro",
+ "theme_hyrule": "Hyrule",
+ "theme_hyrule_hint": "Pergamino, verde bosque, oro de la trifuerza",
  "theme_retro": "Folleto de los setenta",
  "theme_retro_hint": "Crema, naranja quemado, aguacate",
  "theme_garage": "Taller de noche",

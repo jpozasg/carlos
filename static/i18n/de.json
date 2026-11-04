@@ -444,6 +444,8 @@
  "theme_circuit_hint": "Platinengrün, Kupferbahnen, LED-Status; nur dunkel",
  "theme_arcade": "Arcade",
  "theme_arcade_hint": "Schwarzes Labyrinth, blaue Wände, Punkte, Pac-Man-Gelb; nur dunkel",
+ "theme_hyrule": "Hyrule",
+ "theme_hyrule_hint": "Pergament, Waldgrün, Triforce-Gold",
  "theme_retro": "Siebziger-Prospekt",
  "theme_retro_hint": "Creme, gebranntes Orange, Avocado",
  "theme_garage": "Nachtschicht",

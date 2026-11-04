@@ -6,7 +6,7 @@ import { $, esc, num, store, toast, yrs } from './ui.js';
 
 export const S = { me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
   fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null };
-export const THEMES = ['friendly', 'garage', 'cluster', 'retro', 'olive', 'terminal', 'kawaii', 'circuit', 'arcade'];
+export const THEMES = ['friendly', 'garage', 'cluster', 'retro', 'olive', 'terminal', 'kawaii', 'circuit', 'arcade', 'hyrule'];
 const PAGES = {
   compare: () => import('./pages/compare.js'), ranking: () => import('./pages/ranking.js'), listing: () => import('./pages/dossier.js'),
   models: () => import('./pages/models.js'), sources: () => import('./pages/sources.js'), settings: () => import('./pages/settings.js'),
@@ -47,7 +47,13 @@ export function renderShell() {
     ${S.me ? `<a class="chip" href="#/settings" title="${esc(t('account'))}">👤 ${esc(S.me.username)}</a><button class="chip" type="button" data-logout>${t('logout')}</button>` : ''}</div>
     <nav class="main" aria-label="${esc(t('sections'))}">${[...NAV, ...(S.me?.role === 'admin' ? ['admin'] : [])].map(k => `<a href="#/${k}" data-nav="${k}">${t('tab_' + k)}</a>`).join('')}</nav>`;
   $('footer').innerHTML = esc(t('footer'));
+  setHeaderHeight();
 }
+function setHeaderHeight() {  // the compare control bar sticks right below the (sticky) header
+  const h = document.querySelector('header.top');
+  document.documentElement.style.setProperty('--hdr', (getComputedStyle(h).position === 'sticky' ? h.offsetHeight : 0) + 'px');
+}
+window.addEventListener('resize', setHeaderHeight);
 
 export function current() {
   const h = location.hash.replace(/^#\/?/, '');

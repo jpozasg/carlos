@@ -96,7 +96,7 @@ function details(us) {
       [`<abbr title="${esc(t('delta_help'))}">${t('delta')}</abbr>`, u => u.is_reference ? dash : u.delta_vs_reference == null ? `<span class="pending">${t('needs_tco')}</span>` : `<span class="${u.delta_vs_reference > 0 ? 'up' : 'down'}">${u.delta_vs_reference > 0 ? '▲ +' : '▼ '}${euro(u.delta_vs_reference)}</span>`],
       [t('outlay'), u => u.is_reference ? dash : eP(u.initial_outlay)], [t('diy_hours'), u => u.diy_hours == null ? PEND() : num(u.diy_hours, 1) + ' h']]]];
   const head = `<tr><th scope="col">${t('concept')}</th>${us.map(u => `<th scope="col" class="n${u.is_reference ? ' refcol' : ''}"><span class="who" style="justify-content:flex-end">${thumb(u, 'sm')}<span>${unitName(u)}${u.is_reference ? ` <span class="tag ref">${t('ref_short')}</span>` : ''}</span></span></th>`).join('')}</tr>`;
-  const body = groups.map(([g, rows]) => `<tr class="grp"><td colspan="${us.length + 1}">${g}</td></tr>` + rows.map(([l, f, cls]) => `<tr class="${cls || ''}"><td>${l}</td>${us.map(u => `<td class="n${u.is_reference ? ' refcol' : ''}">${f(u)}</td>`).join('')}</tr>`).join('')).join('');
+  const body = groups.map(([g, rows]) => `<tr class="grp"><td>${g}</td><td colspan="${us.length}"></td></tr>` + rows.map(([l, f, cls]) => `<tr class="${cls || ''}"><td>${l}</td>${us.map(u => `<td class="n${u.is_reference ? ' refcol' : ''}">${f(u)}</td>`).join('')}</tr>`).join('')).join('');
   return `<div class="tablewrap"><table class="cmp"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
 const MISS = s => { const [who, what] = s.split(': '); return `${t(who === 'reference' ? 'reference' : 'car_word')}: ${esc(tv(what) === what ? t('m_' + what.replace(/ /g, '_')) : tv(what))}`; };

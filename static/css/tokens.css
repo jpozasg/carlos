@@ -188,3 +188,25 @@
   --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;
   --bg-decor:radial-gradient(circle,#ffb8ae 1.5px,transparent 2.5px);--bg-decor-size:28px 28px;
 }
+/* ---------- hyrule (Zelda: parchment, forest green tunic, triforce gold) ---------- */
+:root[data-theme="hyrule"]{
+  color-scheme:light;
+  --bg:#ece2c4;--surface:#f6efd9;--surface-2:#e5d9b6;--border:#c9b98a;--border-strong:#8f7a3f;
+  --text:#2b3a1f;--text-2:#4f5e3b;--text-3:#7d8762;
+  --accent:#2e6b2f;--accent-ink:#245425;--accent-soft:#d9e8d2;--accent-contrast:#f6efd9;
+  --ref-soft:#e6ead0;
+  --font-display:"Trajan Pro","Cinzel",Georgia,"Times New Roman",serif;--font-num:var(--font-mono);
+  --radius:4px;--radius-s:2px;--radius-pill:4px;--border-w:2px;--shadow:0 2px 0 #c9b98a;
+  --tag-case:uppercase;--tag-spacing:.08em;--label-case:uppercase;--label-spacing:.08em;
+  --warn:#c9a227;--warn-ink:#6d5300;--warn-soft:#f3e7b8;--good:#2e6b2f;--good-ink:#245425;--good-soft:#d9e8d2;--bad:#9c2f2f;--bad-ink:#7a2222;--bad-soft:#f1d6d6;
+  --bg-decor:linear-gradient(60deg,transparent 46%,rgb(201 162 39/.16) 46% 54%,transparent 54%),linear-gradient(-60deg,transparent 46%,rgb(201 162 39/.16) 46% 54%,transparent 54%),linear-gradient(0deg,transparent 46%,rgb(201 162 39/.16) 46% 54%,transparent 54%);--bg-decor-size:56px 48px;
+}
+:root[data-theme="hyrule"][data-mode="dark"],:root[data-theme="hyrule"]:not([data-mode="light"]).os-dark{
+  color-scheme:dark;
+  --bg:#0f2214;--surface:#17301d;--surface-2:#1f3d26;--border:#355a3c;--border-strong:#c9a227;
+  --text:#f1ead2;--text-2:#cdc6a8;--text-3:#9a9a7c;
+  --accent:#d4af37;--accent-ink:#e8c95a;--accent-soft:#3d3412;--accent-contrast:#1a1403;--ref-soft:#213a28;
+  --good-ink:#8fd38f;--good-soft:#1c3d22;--warn-ink:#e8c95a;--warn-soft:#3d3412;--bad-ink:#ff9a85;--bad-soft:#4a1f18;
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;--shadow:0 2px 0 #000;
+  --bg-decor:linear-gradient(60deg,transparent 46%,rgb(212 175 55/.12) 46% 54%,transparent 54%),linear-gradient(-60deg,transparent 46%,rgb(212 175 55/.12) 46% 54%,transparent 54%),linear-gradient(0deg,transparent 46%,rgb(212 175 55/.12) 46% 54%,transparent 54%);
+}
