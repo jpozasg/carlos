@@ -47,8 +47,8 @@ const prefChoice = (k, label, hint) => {
 };
 const sel = (id, opts, cur, lbl) => `<select id="${id}"><option value="">—</option>${opts.map(o => `<option value="${o}" ${o === cur ? 'selected' : ''}>${esc(t(lbl(o)))}</option>`).join('')}</select>`;
 const codeChoice = (id, opts, cur, lbl) => choice(id, opts.map(o => [o, o]), cur, lbl);
-function personFields(px, d, holder) {  // px: id prefix; d: stored values
-  return `<div class="fields two">
+function personFields(px, d, holder, first = '') {  // px: id prefix; d: stored values; first: an extra leading field
+  return `<div class="fields two">${first}
     ${group(px + 'gender', t('p_gender'), codeChoice(px + 'gender', PERSON.gender, d.gender, c => 'o_gender_' + c))}
     ${field(px + 'birth_date', t('p_birth_date'), `<input id="${px}birth_date" type="date" value="${esc(d.birth_date ?? '')}" max="${new Date().toISOString().slice(0, 10)}">`)}
     ${field(px + 'licence_date', t('p_licence_date'), `<input id="${px}licence_date" type="date" value="${esc(d.licence_date ?? '')}">`, holder ? t('h_licence_date') : '')}
@@ -99,8 +99,7 @@ const VIEWS = {
     ${prefs.preferred_engine ? `<p class="hint">${t('kept_note', { v: esc(prefs.preferred_engine) })}</p>` : ''}`,
   drivers: () => `<p class="note">${t('ins_privacy')}</p>
     <fieldset class="person"><legend>${t('holder_title')}</legend>
-      <div class="fields two">${field('postal_code', t('p_postal'), text('postal_code', P('postal_code'), 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code"'), t('h_postal'))}</div>
-      ${personFields('h_', holderStored(), true)}</fieldset>
+      ${personFields('h_', holderStored(), true, field('postal_code', t('p_postal'), text('postal_code', P('postal_code'), 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code"'), t('h_postal')))}</fieldset>
     <div id="driverList">${driverCards()}</div>
     <div class="row"><button class="btn ghost" type="button" data-add-driver>${t('driver_add')}</button><span class="hint" style="margin:0">${t('h_drivers')}</span></div>`,
   insurance: () => { const disc = (prefs.insurance_discounts ?? [prefs.insurance_homeowner === 'Yes' ? 'homeowner' : '', prefs.insurance_club_member === 'Yes' ? 'club' : ''].filter(Boolean).join(',')).split(',').map(x => x.trim());

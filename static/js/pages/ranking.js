@@ -19,13 +19,14 @@ function draw() {
     return `<li><span class="rank-pos num">${u.rank}</span><div><a class="rank-car" href="#/listing/${u.id}">${thumb(u, 'sm')}<span>${carLabel(u)}</span></a>
       <div class="contrib" role="img" aria-label="${esc(ex.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}%`).join(', '))}">${ex.map(x => `<i style="width:${x.contribution}%;background:var(--s${CRIT().indexOf(x.criterion) + 1})" data-tip="${esc(t('c_' + x.criterion))}: ${num(x.score, 0)} × ${x.weight} → ${num(x.contribution, 0)}%"></i>`).join('')}</div>
       <div class="small muted">${t('coverage', { n: num(u.coverage * 100, 0) })}${miss.length ? ' · ' + t('missing_criteria', { l: miss.map(x => t('c_' + x.criterion)).join(', ') }) : ''}</div></div>
-      <b class="score num">${num(u.score, 0)}</b></li>`; }).join('');
+      <b class="score num${u.coverage < 0.5 ? ' provisional' : ''}" ${u.coverage < 0.5 ? `title="${esc(t('provisional_hint'))}"` : ''}>${num(u.score, 0)}${u.coverage < 0.5 ? '<small>?</small>' : ''}</b></li>`; }).join('');
+  const thin = cands.some(u => u.coverage < 0.5);
   const state = !R.answered ? `<div class="callout"><p><b>${t(R.retired_answers ? 'prio_retired_title' : 'prio_none_title')}</b> ${t(R.retired_answers ? 'prio_retired_text' : 'prio_none_text')}</p><a class="btn" href="#/ranking?quiz=1">${t('quiz_start')}</a></div>`
     : R.manual ? `<div class="callout"><p>${t('prio_manual_text')}</p><button class="btn ghost sm" type="button" data-reset>${t('weights_reset')}</button></div>` : '';
   root.innerHTML = `<div class="section"><h2>${t('tab_ranking')}</h2><p class="lead">${t('ranking_lead')}</p>
     <div class="rank-layout">
       <div class="card"><h3>${t('rank_result')} <span class="muted small">${t('candidates_n', { n: R.candidates })}</span></h3>
-        ${cands.length ? `<ol class="rank-list">${list}</ol>` : `<p class="empty">${t('need_two')}</p>`}
+        ${thin ? `<p class="note small">${t('provisional_note')}</p>` : ''}${cands.length ? `<ol class="rank-list">${list}</ol>` : `<p class="empty">${t('need_two')}</p>`}
         <div class="legend" style="margin-top:12px">${CRIT().map((k, i) => `<span><i class="sw" style="background:var(--s${i + 1})"></i>${t('c_' + k)}</span>`).join('')}</div></div>
       <div class="card prio"><h3>${t('prio_title')} ${R.manual ? `<span class="tag warn">${t('weights_manual')}</span>` : R.answered ? `<span class="tag good">${t('weights_from_answers')}</span>` : ''}</h3>
         ${state}<p class="small muted" style="margin-top:0">${t('prio_lead')}</p>${profileHtml(R)}

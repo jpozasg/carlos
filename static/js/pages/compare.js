@@ -45,17 +45,18 @@ function versus() {
 function ruler(all) {
   const ref = S.units.find(u => u.is_reference);
   const vals = all.map(u => u.known_cost_per_month).filter(v => v != null);
-  if (!vals.length) return `<p class="empty">${t('no_units')}</p>`;
-  const lo = Math.min(...vals) * 0.9, hi = Math.max(...vals) * 1.05 || 1, x = v => (v - lo) / (hi - lo) * 100;
+  if (!all.length) return `<p class="empty">${t('no_units')}</p>`;
+  const none = !vals.length;  // cars exist but no cost is known yet: list them, say why the ruler is empty
+  const lo = none ? 0 : Math.min(...vals) * 0.9, hi = none ? 1 : Math.max(...vals) * 1.05 || 1, x = v => (v - lo) / (hi - lo) * 100;
   const step = [10, 20, 25, 50, 100, 200][[10, 20, 25, 50, 100, 200].findIndex(s => (hi - lo) / s <= 7)] || 200;
-  const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
+  const ticks = []; if (!none) for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
   const refX = ref && ref.known_cost_per_month != null ? x(ref.known_cost_per_month) : null;
   const rows = all.map(u => { const v = u.known_cost_per_month, d = u.delta_vs_reference;
     return `<a class="rrow${u.is_reference ? ' ref' : ''}${u.rank === 1 ? ' top' : ''}" href="#/listing/${u.id}">
       <span class="car">${u.is_reference ? '' : `<span class="rk">${u.rank ?? '–'}</span>`}${thumb(u, 'sm')}<span style="min-width:0"><span class="nm">${carLabel(u)}</span><small>${u.is_reference ? t('your_car') : esc(u.location ?? u.platform ?? '')}</small></span></span>
       <span class="rtrack">${refX != null && !u.is_reference ? `<i class="rline" style="left:${refX}%"></i>` : ''}${v == null ? '' : `<i class="rmark${u.is_reference ? ' refmark' : u.tco_complete ? '' : ' partial'}" style="left:${refX ?? x(v)}%" data-x="${x(v)}" title="${esc(euro(v))}${t('per_month')}"></i>`}</span>
       <span class="rval">${v == null ? PEND() : `<b>${euro(v)}</b>${u.is_reference ? '' : d == null ? (u.tco_complete ? '' : `<small class="muted">${t('ruler_partial')}</small>`) : `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${euro(Math.abs(d) / (S.p.ownership_years * 12))}${t('per_month')}</small>`}`}</span></a>`; }).join('');
-  return `<div class="section"><h2>${t('ruler_title')}</h2><p class="lead">${t('ruler_lead')}</p>
+  return `<div class="section"><h2>${t('ruler_title')}</h2><p class="lead">${t(none ? 'ruler_waiting' : 'ruler_lead')}</p>
     <div class="ruler"><div class="rhead"><span class="car-h">${t('g_unit')}</span><span class="ticks">${ticks.map(v => `<span style="left:${x(v)}%">${euro(v)}</span>`).join('')}</span><span style="text-align:right">${t('ruler_axis')}</span></div>${rows}</div></div>`;
 }
 function overview(all) {

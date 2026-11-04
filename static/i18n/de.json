@@ -77,7 +77,7 @@
  "since_date": "seit {d}",
  "units_lead": "Jedes angebotene Auto im Vergleich zu deinem eigenen: Kosten über den gewählten Zeitraum, {n} Kostenbestandteile und die Punktzahl aus deinen Ranking-Gewichten.",
  "ranking_hint": "Die Punktzahl ergibt sich aus dem Fragebogen und den Gewichten auf der Ranking-Seite.",
- "no_units": "Noch keine Autos. Ein Agent erfasst Inserate über die API.",
+ "no_units": "Noch keine Autos. Autos kommen hinzu, indem eine Anzeige erfasst wird (das macht ein Agent aus einem Link, den du schickst).",
  "cv_nav": "Vergleichsansichten",
  "cv_overview": "Tabelle",
  "cv_costs": "Kosten",
@@ -212,7 +212,7 @@
  "cb_mileage": "Kilometerstand laut Inserat.",
  "c_age": "Alter",
  "cb_age": "Jahre seit der Erstzulassung.",
- "c_reliability": "Zuverlässigkeitspunkte",
+ "c_reliability": "Zuverlässigkeit (bekannte Schwachstellen)",
  "cb_reliability": "Schweregradpunkte der dokumentierten Schwachstellen der Variante, ihres Motors und ihrer Generation (HIGH 3, MEDIUM 2, LOW-MEDIUM 1, LOW 0,5, HIGH IF APPLICABLE 1,5). Weniger ist besser.",
  "c_inspection": "Befunde bei der Besichtigung",
  "cb_inspection": "Checklistenpunkte, die bei einer Besichtigung als Problem markiert wurden; unbekannt, bis etwas geprüft wurde.",
@@ -553,7 +553,7 @@
  "sl_insurance": "Deckung, Vorversicherung und Rabatte: der Rest dessen, was ein Angebot braucht.",
  "st_workshop": "Was reparierst du selbst?",
  "sl_workshop": "Arbeiten, die du selbst machst, werden nur mit Teilen berechnet, die Stunden separat gezeigt. Alles andere wird mit Werkstattpreisen kalkuliert.",
- "st_priorities": "Wie denkst du über Autos?",
+ "st_priorities": "Welches Auto würdest du kaufen?",
  "sl_priorities": "Zwölf schnelle Entscheidungen zwischen drei Autos, etwa drei Minuten. Tippe jedes Mal das Auto an, das du kaufen würdest, dann das, das du zuletzt kaufen würdest.",
  "st_done": "Alles bereit",
  "done_lead": "Damit arbeitet Carlos. Alles lässt sich später in den Einstellungen oder mit einer erneuten Einrichtung ändern.",
@@ -733,5 +733,9 @@
  "tally_line": "{s}× gezeigt: {b}× zuerst gekauft, {w}× zuletzt.",
  "tally_none": "Du hast jede Entscheidung übersprungen, die das zeigte.",
  "prio_retired_title": "Neue Fragen.",
- "prio_retired_text": "Deine früheren Antworten gehörten zu einer älteren Version der Fragen; bis du die zwölf neuen Entscheidungen triffst (etwa drei Minuten), zählen alle Kriterien gleich."
+ "prio_retired_text": "Deine früheren Antworten gehörten zu einer älteren Version der Fragen; bis du die zwölf neuen Entscheidungen triffst (etwa drei Minuten), zählen alle Kriterien gleich.",
+ "ruler_waiting": "Für noch kein Auto sind Kosten bekannt. Sie füllen sich, während jedes Auto recherchiert wird (Verbrauch, Wartung, Risiken, Reifen, Steuer, Versicherung); öffne ein Auto, um zu sehen, was noch fehlt.",
+ "prof_head": "Am häufigsten gewählt: {l}.",
+ "provisional_note": "Mit ? markierte Werte sind vorläufig: Für dieses Auto ist noch weniger als die Hälfte dessen bekannt, was du gewichtest. Sie festigen sich mit der Recherche.",
+ "provisional_hint": "Vorläufig: weniger als die Hälfte der gewichteten Daten ist bekannt."
 }
