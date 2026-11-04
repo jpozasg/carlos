@@ -20,7 +20,7 @@ function draw() {
       <div class="contrib" role="img" aria-label="${esc(ex.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}%`).join(', '))}">${ex.map(x => `<i style="width:${x.contribution}%;background:var(--s${CRIT().indexOf(x.criterion) + 1})" data-tip="${esc(t('c_' + x.criterion))}: ${num(x.score, 0)} × ${x.weight} → ${num(x.contribution, 0)}%"></i>`).join('')}</div>
       <div class="small muted">${t('coverage', { n: num(u.coverage * 100, 0) })}${miss.length ? ' · ' + t('missing_criteria', { l: miss.map(x => t('c_' + x.criterion)).join(', ') }) : ''}</div></div>
       <b class="score num">${num(u.score, 0)}</b></li>`; }).join('');
-  const state = !R.answered ? `<div class="callout"><p><b>${t('prio_none_title')}</b> ${t('prio_none_text')}</p><a class="btn" href="#/ranking?quiz=1">${t('quiz_start')}</a></div>`
+  const state = !R.answered ? `<div class="callout"><p><b>${t(R.retired_answers ? 'prio_retired_title' : 'prio_none_title')}</b> ${t(R.retired_answers ? 'prio_retired_text' : 'prio_none_text')}</p><a class="btn" href="#/ranking?quiz=1">${t('quiz_start')}</a></div>`
     : R.manual ? `<div class="callout"><p>${t('prio_manual_text')}</p><button class="btn ghost sm" type="button" data-reset>${t('weights_reset')}</button></div>` : '';
   root.innerHTML = `<div class="section"><h2>${t('tab_ranking')}</h2><p class="lead">${t('ranking_lead')}</p>
     <div class="rank-layout">
@@ -38,7 +38,7 @@ function draw() {
 }
 function runQuiz() {
   root.innerHTML = `<div class="section quiz-page"><h2>${t('quiz_title')}</h2><p class="lead">${t('quiz_lead')}</p><div id="qzHost"></div></div>`;
-  quiz(root.querySelector('#qzHost'), { questions: S.ranking.questions, answers: S.ranking.answers,
+  quiz(root.querySelector('#qzHost'), { tasks: S.ranking.tasks, answers: S.ranking.answers, params: S.p,
     onCancel: () => go('ranking'),
     onDone: async answers => { if (await save({ ranking_answers: answers, ranking_weights: null }, 'answers_saved')) go('ranking'); } });
 }
