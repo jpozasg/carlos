@@ -6,7 +6,7 @@ Carlos is a small self-hosted web app for people choosing a used car on the Germ
 
 - Python standard library only (runs on a Raspberry Pi 2B), SQLite, no build step.
 - Accounts: every person has their own private cars, models, parameters and dossiers.
-- Ten switchable looks (friendly, garage night, instrument cluster, seventies brochure, olive workshop, terminal, cute, circuit board, arcade, Hyrule), light and dark where the look allows.
+- Ten switchable looks (instrument cluster by default, friendly, garage night, seventies brochure, olive workshop, terminal, cute, circuit board, arcade, Hyrule), light and dark where the look allows. Design decisions: `docs/design.md`.
 - English, Spanish, German and Polish UI.
 - Designed to be filled by AI agents through a write API with strict rules (sources, no invented data, same method for every car). See `AGENTS.md`.
 

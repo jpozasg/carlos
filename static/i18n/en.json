@@ -79,7 +79,7 @@
  "ranking_hint": "The score comes from the questionnaire and the weights on the Ranking page.",
  "no_units": "No cars yet. An agent registers listings through the API.",
  "cv_nav": "Comparison views",
- "cv_overview": "Overview",
+ "cv_overview": "Table",
  "cv_costs": "Costs",
  "cv_breakeven": "Break-even",
  "cv_details": "Details",
@@ -530,5 +530,23 @@
   "BELT": "timing belt",
   "WET BELT": "wet belt",
   "GEAR": "gear drive"
- }
+ },
+ "cv_ruler": "At a glance",
+ "versus_title": "Keep or switch?",
+ "versus_keep": "Your car",
+ "versus_best": "Best buy right now",
+ "versus_saves": "{v} less per month",
+ "versus_costs_more": "{v} more per month",
+ "versus_even": "Same cost per month",
+ "versus_none": "No car for sale has a complete cost yet.",
+ "versus_over": "Over {y} years: {v}",
+ "versus_hint": "Ranked first by your weights, complete cost of ownership.",
+ "ruler_title": "Cost per month, every car on one scale",
+ "ruler_lead": "Your car is the dashed line. Cars left of it cost less per month, cars right of it more. A filled marker is a complete cost of ownership; a hollow one is a partial subtotal and sits where its known costs put it.",
+ "ruler_axis": "€ per month",
+ "ruler_partial": "partial",
+ "plate_title": "Spec plate",
+ "plate_cost": "Cost per month",
+ "plate_rank": "Rank",
+ "plate_stamp": "Verdict"
 }

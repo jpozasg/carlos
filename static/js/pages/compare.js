@@ -1,11 +1,11 @@
 // Compare: overview table, cost composition, break-even, detail table, photo cards. State in S (app.js).
 import { S, refreshTco, go } from '../app.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, unitSub, statusTags, CAR_SVG, media } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, unitSub, statusTags, CAR_SVG, media } from '../ui.js';
 import { costStack, beChart, beTable, beHover, beColors } from '../charts.js';
 
 const RUNNING = ['fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres'];
-const VIEWS = ['overview', 'costs', 'breakeven', 'details', 'photos'];
+const VIEWS = ['ruler', 'overview', 'costs', 'breakeven', 'details', 'photos'];
 const SORTS = { score: [u => u.score, 'desc'], price: [u => u.metrics.price, 'asc'], mileage: [u => u.metrics.mileage, 'asc'], age: [u => u.metrics.age, 'asc'],
   km_per_year: [u => u.metrics.km_per_year, 'asc'], consumption: [u => u.metrics.consumption, 'asc'], insurance: [u => u.metrics.insurance, 'asc'],
   tax: [u => u.metrics.tax, 'asc'], cost_month: [u => u.metrics.cost_month, 'asc'], known_month: [u => u.known_cost_per_month, 'asc'],
@@ -30,6 +30,34 @@ function ordered() {
 }
 const tagsHtml = u => { const tg = statusTags(u); return tg.length ? `<div class="tags">${tg.join('')}</div>` : ''; };
 
+function versus() {
+  const ref = S.units.find(u => u.is_reference); if (!ref) return '';
+  const best = S.units.filter(u => u.rank && u.tco_complete).sort((a, b) => a.rank - b.rank)[0];
+  const side = (u, label, cls) => `<a class="side ${cls}" href="#/listing/${u.id}">${u.cover ? `<img src="${media(u.cover)}" alt="">` : `<span class="nophoto-sm" aria-hidden="true">${CAR_SVG}</span>`}
+    <span style="min-width:0"><span class="who-l">${label}</span><span class="name">${carLabel(u)}</span><span class="cost">${eP(u.known_cost_per_month)}${u.known_cost_per_month == null ? '' : t('per_month')}</span></span></a>`;
+  let mid;
+  if (!best || ref.known_cost_per_month == null) mid = `<p class="empty-v">${t('versus_none')}</p>`;
+  else { const d = ref.known_cost_per_month - best.known_cost_per_month;
+    mid = `<div class="n ${d > 0 ? 'down' : d < 0 ? 'up' : ''}">${d === 0 ? '=' : (d > 0 ? '−' : '+') + euro(Math.abs(d))}</div><div class="l">${d > 0 ? t('versus_saves', { v: euro(Math.abs(d)) }) : d < 0 ? t('versus_costs_more', { v: euro(Math.abs(d)) }) : t('versus_even')}</div>
+      ${best.delta_vs_reference != null ? `<div class="s">${t('versus_over', { y: S.p.ownership_years, v: euro(-best.delta_vs_reference) })}</div>` : ''}<div class="s">${t('versus_hint')}</div>`; }
+  return `<section class="versus" aria-label="${esc(t('versus_title'))}">${side(ref, t('versus_keep'), 'left')}<div class="mid">${mid}</div>${best ? side(best, t('versus_best'), 'right') : '<div></div>'}</section>`;
+}
+function ruler(all) {
+  const ref = S.units.find(u => u.is_reference);
+  const vals = all.map(u => u.known_cost_per_month).filter(v => v != null);
+  if (!vals.length) return `<p class="empty">${t('no_units')}</p>`;
+  const lo = Math.min(...vals) * 0.9, hi = Math.max(...vals) * 1.05 || 1, x = v => (v - lo) / (hi - lo) * 100;
+  const step = [10, 20, 25, 50, 100, 200][[10, 20, 25, 50, 100, 200].findIndex(s => (hi - lo) / s <= 7)] || 200;
+  const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(v);
+  const refX = ref && ref.known_cost_per_month != null ? x(ref.known_cost_per_month) : null;
+  const rows = all.map(u => { const v = u.known_cost_per_month, d = u.delta_vs_reference;
+    return `<a class="rrow${u.is_reference ? ' ref' : ''}${u.rank === 1 ? ' top' : ''}" href="#/listing/${u.id}">
+      <span class="car">${u.is_reference ? '' : `<span class="rk">${u.rank ?? '–'}</span>`}${thumb(u, 'sm')}<span style="min-width:0"><span class="nm">${carLabel(u)}</span><small>${u.is_reference ? t('your_car') : esc(u.location ?? u.platform ?? '')}</small></span></span>
+      <span class="rtrack">${refX != null && !u.is_reference ? `<i class="rline" style="left:${refX}%"></i>` : ''}${v == null ? '' : `<i class="rmark${u.is_reference ? ' refmark' : u.tco_complete ? '' : ' partial'}" style="left:${refX ?? x(v)}%" data-x="${x(v)}" title="${esc(euro(v))}${t('per_month')}"></i>`}</span>
+      <span class="rval">${v == null ? PEND() : `<b>${euro(v)}</b>${u.is_reference ? '' : d == null ? (u.tco_complete ? '' : `<small class="muted">${t('ruler_partial')}</small>`) : `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${euro(Math.abs(d) / (S.p.ownership_years * 12))}${t('per_month')}</small>`}`}</span></a>`; }).join('');
+  return `<div class="section"><h2>${t('ruler_title')}</h2><p class="lead">${t('ruler_lead')}</p>
+    <div class="ruler"><div class="rhead"><span class="car-h">${t('g_unit')}</span><span class="ticks">${ticks.map(v => `<span style="left:${x(v)}%">${euro(v)}</span>`).join('')}</span><span style="text-align:right">${t('ruler_axis')}</span></div>${rows}</div></div>`;
+}
 function overview(all) {
   const dash = '<span class="muted">—</span>';
   const rows = all.map(u => { const on = selected.has(u.id), d = u.delta_vs_reference;
@@ -65,7 +93,7 @@ function unitCard(u) {
       <div class="meter${known === n ? ' good' : ''}" role="meter" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${known}" aria-label="${t('cost_known_aria')}"><i style="width:${known / n * 100}%"></i></div>
       ${u.missing_components.length ? `<div class="tags" style="margin-top:6px">${u.missing_components.map(m => `<span class="tag">${esc(tv(m))}</span>`).join('')}</div>` : ''}</div>
     <div class="small"><span class="muted">${t('verdict')}:</span> ${u.verdict ? esc(u.verdict) : PEND()}</div>
-    <div class="unit-foot"><label class="toggle"><input type="checkbox" ${on ? 'checked' : ''} data-toggle="${u.id}"> ${t('compare')}</label><a class="linkbtn" href="#/listing/${u.id}">${t('open_dossier')} →</a></div></article>`;
+    <div class="unit-foot"><label class="toggle"><input type="checkbox" ${on ? 'checked' : ''} data-toggle="${u.id}"> ${t('compare')}</label><a class="linkbtn" href="#/listing/${u.id}">${t('open_dossier')}</a></div></article>`;
 }
 function costs(us) {
   const comps = S.components, on = k => costSel.has(k), idx = k => comps.indexOf(k) + 1;
@@ -142,12 +170,15 @@ function draw() {
   if (store.get('costSel', null) == null) costSel = new Set(S.components);
   const all = ordered(), us = all.filter(u => selected.has(u.id));
   const body = {
-    overview: () => `<div class="section"><p class="lead">${t('units_lead', { n: S.components.length })}</p>${all.length ? overview(all) : `<p class="empty">${t('no_units')}</p>`}<p class="small muted" style="margin-top:10px">${t('ranking_hint')} <a href="#/ranking">${t('tab_ranking')} →</a></p></div>`,
+    ruler: () => ruler(all),
+    overview: () => `<div class="section"><p class="lead">${t('units_lead', { n: S.components.length })}</p>${all.length ? overview(all) : `<p class="empty">${t('no_units')}</p>`}<p class="small muted" style="margin-top:10px">${t('ranking_hint')} <a href="#/ranking">${t('tab_ranking')}</a></p></div>`,
     costs: () => `<div class="section"><h2>${t('composition')}</h2><p class="lead">${t('composition_lead', { y: yrs(S.p.ownership_years), km: num(S.p.annual_km * S.p.ownership_years, 0) })} ${t('cost_pick_lead')}</p>${selNote(us)}${costs(us)}</div>`,
     breakeven: () => `${selNote(us)}${breakeven(us)}`,
     details: () => `<div class="section"><h2>${t('detail')}</h2>${selNote(us)}${details(us) || `<p class="empty">${t('select_one')}</p>`}</div>`,
     photos: () => `<div class="section"><div class="grid">${all.map(unitCard).join('') || `<p class="empty">${t('no_units')}</p>`}</div></div>` }[view]();
-  root.innerHTML = `${S.preview ? `<div class="banner">⚠ ${t('preview_banner')} <a class="btn sm" href="#/settings">${t('save_params')}</a></div>` : ''}
+  // the one authored motion: markers leave your car's line and settle where they belong (not under reduced motion)
+  if (view === 'ruler') requestAnimationFrame(() => root.querySelectorAll('.rmark[data-x]').forEach(m => { m.style.left = m.dataset.x + '%'; }));
+  root.innerHTML = `${S.preview ? `<div class="banner">⚠ ${t('preview_banner')} <a class="btn sm" href="#/settings">${t('save_params')}</a></div>` : ''}${versus()}
     <div class="cbar">${selBar(all)}${toolbar()}<nav class="views" aria-label="${t('cv_nav')}">${VIEWS.map(k => `<button type="button" data-view="${k}" aria-pressed="${k === view}">${t('cv_' + k)}</button>`).join('')}</nav></div>${body}`;
 }
 function bind() {
@@ -176,8 +207,8 @@ function bind() {
     beHover(e, ref, ordered().filter(u => selected.has(u.id) && !u.is_reference && u.breakeven.ready), beHi); });
 }
 export async function render(main, r) {
-  view = VIEWS.includes(r.q.view) ? r.q.view : store.get('cview', 'overview');
-  if (!VIEWS.includes(view)) view = 'overview';
+  view = VIEWS.includes(r.q.view) ? r.q.view : store.get('cview', 'ruler');
+  if (!VIEWS.includes(view)) view = 'ruler';
   if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="compare"></div>'; root = main.firstElementChild; bind(); }
   draw();
 }

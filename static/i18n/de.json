@@ -79,7 +79,7 @@
  "ranking_hint": "Die Punktzahl ergibt sich aus dem Fragebogen und den Gewichten auf der Ranking-Seite.",
  "no_units": "Noch keine Autos. Ein Agent erfasst Inserate über die API.",
  "cv_nav": "Vergleichsansichten",
- "cv_overview": "Übersicht",
+ "cv_overview": "Tabelle",
  "cv_costs": "Kosten",
  "cv_breakeven": "Break-even",
  "cv_details": "Details",
@@ -530,5 +530,23 @@
   "BELT": "Zahnriemen",
   "WET BELT": "nasser Zahnriemen",
   "GEAR": "Zahnradantrieb"
- }
+ },
+ "cv_ruler": "Auf einen Blick",
+ "versus_title": "Behalten oder wechseln?",
+ "versus_keep": "Dein Auto",
+ "versus_best": "Bester Kauf im Moment",
+ "versus_saves": "{v} weniger pro Monat",
+ "versus_costs_more": "{v} mehr pro Monat",
+ "versus_even": "Gleiche Kosten pro Monat",
+ "versus_none": "Kein angebotenes Auto hat bisher vollständige Kosten.",
+ "versus_over": "Über {y} Jahre: {v}",
+ "versus_hint": "Platz eins nach deinen Gewichten, vollständige Gesamtkosten.",
+ "ruler_title": "Kosten pro Monat, alle Autos auf einer Skala",
+ "ruler_lead": "Dein Auto ist die gestrichelte Linie. Autos links davon kosten pro Monat weniger, rechts davon mehr. Eine gefüllte Marke ist eine vollständige Gesamtkostenrechnung; eine hohle Marke ist eine Teilsumme und steht dort, wo ihre bekannten Kosten sie hinsetzen.",
+ "ruler_axis": "€ pro Monat",
+ "ruler_partial": "teilweise",
+ "plate_title": "Typenschild",
+ "plate_cost": "Kosten pro Monat",
+ "plate_rank": "Platz",
+ "plate_stamp": "Urteil"
 }
