@@ -1,0 +1,2 @@
+{"name":"Carlos","short_name":"Carlos","description":"The real cost of a used car, compared with the one you own.","start_url":"/","display":"standalone","background_color":"#f1efe6","theme_color":"#1f4f8f",
+ "icons":[{"src":"/static/brand/icon-192.png","sizes":"192x192","type":"image/png"},{"src":"/static/brand/icon-512.png","sizes":"512x512","type":"image/png"},{"src":"/static/brand/favicon.svg","sizes":"any","type":"image/svg+xml"}]}

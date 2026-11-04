@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en" data-theme="blueprint"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Carlos · sign in</title>
+<link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/css/tokens.css"><link rel="stylesheet" href="/static/css/app.css">
+<script>try{var th=JSON.parse(localStorage.getItem('carlos.theme')||'"blueprint"'),md=JSON.parse(localStorage.getItem('carlos.mode')||'"auto"');document.documentElement.dataset.theme=th;if(md!=='auto')document.documentElement.dataset.mode=md;if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('os-dark')}catch(e){}</script>
+<style>body{display:grid;place-items:center;min-height:100vh}.box{width:min(380px,calc(100% - 32px))}.box .brand{margin:0 0 14px;justify-content:center}.err{color:var(--bad-ink);font-size:13px;min-height:1.2em;margin-top:8px}.field{margin-top:10px}</style></head>
+<body><form id="f" class="card box"><a class="brand" href="/"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="/static/brand/mark.svg#mark"/></svg><span><b>Carlos</b><small>the real cost of a used car</small></span></a>
+<h2 id="t" style="text-align:center">Sign in</h2>
+<div class="field"><label for="u">Username</label><input id="u" autocomplete="username" required></div>
+<div class="field"><label for="p" id="pl">Password</label><input id="p" type="password" autocomplete="current-password" required minlength="1"></div>
+<button type="submit" class="btn" id="b" style="margin-top:16px;width:100%;justify-content:center">Sign in</button><div class="err" id="e" role="alert"></div></form>
+<script>
+const inv=location.pathname.match(/^\/invite\/([\w-]+)$/),f=document.getElementById('f'),e=document.getElementById('e');
+async function j(m,u,b){const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):null});return [r.status,await r.json()]}
+if(inv){document.getElementById('t').textContent='Set your password';document.getElementById('b').textContent='Save and sign in';
+  document.getElementById('u').readOnly=true;document.getElementById('p').autocomplete='new-password';document.getElementById('p').minLength=8;document.getElementById('pl').textContent='New password (8+ characters)';
+  j('GET','/api/auth/invite/'+inv[1]).then(([s,d])=>{if(s!==200){e.textContent=d.error;f.querySelectorAll('input,button').forEach(x=>x.disabled=true)}else document.getElementById('u').value=d.username})}
+f.onsubmit=async ev=>{ev.preventDefault();e.textContent='';
+  const [s,d]=inv?await j('POST','/api/auth/invite/'+inv[1],{password:f.p.value}):await j('POST','/api/auth/login',{username:f.u.value,password:f.p.value});
+  if(s<300)location.href='/';else e.textContent=d.error||('HTTP '+s)};
+</script></body></html>

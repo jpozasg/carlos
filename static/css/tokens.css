@@ -1,0 +1,112 @@
+/* Carlos design tokens. Four themes share one markup: only these variables and the decorations in app.css differ.
+   data-theme = blueprint | cluster | retro | clean; data-mode = light | dark (auto = OS setting). */
+:root{
+  --font-ui:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;
+  --font-display:var(--font-ui);
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --font-num:var(--font-ui);
+  --radius:12px;--radius-s:8px;--radius-pill:999px;
+  --border-w:1px;--shadow:0 1px 2px rgb(0 0 0/.04),0 2px 8px rgb(0 0 0/.04);
+  --tag-case:none;--tag-spacing:0;--label-case:none;--label-spacing:0;
+  --bg-decor:none;--bg-decor-size:auto;
+  /* data-viz series (validated palette, identical in every theme so charts stay comparable) */
+  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s8:#e34948;
+  --good:#0ca30c;--good-ink:#006300;--good-soft:#e3f5e3;
+  --warn:#fab219;--warn-ink:#7a5200;--warn-soft:#fff3d6;
+  --bad:#d03b3b;--bad-ink:#a42828;--bad-soft:#fbe5e5;
+}
+/* ---------- blueprint (workshop drawing on paper; night shift = drawing board) ---------- */
+:root[data-theme="blueprint"]{
+  color-scheme:light;
+  --bg:#f1efe6;--surface:#fbfaf5;--surface-2:#ecebe2;--border:#cfd6dc;--border-strong:#9fb0bf;
+  --text:#10243f;--text-2:#3d526b;--text-3:#6b7c90;
+  --accent:#1f4f8f;--accent-ink:#163c6e;--accent-soft:#dde8f5;--accent-contrast:#fff;
+  --ref-soft:#e5eef9;
+  --font-display:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --font-num:var(--font-mono);
+  --radius:6px;--radius-s:4px;--radius-pill:4px;--border-w:1.5px;--shadow:none;
+  --tag-case:uppercase;--tag-spacing:.06em;--label-case:uppercase;--label-spacing:.08em;
+  --bg-decor:linear-gradient(rgb(31 79 143/.07) 1px,transparent 1px),linear-gradient(90deg,rgb(31 79 143/.07) 1px,transparent 1px);
+  --bg-decor-size:24px 24px;
+}
+:root[data-theme="blueprint"][data-mode="dark"],
+:root[data-theme="blueprint"]:not([data-mode="light"]).os-dark{
+  color-scheme:dark;
+  --bg:#0f1b2d;--surface:#15243a;--surface-2:#1c2f49;--border:#2b4262;--border-strong:#4a6a93;
+  --text:#e8eef6;--text-2:#b7c6d9;--text-3:#8aa0ba;
+  --accent:#6ea8ff;--accent-ink:#a9cbff;--accent-soft:#1d365a;--accent-contrast:#0b1628;
+  --ref-soft:#1a2f4d;
+  --good-ink:#6fd36f;--good-soft:#14301a;--warn-ink:#ffc14d;--warn-soft:#3a2d10;--bad-ink:#ff8f8f;--bad-soft:#3b1b1b;
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;
+  --bg-decor:linear-gradient(rgb(110 168 255/.08) 1px,transparent 1px),linear-gradient(90deg,rgb(110 168 255/.08) 1px,transparent 1px);
+}
+/* ---------- cluster (instrument cluster: dark-first, amber and teal) ---------- */
+:root[data-theme="cluster"]{
+  color-scheme:dark;
+  --bg:#0b0d10;--surface:#14171c;--surface-2:#1c2026;--border:#2a2f37;--border-strong:#3f4753;
+  --text:#f2f3f5;--text-2:#b9bec8;--text-3:#8a909b;
+  --accent:#f5a524;--accent-ink:#ffc45e;--accent-soft:#2d2210;--accent-contrast:#17110a;
+  --ref-soft:#1a2328;
+  --font-num:var(--font-mono);--font-display:var(--font-mono);
+  --radius:10px;--radius-s:6px;--radius-pill:999px;--border-w:1px;--shadow:0 0 0 1px rgb(255 255 255/.03),0 6px 20px rgb(0 0 0/.5);
+  --tag-case:uppercase;--tag-spacing:.08em;--label-case:uppercase;--label-spacing:.1em;
+  --good-ink:#5fd35f;--good-soft:#122a12;--warn-ink:#ffc14d;--warn-soft:#332a10;--bad-ink:#ff8080;--bad-soft:#331616;
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;
+  --bg-decor:radial-gradient(ellipse at top,rgb(245 165 36/.07),transparent 60%);--bg-decor-size:auto;
+}
+:root[data-theme="cluster"][data-mode="light"]{
+  color-scheme:light;
+  --bg:#e9ebee;--surface:#f7f8fa;--surface-2:#e0e3e8;--border:#c9ced6;--border-strong:#9aa3b0;
+  --text:#121418;--text-2:#3f4652;--text-3:#6b7380;
+  --accent:#b86e00;--accent-ink:#8a5200;--accent-soft:#fdeccd;--accent-contrast:#fff;
+  --ref-soft:#e4ecf0;
+  --good-ink:#006300;--good-soft:#e3f5e3;--warn-ink:#7a5200;--warn-soft:#fff3d6;--bad-ink:#a42828;--bad-soft:#fbe5e5;
+  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s8:#e34948;
+  --shadow:0 1px 2px rgb(0 0 0/.06);--bg-decor:none;
+}
+/* ---------- retro (seventies brochure: cream, burnt orange, avocado) ---------- */
+:root[data-theme="retro"]{
+  color-scheme:light;
+  --bg:#f3e7cf;--surface:#fbf4e4;--surface-2:#efe2c6;--border:#d9c7a2;--border-strong:#b89a66;
+  --text:#3a2a1a;--text-2:#6a553f;--text-3:#8f7c63;
+  --accent:#d35400;--accent-ink:#a84300;--accent-soft:#f8dcc8;--accent-contrast:#fff8ee;
+  --ref-soft:#f2e4c0;
+  --font-display:"Cooper Black","Rockwell","Georgia",serif;--font-num:var(--font-ui);
+  --radius:18px;--radius-s:12px;--radius-pill:999px;--border-w:2px;--shadow:3px 3px 0 var(--border-strong);
+  --tag-case:none;--tag-spacing:0;--label-case:none;--label-spacing:0;
+  --good:#5f7d2a;--good-ink:#3f5a14;--good-soft:#e4ecc9;--warn:#e0a526;--warn-ink:#7a5200;--warn-soft:#f9edc6;--bad:#b23a2a;--bad-ink:#8b2a1e;--bad-soft:#f5d8d1;
+  --bg-decor:repeating-linear-gradient(0deg,transparent 0 56px,rgb(211 84 0/.08) 56px 60px,transparent 60px 68px,rgb(95 125 42/.08) 68px 72px);
+  --bg-decor-size:auto;
+}
+:root[data-theme="retro"][data-mode="dark"],
+:root[data-theme="retro"]:not([data-mode="light"]).os-dark{
+  color-scheme:dark;
+  --bg:#2a1f14;--surface:#352819;--surface-2:#43331f;--border:#5e4a2e;--border-strong:#8a6f45;
+  --text:#f6ecd6;--text-2:#d8c8a8;--text-3:#b19d7c;
+  --accent:#f0843c;--accent-ink:#ffb07a;--accent-soft:#4f2e14;--accent-contrast:#2a1407;
+  --ref-soft:#3f3220;
+  --good-ink:#b9d67a;--good-soft:#2f3a16;--warn-ink:#ffcf6a;--warn-soft:#45351a;--bad-ink:#ff9a85;--bad-soft:#4a1f18;
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;
+  --shadow:3px 3px 0 #000;
+  --bg-decor:repeating-linear-gradient(0deg,transparent 0 56px,rgb(240 132 60/.1) 56px 60px,transparent 60px 68px,rgb(185 214 122/.1) 68px 72px);
+}
+/* ---------- clean (minimal, one accent, lots of air) ---------- */
+:root[data-theme="clean"]{
+  color-scheme:light;
+  --bg:#ffffff;--surface:#ffffff;--surface-2:#f4f4f5;--border:#e5e5e7;--border-strong:#c9c9ce;
+  --text:#111113;--text-2:#4b4b52;--text-3:#7a7a83;
+  --accent:#4f46e5;--accent-ink:#3d35c4;--accent-soft:#ecebfc;--accent-contrast:#fff;
+  --ref-soft:#f0efff;
+  --radius:14px;--radius-s:8px;--radius-pill:999px;--border-w:1px;--shadow:0 1px 3px rgb(0 0 0/.06);
+}
+:root[data-theme="clean"][data-mode="dark"],
+:root[data-theme="clean"]:not([data-mode="light"]).os-dark{
+  color-scheme:dark;
+  --bg:#0f0f11;--surface:#17171a;--surface-2:#202024;--border:#2c2c31;--border-strong:#414148;
+  --text:#f2f2f3;--text-2:#c4c4ca;--text-3:#8d8d96;
+  --accent:#8b83ff;--accent-ink:#b3adff;--accent-soft:#232145;--accent-contrast:#0d0c20;
+  --ref-soft:#1e1d33;
+  --good-ink:#5fd35f;--good-soft:#132a13;--warn-ink:#fab219;--warn-soft:#2e2510;--bad-ink:#f08a8a;--bad-soft:#331a1a;
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;
+  --shadow:none;
+}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-theme="blueprint">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f1efe6">
+<title>Carlos</title>
+<link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/brand/icon-192.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/app.css">
+<script>try{var th=JSON.parse(localStorage.getItem('carlos.theme')||'"blueprint"'),md=JSON.parse(localStorage.getItem('carlos.mode')||'"auto"');document.documentElement.dataset.theme=th;if(md!=='auto')document.documentElement.dataset.mode=md;if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('os-dark')}catch(e){}</script>
+</head>
+<body>
+<header class="top"><div class="wrap" id="hdr"></div></header>
+<main class="wrap" id="main"><div class="skel"></div></main>
+<footer class="wrap" id="footer"></footer>
+<div id="tip" role="presentation"></div>
+<dialog id="lightbox"><div class="lb"><img alt=""><button class="navbtn prev" type="button">‹</button><button class="navbtn next" type="button">›</button><button class="close" type="button">×</button><span class="count"></span></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

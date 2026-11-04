@@ -1,0 +1,73 @@
+# AGENTS.md — how Carlos works and how agents work on it
+
+Carlos compares the real cost of used cars for sale against the car an account already owns. This file is the contract for every agent (and person) that fills in data, changes code or runs the research. Read it whole before doing anything; then `README.md`, `docs/data-model.md`, `docs/api.md`, `docs/ranking.md`, `docs/cost-research-protocol.md`, `docs/browser-tasks.md` and `docs/frontend.md` as the task needs.
+
+## Principles
+- **The database is the canonical source.** `cars.sqlite` in the data directory (`data/` next to the code, or `$CARLOS_DATA`). Code and data are separate repositories; the data one is private.
+- **Never invent data. Unknown = NULL, never zero.** A missing price, interval or figure stays NULL and the calculation reports the component as unknown.
+- **Every external data point cites a source**: `sources` row with URL, access date, quality A–D, what it supports (`supports`) and its limitations. Quality by rule: A official (manufacturer schedule, official calculator, authority, fee table), B ADAC/TÜV/Haynes/dealer tool/comparison quote, C aggregators, encyclopedias, consumption databases, D forums, search snippets, single retailers.
+- **Keep apart:** listing facts, seller claims (`*_claim` columns, "claimed"), user-provided data (`user_data`/`viewing` log entries, `USER DATA` status), estimates (`ESTIMATED` with the derivation in `notes`) and hypotheses.
+- **The same method for every car.** Same sources, same depth, same rules for severity, status and quality (`docs/ranking.md`, objectivity rules). Uneven research biases the ranking.
+- **A Typklasse is not a premium. A listing price is an asking price, not a transaction.**
+- **Never call a subtotal a TCO.** The eight components are fuel, insurance, tax, maintenance, repairs, tyres, purchase/sale and depreciation; avoid double counting (a certain repair that is also a scheduled job restarts the schedule instead of counting twice).
+- **DIY parts, workshop labour and the owner's hours stay separate.** Hours are shown, never priced.
+- **Free text is English** (notes, log, verdicts, checklist items, reliability texts, `sources.supports`/`limitations`, preferences). Verbatim third-party content (`listing_snapshots.description`, `attributes_json`) keeps its language. The UI translates fixed codes only.
+- **Privacy:** no documents with VIN or licence plate; no seller personal data beyond what the listing publishes; no personal data of the account holder in files, notes, commits or this repository; never bypass CAPTCHAs, logins or anti-bot protection.
+- **Back up before migrations and use transactions** (`migrate.py` does both).
+
+## The data model in one minute
+Three levels describe a model: `generations` (make, model, generation, start/end of sale, facelift year), `engines` (code, fuel, displacement, power, aspiration, injection, timing drive) and `vehicles` = the **variant** (generation + engine + trim, gearbox, body, emissions, CO2, HSN/TSN). Knowledge rows (`maintenance_items`, `repair_risks`, `reliability_items`, `observations`, `tax_data`, `insurance_data`, `tyre_data`) attach to **exactly one** level (`vehicle_id`, `engine_id` or `generation_id`); a listing inherits the rows of its variant, engine and generation. Put engine jobs and faults on the engine, body/chassis items (brakes, HU, rust, suspension, electrics) on the generation, HSN/TSN-specific data (consumption of the exact variant, tax, insurance, tyre size when it differs) on the variant. Never duplicate a row on two levels; re-scope with one PATCH.
+
+`listings` are specific cars (one row per listing, even if the model exists; the own car has `is_reference=1`). Per listing: `listing_snapshots` + `listing_media` (archive), `valuations`, `unit_costs`, `maintenance_resets`, `inspection_items`, `listing_events` (the log, the agent's memory), `verdict`. Everything belongs to one account (`owner_id`, set by the server). Full reference: `docs/data-model.md`.
+
+## Controlled codes (use exactly these)
+- `listings.listing_status`: `UNDER REVIEW`, `OWNED`, `WITHDRAWN`. `valuations.kind`: `sale_today` (reference only), `resale_end`. `unit_costs.category`: `repairs`, `tyres`, `purchase_sale`. `inspection_items.status`: `PENDING`, `OK`, `PROBLEM`, `N/A`. `maintenance_resets.basis`: `CERTAIN REPAIR`, `SELLER CLAIM`, `DOCUMENTED`.
+- `listing_events.kind`: `found`, `verification`, `correction`, `price`, `decision`, `user_data`, `warning`, `archive`, `photos`, `viewing` (new kinds: English, lower case, snake_case).
+- `engines.aspiration`: `NATURALLY ASPIRATED`, `TURBO`, `SUPERCHARGED`; `injection`: `PORT`, `DIRECT`, `DUAL`, `CARBURETTOR`; `timing_drive`: `CHAIN`, `BELT`, `WET BELT`, `GEAR`.
+- Statuses: English upper case (`VERIFIED`, `PARTIAL`, `PENDING`, `ESTIMATED`, `OBSERVED`, `USER DATA`, `QUOTE`, `OFFICIAL FEE LEVEL`, `PRIMARY`). Severity: `HIGH`, `HIGH IF APPLICABLE`, `MEDIUM`, `LOW-MEDIUM`, `LOW`.
+- TCO component keys: `fuel`, `insurance`, `tax`, `maintenance`, `repairs`, `tyres`, `purchase_sale`, `depreciation`. Ranking criteria: `cost_month`, `cash_now`, `mileage`, `age`, `reliability`, `inspection`, `power`, `simplicity`, `confidence`.
+- `GET /api/agent/schema` lists the writable tables, `code_formats` and `fixed_codes`; the API enforces them.
+
+## Writing data: only through the API
+`Authorization: Bearer <agent token>` of the account you work for (the first admin's token is in `.env`; every account can create its own in Settings). Never write to SQLite directly.
+1. `GET /api/agent/todo` first: what is missing per listing and per variant.
+2. Register the source (`POST /api/agent/sources`), then the generation and engine if missing (reuse existing ones: `GET /api/generations`, `GET /api/engines`), then the variant (`vehicles`), then the listing, then the data at the right level, the checklist (from the resolved `reliability_items.inspection_action`) and a log entry.
+3. `POST /api/agent/<table>` inserts, `PATCH /api/agent/<table>/<id>` corrects. No DELETE: archive with `listing_status='WITHDRAWN'`, `active=0`, `probability=0` + note.
+4. Use the helpers in `agent_tools.py` (`src`, `generation`, `engine`, `item`, `hu`, `risk`, `reliability`, `consumption`, `tyres`, `certain`, `restart`, `purchase_sale_defaults`, `resale_rule_of_thumb`, `checklist_from_reliability`, `log`, `todo`, `variant`, `listing`); they take `level='variant'|'engine'|'generation'`.
+5. Every write is logged in `change_log` and regenerates the account's Markdown dossiers (`data/dossiers/<account>/`, read-only, never edited by hand).
+
+Reading: `GET /api/tco` (everything the Compare page shows), `GET /api/listings/<id>`, `GET /api/models`, `GET /api/vehicles/<id>`. Full list: `docs/api.md`.
+
+## Researching and costing a car
+Follow `docs/cost-research-protocol.md` step by step; delegate one car to one research agent with `docs/prompts/research-car.md`. Key conventions:
+- Primary consumption: the autokostencheck.de real-world average of the exact HSN/TSN variant (`metric='Autokostencheck average'`, with sample size, min, max and the site's filter), the same source for every car including the reference. The owner's own figure is a cross-check only.
+- Maintenance as item schedules: DIY parts for the jobs the owner does (oil and filters, spark plugs, yearly service, brake pads/discs, battery, bulbs, wipers), workshop prices for the rest (timing drive, cylinder head, internals, brake fluid, coolant), HU/AU every 24 months. Manufacturer normal-use intervals, shortened to a documented preventive interval when a reliable source recommends it for this engine (say why in `notes`).
+- Repairs: `repair_risks` per level (km window, probability with its reason, parts/labour or DIY parts and hours, evidence, source) plus certain one-off repairs of the listing in `unit_costs`. **Every risk gets a price**, estimated when nothing better exists.
+- Tyres: one set of all-season tyres per variant (size, median mid-range price, tread life, fitting).
+- Listing contradictions: the less favourable figure, logged as a `warning`. Seller claims ("belt new") are trusted with a checklist item asking for the invoice (`restart(..., 'SELLER CLAIM')`).
+- Tax: the official calculator (BMF Kfz-Steuer-Rechner) in the user's browser, `status='VERIFIED'`, a `basis` listing every input, source type `tax_official_calculator`. Insurance: a comparison site in the user's browser with the account's profile, **only with the user's explicit OK in the session**; one `insurance_data` row per quote (`QUOTE`, median of the 5 cheapest reasonable offers, cheapest insurer/tariff, `quote_date`, `quote_profile` without names or contact data). Quotes expire after 60 days. The reference car keeps the premium the user pays (`USER DATA`).
+- Listings from bot-protected sites: read them in the user's browser (Claude in Chrome, new tab) or from a page the user saved; write a capture JSON and run `python capture_listing.py capture.json --dry-run`, then for real. It writes source → listing → capture → photos (≤ 1.5 MB, the ~1024 px version) → checklist → `found` log entry; re-running for a known listing adds a capture and a `verification` entry, and a `price` entry plus PATCH when price or mileage changed. Photos the script skips are fetched through the browser or left out and reported.
+- Viewing mode: the user writes `viewing` entries, checklist notes and photos from a phone; they are user observations, kept verbatim. If a note is not in English, add an English `user_data` entry translating it.
+
+## The ranking and the objectivity rules
+`docs/ranking.md`: nine non-overlapping criteria, weights from the questionnaire (`ranking_answers`) or set by hand (`ranking_weights`), min–max normalisation among the candidates, coverage instead of zeros. The score is only as fair as the data: follow the severity, status and quality rules there for every car.
+
+## The user interface
+`static/` (no build step): Compare (overview, costs, break-even, details, cards), Ranking (questionnaire, weights, explanation), Dossier per listing (photos, facts, ranking explanation with evidence, maintenance plan and risks with their level, checklist and viewing mode, valuations, own costs, watch points, archive, log, sources), Models (make → model → generation → engine → variant with filters, listings per variant, inherited rows per level), Sources, Settings (parameters with live preview, insurance profile, theme, mode, language, password, agent token), Accounts (admin). Four themes share one code path: a theme changes tokens and decoration only, never data, text, API calls or where things are shown. Languages: EN, ES, DE, PL (`static/i18n/*.json`, same keys). Details and rules: `docs/frontend.md`.
+
+## Accounts
+Admins create accounts and invite links (`POST /api/admin/users`); the person sets a password on the link. Every account owns its data; the API filters every read and write by account. Agent tokens are per account. The viewing mode uses the login session. `docs/api.md`, `carlos/auth.py`.
+
+## Development
+- Python 3.9+ standard library only (Raspberry Pi 2B); no compiled dependencies; the front end has no build step.
+- Schema changes only through `migrations/NNN_*.sql` (applied at startup with a backup and a foreign-key check before the commit; applied migrations are history, never edited); then `python migrate.py --schema` regenerates `schema.sql`.
+- After every change: `python -m unittest` and the integrity check (`README.md`). Report the files changed and the tests run.
+- The server listens on 127.0.0.1 only; HTTPS and remote access come from the reverse proxy (`docs/deployment.md`). No secrets in the repository (`.env` is ignored).
+- The whole installation (code and data directory) must stay under 500 MB; photos are refused beyond 450 MB.
+
+## Git workflow
+Every change must be traceable to a reason.
+- **Code and process changes need an issue and a pull request:** application code, UI, tests, migrations, helper scripts, documentation. Open an issue that says why (quote the request when there is one); branch `<type>/<issue>-<slug>` from an up-to-date `main`; commit; open a PR with `Closes #<issue>`; run the tests and the integrity check; merge only when both pass (`gh pr merge --merge --delete-branch`, then `git checkout main && git pull`).
+- **Data changes go to the data repository**, not here: the database, dossiers and photos. Run the tests and the integrity check first; commit there with a message saying which cars or data changed and why; push.
+- Do not mix: a code PR carries no data; a data commit carries no code. Data that a migration needs belongs to the migration's PR as SQL, not as a database file.
+- End of a session: everything committed and pushed in both repositories, `main` in sync with `origin/main`, no open PR left without saying so.
