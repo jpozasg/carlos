@@ -61,6 +61,21 @@ SHARED_SOURCES = [  # public reference sources every account needs once (fees, H
 ]
 
 
+DIY_DEFAULT = ['oil and filters', 'spark plugs', 'yearly service', 'brake pads and discs', 'battery', 'bulbs', 'wipers']
+
+
+def preferences():
+    """The account's preferences as {key: value} (setup wizard: search, DIY jobs, insurance profile)."""
+    return {r['preference_key']: r['preference_value'] for r in get('/api/preferences')}
+
+
+def diy_jobs():
+    """The jobs the owner does (preference diy_jobs; the protocol default when unset; [] when 'none').
+    A maintenance job or repair is DIY only when it is in this list; everything else is a workshop price."""
+    v = preferences().get('diy_jobs')
+    return DIY_DEFAULT if v is None else [] if v.strip() == 'none' else [x.strip() for x in v.split(',') if x.strip()]
+
+
 def shared_sources():
     """Creates the shared reference sources a new account lacks (by title prefix); returns {prefix: id}. Run once per
     account before the first purchase_sale_defaults()/hu()/tyres()/resale_rule_of_thumb(). Adapt fees to the region."""

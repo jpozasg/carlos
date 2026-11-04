@@ -8,7 +8,7 @@ You are researching one used car for Carlos in `{REPO}` (SQLite behind a local A
 
 **Car:** listing id {LISTING_ID} ({MAKE} {MODEL}, {TRIM}, first registration {FIRST_REG}, {MILEAGE_KM} km, {PRICE_EUR} €), variant (vehicles) id {VEHICLE_ID}, engine id {ENGINE_ID}, generation id {GENERATION_ID}. Listing URL: {URL}. Ownership period: {ANNUAL_KM} km/year × {YEARS} years = {PERIOD_KM} km.
 
-**Read first:** `AGENTS.md`, `docs/cost-research-protocol.md` (the procedure you follow), `docs/ranking.md` (objectivity rules), `docs/data-model.md`, and the docstrings in `agent_tools.py`. Then read the listing and the variant:
+**Read first:** the account's preferences (`python3 -c "from agent_tools import *; print(preferences()); print(diy_jobs())"`: DIY jobs, driving mix, search area), `AGENTS.md`, `docs/cost-research-protocol.md` (the procedure you follow), `docs/ranking.md` (objectivity rules), `docs/data-model.md`, and the docstrings in `agent_tools.py`. Then read the listing and the variant:
 ```
 python3 -c "from agent_tools import *; import json; print(json.dumps(listing({LISTING_ID}), ensure_ascii=False)[:20000])"
 python3 -c "from agent_tools import *; import json; print(json.dumps(variant({VEHICLE_ID}), ensure_ascii=False)[:20000])"
