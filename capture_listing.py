@@ -58,6 +58,8 @@ class Api:
                 msg = json.load(e).get('error')
             except ValueError:
                 msg = e.reason
+            if e.code == 401:
+                msg = f'{msg}. The token in .env (or AGENT_TOKEN) is no longer valid: a new token created in Settings replaces it; paste the new one'
             raise ApiError(f'{method} {path}: HTTP {e.code}: {msg}') from None
 
 

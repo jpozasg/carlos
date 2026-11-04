@@ -465,7 +465,7 @@
  "pw_change": "Cambiar la contraseña",
  "pw_changed": "Contraseña cambiada",
  "agent_token": "Token del agente",
- "agent_token_hint": "El token que usa un agente para escribir datos en esta cuenta (Authorization: Bearer). Se muestra una sola vez; crear uno nuevo desactiva el anterior.",
+ "agent_token_hint": "El token que usa un agente para escribir datos en esta cuenta (Authorization: Bearer). Se muestra una sola vez; crear uno nuevo desactiva el anterior. Crear un token nuevo invalida también el de .env; dale el nuevo a tu agente.",
  "token_create": "Crear un token",
  "token_renew": "Crear un token nuevo",
  "token_shown_once": "Cópialo ahora; no volverá a mostrarse.",

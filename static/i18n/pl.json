@@ -466,7 +466,7 @@
  "pw_change": "Zmień hasło",
  "pw_changed": "Hasło zmienione",
  "agent_token": "Token agenta",
- "agent_token_hint": "Token, którego agent używa do zapisu danych na tym koncie (Authorization: Bearer). Wyświetlany jest raz; utworzenie nowego wyłącza stary.",
+ "agent_token_hint": "Token, którego agent używa do zapisu danych na tym koncie (Authorization: Bearer). Wyświetlany jest raz; utworzenie nowego wyłącza stary. Nowy token unieważnia także ten z .env; przekaż nowy swojemu agentowi.",
  "token_create": "Utwórz token",
  "token_renew": "Utwórz nowy token",
  "token_shown_once": "Skopiuj go teraz; nie zostanie pokazany ponownie.",

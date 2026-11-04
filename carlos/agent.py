@@ -1,5 +1,5 @@
 """The agent's write API: validation against the real schema, change log, photo storage, quota."""
-import hashlib, json, math, os, re
+import hashlib, json, math, os, re, time
 from pathlib import Path
 from . import config
 from .auth import OWNED
@@ -122,8 +122,14 @@ def agent_write(c, table, row_id, data, user_id):
     return row_id
 
 
-def storage_usage():
-    """Bytes used by the installation (code and data directories), grouped by top-level folder or file."""
+_STORAGE = {'at': 0.0, 'value': None}
+
+
+def storage_usage(max_age=60):
+    """Bytes used by the installation (code and data directories), grouped by top-level folder or file.
+    Cached for `max_age` seconds: the directory walk grows with the photo archive and git history."""
+    if _STORAGE['value'] is not None and time.time() - _STORAGE['at'] < max_age:
+        return _STORAGE['value']
     usage = {}
     seen = set()
     for base in (config.ROOT, config.DATA_DIR):
@@ -141,8 +147,9 @@ def storage_usage():
                     usage[key] = usage.get(key, 0) + os.path.getsize(os.path.join(dirpath, f))
                 except OSError:
                     pass
-    return {'total_bytes': sum(usage.values()), 'limit_bytes': config.STORAGE_LIMIT, 'budget_bytes': config.STORAGE_BUDGET,
-            'by_item': dict(sorted(usage.items(), key=lambda kv: -kv[1]))}
+    _STORAGE.update(at=time.time(), value={'total_bytes': sum(usage.values()), 'limit_bytes': config.STORAGE_LIMIT,
+                                           'budget_bytes': config.STORAGE_BUDGET, 'by_item': dict(sorted(usage.items(), key=lambda kv: -kv[1]))})
+    return _STORAGE['value']
 
 
 def save_media(c, listing_id, body, query):
@@ -160,7 +167,7 @@ def save_media(c, listing_id, body, query):
     dup = c.execute('SELECT id FROM listing_media WHERE listing_id=? AND sha256=?', (listing_id, digest)).fetchone()
     if dup:
         return dup['id'], False
-    if storage_usage()['total_bytes'] + len(body) > config.STORAGE_BUDGET:
+    if storage_usage(max_age=0)['total_bytes'] + len(body) > config.STORAGE_BUDGET:
         raise QuotaExceeded('Storage budget exhausted (450 of 500 MB); free space before archiving more photos')
     snapshot = query.get('snapshot_id', [None])[0]
     if snapshot and c.execute('SELECT 1 FROM listing_snapshots WHERE id=? AND listing_id=?', (int(snapshot), listing_id)).fetchone() is None:
