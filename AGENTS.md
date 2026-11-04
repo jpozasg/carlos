@@ -32,7 +32,7 @@ Three levels describe a model: `generations` (make, model, generation, start/end
 `Authorization: Bearer <agent token>` of the account you work for (the first admin's token is in `.env`; every account can create its own in Settings). Never write to SQLite directly.
 1. `GET /api/agent/todo` first: what is missing per listing and per variant.
 2. Register the source (`POST /api/agent/sources`), then the generation and engine if missing (reuse existing ones: `GET /api/generations`, `GET /api/engines`), then the variant (`vehicles`), then the listing, then the data at the right level, the checklist (from the resolved `reliability_items.inspection_action`) and a log entry.
-3. `POST /api/agent/<table>` inserts, `PATCH /api/agent/<table>/<id>` corrects. No DELETE: archive with `listing_status='WITHDRAWN'`, `active=0`, `probability=0` + note.
+3. `POST /api/agent/<table>` inserts, `PATCH /api/agent/<table>/<id>` corrects. No DELETE: archive a listing with `listing_status='WITHDRAWN'` and a note (knowledge rows with `active=0`).
 4. Use the helpers in `agent_tools.py` (`src`, `generation`, `engine`, `item`, `hu`, `risk`, `reliability`, `consumption`, `tyres`, `certain`, `restart`, `purchase_sale_defaults`, `resale_rule_of_thumb`, `checklist_from_reliability`, `log`, `todo`, `variant`, `listing`); they take `level='variant'|'engine'|'generation'`.
 5. Every write is logged in `change_log` and regenerates the account's Markdown dossiers (`data/dossiers/<account>/`, read-only, never edited by hand).
 
