@@ -407,6 +407,15 @@ class AppTest(unittest.TestCase):
         self.req('POST', '/api/parameters', {'ranking_weights': None})                 # back to the answers
         self.assertEqual(self.req('GET', '/api/ranking')[1]['manual'], False)
 
+    def test_account_todo(self):
+        d = self.req('GET', '/api/todo')[1]
+        self.assertTrue(any(x.startswith('setup not finished') for x in d['account']))
+        self.assertTrue(any('insurance_holder_birth_date' in x for x in d['account']))
+        self.req('POST', '/api/preferences', {'onboarding_done': '2026-11-05', 'insurance_holder_birth_date': '1990-01-01'})
+        d = self.req('GET', '/api/todo')[1]
+        self.assertFalse(any(x.startswith('setup not finished') for x in d['account']))
+        self.assertFalse(any('insurance_holder_birth_date' in x for x in d['account']))
+
     def test_preferences_upsert(self):
         st, d = self.req('POST', '/api/preferences', {'search_radius': '100', 'diy_jobs': 'oil and filters, brakes'})
         self.assertEqual(st, 200)
