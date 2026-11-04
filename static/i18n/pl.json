@@ -445,6 +445,8 @@
  "theme_circuit_hint": "Zieleń PCB, miedziane ścieżki, statusy LED; tylko ciemny",
  "theme_arcade": "Arcade",
  "theme_arcade_hint": "Czarny labirynt, niebieskie ściany, kropki, żółć Pac-Mana; tylko ciemny",
+ "theme_hyrule": "Hyrule",
+ "theme_hyrule_hint": "Pergamin, leśna zieleń, złoto Triforce",
  "theme_retro": "Broszura z lat 70.",
  "theme_retro_hint": "Krem, paląca pomarańcza, awokado",
  "theme_garage": "Nocny garaż",
