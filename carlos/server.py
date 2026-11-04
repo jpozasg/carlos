@@ -10,7 +10,7 @@ from .agent import (AGENT_TABLES, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUI
 from .costs import budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
 from .models import model_tree, variant_detail
-from .ranking import CRITERIA, QUESTIONS, check_answers, rank, ranking_state, weights_from, weights_from_answers
+from .ranking import CRITERIA, TASKS, check_answers, rank, ranking_state, weights_from, weights_from_answers
 from .todo import todo
 
 # UI-editable parameters: type and whether they must be > 0 (required) or >= 0 (optional).
@@ -265,7 +265,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/api/ui/check':
                 self.send_json({'ok': True})
             elif path == '/api/ranking':
-                self.send_json({**ranking_state(p), 'criteria': CRITERIA, 'questions': QUESTIONS})
+                self.send_json({**ranking_state(p), 'criteria': CRITERIA, 'tasks': TASKS})
             elif path == '/api/preferences':
                 self.send_json(rows(c, 'SELECT * FROM project_preferences ORDER BY preference_key'))
             elif path in ('/api/tco', '/api/listings'):
@@ -276,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
                 fuel_age = days_since(p['fuel_price_date'], datetime.date.today())
                 self.send_json({'parameters': p, 'preview': bool(over), 'components': config.TCO_COMPONENTS, 'listings': out,
                                 'budget': budget(p),
-                                'ranking': {**ranking_state(p), 'criteria': CRITERIA, 'questions': QUESTIONS, 'candidates': n},
+                                'ranking': {**ranking_state(p), 'criteria': CRITERIA, 'tasks': TASKS, 'candidates': n},
                                 'fuel_price_stale': None if fuel_age is None else fuel_age > config.STALE_FUEL_PRICE_DAYS})
             elif m:
                 d = detail(c, int(m[1]), p)

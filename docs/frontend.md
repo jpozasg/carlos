@@ -12,7 +12,7 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 | `js/i18n.js` | `t(key, vars)`, plural objects `{one, other}`, `tv(code)` for fixed database codes, language detection |
 | `js/ui.js` | formatting (`euro`, `num`, `yrs`), escaping, tags, `store` (localStorage per browser), toast |
 | `js/charts.js` | cost composition bars and the break-even SVG |
-| `js/quiz.js` | the ranking questionnaire (one scenario per screen, keys 1–4 and Enter) and the priorities profile with the answers behind each weight; used by the Ranking page and the setup wizard |
+| `js/quiz.js` | the ranking questionnaire (twelve best–worst tasks of three cars; tap or keys 1–3 for first, then last; Enter continues) and the priorities profile with the count behind each weight; used by the Ranking page and the setup wizard |
 | `js/pages/*.js` | one module per page, each exporting `render(main, route)` |
 | `i18n/en.json`, `es.json`, `de.json`, `pl.json` | the strings; `en.json` is the reference, the others must have the same keys |
 | `fonts/` | Bricolage Grotesque (SIL OFL), self-hosted, the one UI family |
@@ -25,7 +25,7 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 - **Free text from the database is never translated** (notes, log, verdicts, listing captures). Fixed codes (statuses, event kinds, component keys, levels, engine codes such as `WET BELT`) go through `tv()` and the `codes` block of the language files.
 - **Unknown is shown as "pending", never as 0** (`PEND()`, `eP()`).
 - **Every name leads somewhere:** a listing links to its dossier (`carLink`), a variant to `#/models/<id>`, a model, generation or engine to the models tree filtered to it (`modelsHref`). Only verbatim third-party text (source titles, listing captures) stays plain.
-- **Setup wizard** (`pages/start.js`, `#/start`): shown on the first visit until the preference `onboarding_done` exists (finished or put off), reopened from Settings. Steps: driving, money, search, insurance profile, workshop, priorities (the questionnaire), summary. Each step saves through `POST /api/parameters` and `POST /api/preferences`, prefilled from what is stored; a choice left empty keeps an older free-text value.
+- **Setup wizard** (`pages/start.js`, `#/start`): shown on the first visit until the preference `onboarding_done` exists (finished or put off), reopened from Settings. Steps: driving, money, search, drivers (policyholder and further regular drivers), insurance (cover, history, usage, discounts), workshop, priorities (the questionnaire), summary. Once finished, every step can be opened from the step rail. Each step saves through `POST /api/parameters` and `POST /api/preferences`, prefilled from what is stored; a choice left empty keeps an older free-text value.
 - Numbers wear `font-variant-numeric: tabular-nums`; text never wears a series colour; a legend is present for every multi-series chart.
 - Everything the user does in the UI (parameters, questionnaire, viewing mode, account) goes through the same API an agent would use; the UI has no privileged path.
 - State remembered per browser (`localStorage`, prefix `carlos.`): theme, mode, language, sort, filters, selection, cost selection, break-even highlight, model filters. Everything else lives in the account.
