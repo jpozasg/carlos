@@ -12,7 +12,7 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 | `js/i18n.js` | `t(key, vars)`, plural objects `{one, other}`, `tv(code)` for fixed database codes, language detection |
 | `js/ui.js` | formatting (`euro`, `num`, `yrs`), escaping, tags, `store` (localStorage per browser), toast |
 | `js/charts.js` | cost composition bars and the break-even SVG |
-| `js/quiz.js` | the ranking questionnaire (nine best–worst tasks of three cars; tap or keys 1–3 for first, then last; Enter continues) and the priorities profile with the count behind each weight; used by the Ranking page and the setup wizard |
+| `js/quiz.js` | the ranking questionnaire (twelve best–worst tasks of three cars; tap or keys 1–3 for first, then last; Enter continues) and the priorities profile with the count behind each weight; used by the Ranking page and the setup wizard |
 | `js/pages/*.js` | one module per page, each exporting `render(main, route)` |
 | `i18n/en.json`, `es.json`, `de.json`, `pl.json` | the strings; `en.json` is the reference, the others must have the same keys |
 | `fonts/` | Bricolage Grotesque (SIL OFL), self-hosted, the one UI family |

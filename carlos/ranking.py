@@ -21,11 +21,11 @@ STATUS_POINTS = {'VERIFIED': 1, 'OFFICIAL FEE LEVEL': 1, 'PRIMARY': 1, 'USER DAT
 QUALITY_POINTS = {'A': 1, 'B': 0.8, 'C': 0.5, 'D': 0.3, None: 0.3}
 MAX_WEIGHT = 5
 
-# The questionnaire (issue #19): nine best–worst tasks. Each shows three cars of the same model, equal in everything
+# The questionnaire (issue #19): twelve best–worst tasks. Each shows three cars of the same model, equal in everything
 # except one advantage each; the person picks the car they would buy first and the one they would buy last.
-# The nine sets are the three parallel classes of the 3×3 affine plane: every criterion appears in exactly three
-# tasks and no two criteria meet twice (a balanced incomplete block design). Score per criterion: (times first −
-# times last) ÷ times answered, −1…+1, mapped to 0–5; never answered = neutral. Reasoning and sources: docs/ranking.md.
+# The twelve sets are the four parallel classes of the 3×3 affine plane: every criterion appears in exactly four
+# tasks and every pair of criteria meets exactly once (a resolvable balanced incomplete block design). Score per
+# criterion: (times first − times last) ÷ times answered, −1…+1, mapped to 1–5; never answered = neutral. Reasoning and sources: docs/ranking.md.
 TASKS = [
     {'id': 't1', 'criteria': ['cost_month', 'age', 'power']},
     {'id': 't2', 'criteria': ['cash_now', 'reliability', 'simplicity']},
@@ -36,8 +36,12 @@ TASKS = [
     {'id': 't7', 'criteria': ['cost_month', 'inspection', 'simplicity']},
     {'id': 't8', 'criteria': ['cash_now', 'age', 'confidence']},
     {'id': 't9', 'criteria': ['mileage', 'reliability', 'power']},
+    {'id': 't10', 'criteria': ['cost_month', 'cash_now', 'mileage']},
+    {'id': 't11', 'criteria': ['age', 'reliability', 'inspection']},
+    {'id': 't12', 'criteria': ['power', 'simplicity', 'confidence']},
 ]
 NEUTRAL_WEIGHT = 3  # a criterion never answered counts the same as any other
+MIN_DERIVED = 1  # answers never remove a criterion entirely (simulation: zeros came from noise); by hand 0 is allowed
 _T = {x['id']: x['criteria'] for x in TASKS}
 
 
@@ -68,8 +72,8 @@ def tally(answers):
 
 
 def weights_from_answers(answers):
-    """Weight 0–5 per criterion: (first − last) ÷ shown, from −1 to +1, mapped linearly (half up) to 0–5."""
-    return {k: int(MAX_WEIGHT * ((x['best'] - x['worst']) / x['shown'] + 1) / 2 + 0.5) if x['shown'] else NEUTRAL_WEIGHT
+    """Weight 1–5 per criterion: (first − last) ÷ shown, from −1 to +1, mapped linearly (half up) to 0–5, floor 1."""
+    return {k: max(MIN_DERIVED, int(MAX_WEIGHT * ((x['best'] - x['worst']) / x['shown'] + 1) / 2 + 0.5)) if x['shown'] else NEUTRAL_WEIGHT
             for k, x in tally(answers).items()}
 
 

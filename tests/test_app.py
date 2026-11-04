@@ -380,25 +380,25 @@ class AppTest(unittest.TestCase):
         C, T = ranking.CRITERIA, ranking.TASKS
         self.assertEqual(set(ranking.weights_from_answers({}).values()), {ranking.NEUTRAL_WEIGHT})   # no answers: neutral
         seen = {k: sum(k in x['criteria'] for x in T) for k in C}
-        self.assertEqual(set(seen.values()), {3})                         # every criterion in exactly three tasks
+        self.assertEqual(set(seen.values()), {4})                         # every criterion in exactly four tasks
         pairs = [frozenset(p) for x in T for p in __import__('itertools').combinations(x['criteria'], 2)]
-        self.assertEqual(len(pairs), len(set(pairs)))                     # no two criteria meet twice
+        self.assertEqual((len(pairs), len(set(pairs))), (36, 36))         # every pair of criteria meets exactly once
         always = {x['id']: f"power>{[k for k in x['criteria'] if k != 'power'][0]}" if 'power' in x['criteria'] else None for x in T}
         w = ranking.weights_from_answers({k: v for k, v in always.items() if v})
         self.assertEqual(w['power'], 5)                                   # picked first every time it was shown
         never = {x['id']: f"{x['criteria'][1] if x['criteria'][0] == 'power' else x['criteria'][0]}>power" for x in T if 'power' in x['criteria']}
-        self.assertEqual(ranking.weights_from_answers(never)['power'], 0)  # picked last every time
+        self.assertEqual(ranking.weights_from_answers(never)['power'], 1)  # picked last every time: floor 1
         self.assertEqual(ranking.weights_from_answers({'t1': 'cost_month>power'})['age'], 3)   # middle once → neutral
         self.assertEqual(ranking.known_answers({'cash': 'tight', 't1': 'power>age', 't2': 'power>age'}), {'t1': 'power>age'})
         with self.assertRaises(ValueError):
             ranking.check_answers({'t1': 'power>power'})
         st, d = self.req('GET', '/api/ranking')
-        self.assertEqual((st, d['answered'], d['manual'], len(d['tasks'])), (200, False, False, 9))
+        self.assertEqual((st, d['answered'], d['manual'], len(d['tasks'])), (200, False, False, 12))
         st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'t1': 'power>cost_month'}})
         self.assertEqual(st, 200)
         d = self.req('GET', '/api/ranking')[1]
         self.assertEqual((d['answered'], d['weights']['power'], d['weights']['cost_month'], d['weights']['age'], d['tally']['power']),
-                         (True, 5, 0, 3, {'shown': 1, 'best': 1, 'worst': 0}))
+                         (True, 5, 1, 3, {'shown': 1, 'best': 1, 'worst': 0}))
         self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'t1': 'mileage>age'}})[0], 400)
         self.req('POST', '/api/parameters', {'ranking_weights': {'power': 2}})
         d = self.req('GET', '/api/ranking')[1]

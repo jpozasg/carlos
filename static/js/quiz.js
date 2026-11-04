@@ -1,4 +1,4 @@
-// The ranking questionnaire (issue #19): nine best–worst tasks. Each task shows three cars of the same model that are
+// The ranking questionnaire (issue #19): twelve best–worst tasks. Each task shows three cars of the same model that are
 // equal except for one advantage each; the person taps the car they would buy first, then the one they would buy
 // last. Numbers are concrete and follow the account's budget and period. Used by the Ranking page and the setup
 // wizard; the scoring lives in carlos/ranking.py (TASKS, tally, weights_from_answers).
