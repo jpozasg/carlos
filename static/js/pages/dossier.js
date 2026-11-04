@@ -111,8 +111,7 @@ async function refresh() { await draw(D.id); refreshTco().catch(() => {}); }
 
 async function draw(id) {
   const label = u => `${unitName(u)} ${u.is_reference ? '(' + t('reference').toLowerCase() + ')' : esc(u.listing_id ?? '')}`;
-  const picker = `<div class="seg-ctl" role="group" aria-label="${t('units_group')}">${S.units.map(u => `<button type="button" aria-pressed="${u.id === id}" data-unit="${u.id}">${thumb(u)}${label(u)}</button>`).join('')}</div>
-    <div class="field unit-select"><label for="unitsel">${t('units_group')}</label><select id="unitsel" data-unitsel>${S.units.map(u => `<option value="${u.id}" ${u.id === id ? 'selected' : ''}>${label(u)}</option>`).join('')}</select></div>`;
+  const picker = `<div class="field unit-select"><label for="unitsel">${t('units_group')}</label><select id="unitsel" data-unitsel>${S.units.map(u => `<option value="${u.id}" ${u.id === id ? 'selected' : ''}>${label(u)}</option>`).join('')}</select></div>`;
   root.innerHTML = picker + '<div class="grid"><div class="skel"></div><div class="skel"></div></div>';
   let d; try { d = await get('/api/listings/' + id); } catch (e) { root.innerHTML = picker + `<div class="card err">${t('dossier_failed', { m: esc(e.message) })}</div>`; return; }
   D = d;
@@ -148,7 +147,7 @@ function bind() {
     const ph = e.target.closest('[data-photo]'); if (ph) { showPhoto(+ph.dataset.photo); return; }
     const st = e.target.closest('[data-step]'); if (st) { showPhoto(cur + +st.dataset.step); return; }
     if (e.target.closest('[data-zoom]')) { lb.showModal(); showPhoto(cur); return; }
-    const u = e.target.closest('[data-unit]'); if (u) go('listing/' + u.dataset.unit); });
+  });
 }
 export async function render(main, r) {
   const id = r.id ?? S.units[0]?.id;

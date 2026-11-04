@@ -6,15 +6,15 @@ import { $, esc, num, store, toast, yrs } from './ui.js';
 
 export const S = { me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
   fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null };
-export const THEMES = ['blueprint', 'cluster', 'retro', 'clean', 'garage', 'swiss', 'terminal', 'ledger', 'nordic', 'rally', 'olive', 'contrast'];
+export const THEMES = ['friendly', 'garage', 'cluster', 'retro', 'olive', 'terminal', 'kawaii', 'circuit', 'arcade'];
 const PAGES = {
   compare: () => import('./pages/compare.js'), ranking: () => import('./pages/ranking.js'), listing: () => import('./pages/dossier.js'),
   models: () => import('./pages/models.js'), sources: () => import('./pages/sources.js'), settings: () => import('./pages/settings.js'),
   admin: () => import('./pages/admin.js') };
 const NAV = ['compare', 'ranking', 'models', 'sources', 'settings'];
 
-export function applyTheme(theme = store.get('theme', 'blueprint'), mode = store.get('mode', 'auto')) {
-  if (!THEMES.includes(theme)) theme = 'blueprint';
+export function applyTheme(theme = store.get('theme', 'friendly'), mode = store.get('mode', 'auto')) {
+  if (!THEMES.includes(theme)) theme = 'friendly';
   const root = document.documentElement;
   root.dataset.theme = theme;
   if (mode === 'auto') root.removeAttribute('data-mode'); else root.dataset.mode = mode;
