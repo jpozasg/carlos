@@ -423,3 +423,4 @@ fieldset.person>.btn{justify-self:start}
 .prof-head{margin:0 0 12px;font-weight:600;font-size:15px}
 .score.provisional{color:var(--text-3)}.score small{font-size:.7em;margin-left:1px}
 .rank-list+*,.note+.rank-list{margin-top:10px}
+abbr.prov{text-decoration:none;color:var(--text-3);font-size:.75em;margin-left:1px;cursor:help}

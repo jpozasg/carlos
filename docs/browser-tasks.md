@@ -42,6 +42,8 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
 
    Then read it back in chunks.
 3. The header (title, subtitle, price, price rating) is easiest with `find`.
+   - **Location and seller type:** the tab title reads "<Make> <Model> in <Place> für <Price> | mobile.de": take `<Place>` for `listings.location` (`document.title.match(/ in (.+?) für /)`). A dealer box ("Über diesen Händler") means a dealer, otherwise a private seller; store the dealer's name in `seller` only when the listing publishes it. Compare the place with the account's `search_center`/`search_radius` preferences and log a `warning` when it lies outside (sponsored results ignore the radius).
+   - **Price drops:** a struck-through second price ("8.100 € … 8.999 €") is the previous asking price; mention it in the `found` log entry.
 4. Photos: `https://img.classistatic.de/api/v1/mo-prod/images/<2 hex>/<uuid>?rule=mo-1024.jpg` (~230 KB) can be downloaded directly by `capture_listing.py`.
 5. Write the capture JSON and run `python capture_listing.py <file> --dry-run`, then run it without `--dry-run`. Add listing-specific checklist items and warnings.
 
