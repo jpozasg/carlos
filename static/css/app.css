@@ -192,8 +192,8 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 .dossier-top{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:16px;margin-bottom:16px}
 @media (max-width:860px){.dossier-top{grid-template-columns:1fr}}
 /* the Carlos score card sits above the spec plate, outside it; the cost per month is a strip at the top of the plate (issue #80) */
-.plate-cost{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin:0 0 12px;padding:10px 12px;border-radius:var(--radius-s);background:var(--accent-soft);color:var(--accent-ink)}
-.plate-cost span{font-size:13px;font-weight:700}.plate-cost b{font-family:var(--readout);font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.plate-cost{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin:0 0 12px;padding:0 0 10px;border-bottom:var(--border-w) solid var(--border);color:var(--text)}
+.plate-cost span{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.plate-cost b{font-family:var(--readout);font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dossier-side{display:flex;flex-direction:column;gap:12px;align-self:start;min-width:0}.dossier-side>.plate{align-self:stretch}.dossier-side>.scorebox{margin:0;border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
 
 /* compare bar and views */
