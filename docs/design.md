@@ -20,7 +20,7 @@ One family: **Bricolage Grotesque** (SIL OFL, self-hosted in `static/fonts/`, va
 ## Layout concepts
 - **Compare** opens with the **versus strip**: your car on the left, the best buy right now on the right, one number between them: how much less (or more) per month. That is the page's memorable element; everything under it is quiet.
 - Below it the **cost ruler** (default view): every car is a row with a marker on one shared euro-per-month axis; your car is the dashed line across all rows. Left of the line costs less, right costs more. Filled marker = complete cost of ownership; hollow = partial subtotal. The table, costs, break-even, details and cards stay as views.
-- **Dossier** opens with the photo and a **spec plate** (a riveted plate with the key figures) and the verdict as a stamp when one exists. Sections below in two columns on desktop.
+- **Dossier** opens with the photo and, beside it, the **Carlos score** card (a speedometer-style dial in the rating colour, the rating word, rank and coverage, and where the car sits among the compared cars) above the **spec plate** (the cost per month first, the key figures, reliability per part), and the verdict as a stamp when one exists. Sections below in two columns on desktop.
 - **Ranking**: the questionnaire as question cards, the result list with per-criterion contribution bars.
 - **Models**: the tree make → model → generation → engine → variant.
 
