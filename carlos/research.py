@@ -12,7 +12,7 @@ from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 2  # 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4)
+CONTRACT_VERSION = 3  # 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
 LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id'}
@@ -34,7 +34,9 @@ def _risks(ctx):
 
 
 def _consumption(ctx):
-    return [r for r in ctx['rows']('observations') if r['metric'] == config.PRIMARY_CONSUMPTION and None not in
+    """The primary real-world consumption of the variant: one source per drivetrain (kWh for an electric car)."""
+    metric = config.PRIMARY_CONSUMPTION_EV if electric(ctx) else config.PRIMARY_CONSUMPTION
+    return [r for r in ctx['rows']('observations') if r['metric'] == metric and None not in
             (r['value_num'], r['sample_count'], r['min_value'], r['max_value'])]
 
 
@@ -61,7 +63,9 @@ def _is(col, *values):
     return lambda ctx: (ctx['row'].get(col) or '') in values
 
 
-petrol = lambda ctx: (ctx['row'].get('fuel_type') or '').lower() == 'petrol'
+petrol = lambda ctx: (ctx['row'].get('fuel_type') or '').lower() in ('petrol', 'hybrid', 'plug-in hybrid')  # spark plugs
+electric = lambda ctx: ctx['row'].get('fuel_type') == 'Electric'
+combustion = lambda ctx: not electric(ctx)  # an engine with oil, filters, a timing drive (plug-in hybrids included)
 diesel = lambda ctx: (ctx['row'].get('fuel_type') or '').lower() == 'diesel'
 automatic = lambda ctx: bool(re.search(r'auto|dsg|cvt|dual.clutch|tiptronic', ctx['row'].get('transmission') or '', re.I))
 always = lambda ctx: True
@@ -82,20 +86,26 @@ ITEMS = [
     ('gen.recalls', 'generation', 'recall search (KBA / manufacturer)', None, FOUND_OR_NONE, 'B', always, 1),
     ('gen.risks', 'generation', 'body/chassis repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
     ('eng.identity', 'engine', 'code, fuel, displacement, power, aspiration, injection, timing drive', _fields(
-        'code', 'fuel_type', 'displacement_cc', 'power_ps', 'aspiration', 'injection', 'timing_drive', code=True), (), None, always, 1),
-    ('eng.oil', 'engine', 'oil and filter service: interval, DIY parts and workshop price', _job('OIL_SERVICE'), (), None, always, 2),
-    ('eng.air_filter', 'engine', 'air filter: interval, DIY parts and workshop price', _job('AIR_FILTER'), (), None, always, 2),
+        'code', 'fuel_type', 'displacement_cc', 'power_ps', 'aspiration', 'injection', 'timing_drive', code=True), (), None, combustion, 1),
+    ('eng.identity_ev', 'engine', 'electric: code, fuel, power, usable battery kWh, AC charging kW', _fields(
+        'code', 'fuel_type', 'power_ps', 'battery_usable_kwh', 'ac_charge_kw', code=True), (), None, electric, 3),
+    ('eng.hv_battery', 'engine', 'electric: battery warranty (years / km / % health) and the battery risk checked', None, FOUND_OR_NONE, 'B', electric, 3),
+    ('eng.drive_coolant', 'engine', 'electric: battery/motor coolant interval and workshop price (or a check: lifetime fill)', _job('DRIVE_COOLANT'), ('NONE FOUND',), None, electric, 3),
+    ('eng.reduction_gear_oil', 'engine', 'electric: reduction gear oil interval and workshop price (or a check: none scheduled)', _job('REDUCTION_GEAR_OIL'), ('NONE FOUND',), None, electric, 3),
+    ('eng.oil', 'engine', 'oil and filter service: interval, DIY parts and workshop price', _job('OIL_SERVICE'), (), None, combustion, 2),
+    ('eng.air_filter', 'engine', 'air filter: interval, DIY parts and workshop price', _job('AIR_FILTER'), (), None, combustion, 2),
     ('eng.spark_plugs', 'engine', 'spark plugs: interval, DIY parts and workshop price', _job('SPARK_PLUGS'), (), None, petrol, 2),
     ('eng.fuel_filter', 'engine', 'fuel filter: interval, DIY parts and workshop price', _job('FUEL_FILTER'), (), None, diesel, 2),
     ('eng.timing_belt', 'engine', 'timing belt: interval, DIY parts and workshop price', _job('TIMING_DRIVE'), (), None,
-     lambda ctx: not _is('timing_drive', 'CHAIN', 'GEAR')(ctx), 2),
+     lambda ctx: combustion(ctx) and not _is('timing_drive', 'CHAIN', 'GEAR')(ctx), 2),
     ('eng.timing_chain', 'engine', 'timing chain/gear: a job or a check that none is scheduled', _job('TIMING_DRIVE'), ('NONE FOUND',), None,
      _is('timing_drive', 'CHAIN', 'GEAR'), 2),
-    ('eng.coolant', 'engine', 'coolant: interval, DIY parts and workshop price (or a check: lifetime fill)', _job('COOLANT'), ('NONE FOUND',), None, always, 2),
+    ('eng.coolant', 'engine', 'coolant: interval, DIY parts and workshop price (or a check: lifetime fill)', _job('COOLANT'), ('NONE FOUND',), None, combustion, 2),
     ('eng.risks', 'engine', 'engine repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
     ('var.identity', 'variant', 'HSN/TSN, gearbox, body, emissions class, CO2', _fields(
         'hsn', 'tsn', 'transmission', 'body_style', 'emissions_standard', 'co2_g_km', status='technical_status'), (), None, always, 1),
-    ('var.consumption', 'variant', f'{config.PRIMARY_CONSUMPTION} with sample size, min and max', _consumption, (), 'C', always, 1),
+    ('var.consumption', 'variant', f'{config.PRIMARY_CONSUMPTION} (electric: {config.PRIMARY_CONSUMPTION_EV}, kWh) with sample size, min and max',
+     _consumption, (), 'C', always, 1),
     ('var.tyres', 'variant', 'all-season tyres: size, price, tread life (variant or generation)', _tyres, (), None, always, 1),
     ('var.tax', 'variant', 'annual tax from the BMF Kfz-Steuer-Rechner', _tax, (), 'A', always, 1),
     ('var.gearbox', 'variant', 'automatic gearbox weak points checked for this variant', None, FOUND_OR_NONE, 'C', automatic, 1),
@@ -175,6 +185,8 @@ class Contract:
     def level(self, level, row):
         """Grades of one level from its own rows only (stable whichever listing triggered the research)."""
         key = (level, row['id'])
+        if level == 'variant':  # the variant's drivetrain decides which consumption source counts
+            row = {**row, 'fuel_type': self.rows['engines'][row['engine_id']]['fuel_type']}
         if key not in self.cache:
             extra = {'generation': ('generation_id', row.get('generation_id'))} if level == 'variant' else None
             self.cache[key] = evaluate(level, row, self._rows([(LEVEL_COL[level], row['id'])], extra), self.sources)

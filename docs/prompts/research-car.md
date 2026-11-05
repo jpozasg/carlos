@@ -16,9 +16,9 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 ```
 
 **Do:** steps 1–9 of the protocol for this car:
-1. identification of generation, engine (aspiration, injection, timing drive) and variant (HSN/TSN);
+1. identification of generation, engine (aspiration, injection, timing drive; an electric motor instead: usable battery kWh, AC/DC charging kW) and variant (HSN/TSN);
 2. reliability items at the right level, each with its `part` (ENGINE / GEARBOX / CHASSIS / ELECTRICS: research all four) and every manufacturer recall as its own row with `recall=True`, then the checklist; record every source consulted with `check(level, id, task, source_id, result)` (`rel.<PART>.<source>`, `gen.recalls`, `gen.facelift`, …), `NONE FOUND` when it lists nothing;
-3. autokostencheck consumption of the exact variant;
+3. consumption: the autokostencheck average of the exact variant; for an electric car the Spritmonitor average in kWh/100 km (`consumption(..., electric=True)`);
 4. item maintenance schedule at the right level, with HU: every job with its `job=` code and, for a job an owner may do (`config.DIYABLE_JOBS`), both the DIY parts and the workshop price (the research is shared; each account's DIY choice picks one);
 5. repair risks at the right level for the window {MILEAGE_KM} → {MILEAGE_KM} + {PERIOD_KM} km;
 6. certain one-off costs of this car: scheduled jobs due at purchase as `maintenance` (timing belt by age, overdue fluids: never `repairs`), present faults as `repairs`, each named in `item`;
@@ -41,11 +41,12 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 - **Certain costs:** a scheduled job due at purchase is `certain(L, 'maintenance', ...)` plus `restart(..., 'CERTAIN REPAIR', unit_cost_id=...)`, never `repairs`; apply the service-book rule in protocol step 6 (a generic "Scheckheftgepflegt" does not cover the timing belt, coolant, brake fluid or spark plugs).
 - **Consumption:** only the reported average with its number of reports; if the page shows only the stored "Praxisverbrauch" (the average is rendered by JavaScript), write no consumption and report the URL.
 - **Recalls, wear and the checklist:** write only recalls that can apply to this car (engine, gearbox, build window); generic wear (clutch, pads, battery, bulbs) is a priced risk, not a weak point, unless a source flags it for this model; never set a checklist item's status (the owner does that at the viewing).
+- **Electric cars** (`fuel_type='Electric'`): follow the protocol's "Electric cars" section: no oil, filters, plugs or timing drive; `DRIVE_COOLANT` and `REDUCTION_GEAR_OIL` jobs (or `NONE FOUND` checks) on the engine; the battery warranty as a check `eng.hv_battery` and one priced high-voltage battery risk on the engine; the seller's battery health in `battery_soh_claim`; resale without comparables with `resale_rule_of_thumb(L, electric=True)`. Plug-in hybrids: record them like a combustion car with `fuel_type='Plug-in hybrid'` (their energy cost is not supported yet). Full hybrids: `fuel_type='Hybrid'`.
 - **Search budget:** web searches are limited for the whole session (about 200, shared by all agents running in parallel). Spend them on the four reliability sources, the recalls and the consumption page first; fetch known URLs directly (ADAC Autokatalog, autokostencheck, repareo) instead of searching for them; say in the report which figures you could not source because the budget ran out.
 - **Never delete.** Do not call `delete()`; if a row you wrote is wrong, PATCH it, or `archive()` it and write the right one. Deleting needs the owner's confirmation, which only the main agent can ask for.
 
 **Report back (short):**
-- HSN/TSN (confirmed or assumed) and the tax calculator inputs;
+- HSN/TSN (confirmed or assumed) and the tax calculator inputs (electric: first registration and permitted total weight; the battery kWh and warranty terms);
 - the consumption figure;
 - rows written per table and level;
 - certain costs by category (maintenance due at purchase, repairs) with their names and prices, and the largest risks with prices; risks priced only by estimate;
