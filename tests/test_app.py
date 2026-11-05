@@ -452,6 +452,29 @@ class AppTest(unittest.TestCase):
         self.ui('PATCH', f"inspection_items/{i['id']}", {'status': 'OK'})
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before - 1.5)
 
+    def test_archive_and_delete(self):
+        """Issue #58: archived rows drop out of every read and calculation and can be restored; delete refuses while a
+        row is referenced, removes a listing with its own rows, and is logged."""
+        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        chain = next(r for r in a['reliability'] if r['component'] == 'Timing chain')
+        self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 1})[0], 200)
+        a2 = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertNotIn(chain['id'], [r['id'] for r in a2['reliability']])
+        self.assertEqual(a2['metrics']['reliability'], a['metrics']['reliability'] - 2)          # the MEDIUM point is gone
+        self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 0})[0], 200)   # restore
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], a['metrics']['reliability'])
+        self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 2})[0], 400)
+        st, r = self.agent('DELETE', f"vehicles/{V_A}")
+        self.assertEqual(st, 400); self.assertIn('listings.vehicle_id', r['error'])            # still used by a listing
+        self.assertEqual(self.agent('DELETE', 'listings')[0], 405)
+        self.assertEqual(self.agent('DELETE', 'listings/99999')[0], 404)
+        n_children = self.sql('SELECT count(*) FROM inspection_items WHERE listing_id=?', (CAR_A,))[0][0]
+        st, r = self.agent('DELETE', f'listings/{CAR_A}')
+        self.assertEqual((st, r['deleted'], r['removed_children']['inspection_items']), (200, True, n_children))
+        self.assertEqual(self.sql('SELECT count(*) FROM listings WHERE id=?', (CAR_A,))[0][0], 0)
+        self.assertEqual(self.sql("SELECT action FROM change_log WHERE table_name='listings' AND row_id=? ORDER BY id DESC LIMIT 1", (CAR_A,))[0][0], 'delete')
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[0], 404)
+
     def test_owner_decision(self):
         ls = self.req('GET', '/api/tco')[1]['listings']
         cand = next(u for u in ls if not u['is_reference'] and u['listing_status'] != 'WITHDRAWN'); ref = next(u for u in ls if u['is_reference'])

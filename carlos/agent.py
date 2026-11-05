@@ -2,7 +2,7 @@
 import hashlib, json, math, os, re, time
 from pathlib import Path
 from . import config
-from .auth import OWNED
+from .auth import ARCHIVABLE, OWNED
 
 # Format of controlled codes written by the agent (English: upper-case statuses, snake_case kinds).
 CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_events', 'kind'): r'[a-z][a-z_]*',
@@ -26,7 +26,7 @@ SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'ma
                    'reliability_items', 'valuations', 'unit_costs', 'listing_snapshots', 'repair_risks', 'tyre_data',
                    'maintenance_resets'}
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'))
-RULES = ('null = unknown (never 0); no DELETE: archive with PATCH (e.g. listing_status); source quality A–D; free text '
+RULES = ('null = unknown (never 0); archive outdated rows with PATCH archived=1 (listings: listing_status WITHDRAWN); DELETE only after the owner confirmed it; source quality A–D; free text '
          'in English; knowledge rows attach to exactly one level: vehicle_id (variant), engine_id or generation_id; see AGENTS.md')
 
 
@@ -115,7 +115,8 @@ def agent_write(c, table, row_id, data, user_id):
             cur = c.execute(f'INSERT INTO main.{table} ({",".join(data)}) VALUES ({",".join("?" * len(data))})', list(data.values()))
             row_id, old = cur.lastrowid, None
         else:
-            old = c.execute(f'SELECT * FROM {table} WHERE id=?', (row_id,)).fetchone()  # the owner's view: others' rows are "not found"
+            view = f'{table}_all' if table in ARCHIVABLE else table  # archived rows can be restored (PATCH archived=0)
+            old = c.execute(f'SELECT * FROM {view} WHERE id=?', (row_id,)).fetchone()  # the owner's view: others' rows are "not found"
             if old is None:
                 raise NotFound(f'{table} id={row_id} does not exist')
             c.execute(f'UPDATE main.{table} SET {",".join(f"{k}=?" for k in data)} WHERE id=?', [*data.values(), row_id])
@@ -123,6 +124,54 @@ def agent_write(c, table, row_id, data, user_id):
         c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
                   (table, row_id, 'update' if old else 'insert', old, json.dumps(data, ensure_ascii=False), user_id))
     return row_id
+
+
+# A listing is deleted together with its own rows, children first (photos before captures, resets before costs).
+LISTING_CHILDREN_DELETE_ORDER = ('maintenance_resets', 'inspection_items', 'unit_costs', 'valuations', 'listing_events',
+                                 'listing_media', 'listing_snapshots')
+
+
+def references(c, table, row_id):
+    """Rows of any table that point at main.<table>(id): declared foreign keys, plus source_id for sources."""
+    out = []
+    for (t,) in c.execute("SELECT name FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"):
+        cols = {fk['from'] for fk in c.execute(f'PRAGMA main.foreign_key_list({t})') if fk['table'] == table}
+        if table == 'sources' and t != 'sources':
+            cols |= {r['name'] for r in c.execute(f'PRAGMA main.table_info({t})') if r['name'] == 'source_id'}
+        for col in cols:
+            n = c.execute(f'SELECT count(*) FROM main.{t} WHERE {col}=?', (row_id,)).fetchone()[0]
+            if n:
+                out.append(f'{t}.{col} ({n})')
+    return out
+
+
+def agent_delete(c, table, row_id, user_id):
+    """Deletes a row of this account (issue #58) and records it in change_log. Agents call this only after the owner
+    confirmed it in the session (AGENTS.md); archiving (PATCH archived=1) is the default for outdated rows.
+    A listing goes together with its own rows and photo files; any other row is refused while something references it."""
+    view = f'{table}_all' if table in ARCHIVABLE else table
+    old = c.execute(f'SELECT * FROM {view} WHERE id=?', (row_id,)).fetchone()  # the owner's view: others' rows are "not found"
+    if old is None:
+        raise NotFound(f'{table} id={row_id} does not exist')
+    files, removed = [], {}
+    with c:
+        if table == 'listings':
+            files = [r['file_path'] for r in c.execute('SELECT file_path FROM main.listing_media WHERE listing_id=?', (row_id,))]
+            for child in LISTING_CHILDREN_DELETE_ORDER:
+                removed[child] = c.execute(f'DELETE FROM main.{child} WHERE listing_id=?', (row_id,)).rowcount
+        refs = references(c, table, row_id)
+        if refs:
+            raise ValueError(f'{table} id={row_id} is still referenced by {", ".join(refs)}: delete or re-point those first')
+        c.execute(f'DELETE FROM main.{table} WHERE id=?', (row_id,))
+        c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
+                  (table, row_id, 'delete', json.dumps(dict(old), ensure_ascii=False),
+                   json.dumps({'deleted': True, 'removed_children': {k: v for k, v in removed.items() if v}}), user_id))
+    for f in files:  # after the commit: a failed delete keeps its photos
+        path = config.MEDIA_DIR / f
+        path.unlink(missing_ok=True)
+        if path.parent != config.MEDIA_DIR and path.parent.is_dir() and not any(path.parent.iterdir()):
+            path.parent.rmdir()
+    return removed
 
 
 _STORAGE = {'at': 0.0, 'value': None}

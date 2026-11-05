@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=17). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=18). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -52,14 +52,14 @@ CREATE TABLE "valuations" (
  status TEXT NOT NULL, valued_date TEXT,
  source_id INTEGER NOT NULL REFERENCES sources(id),
  notes TEXT
-);
+, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)));
 CREATE TABLE "inspection_items" (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
  item TEXT NOT NULL,
  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'OK', 'PROBLEM', 'N/A')),
  checked_date TEXT, notes TEXT
-, reliability_item_id INTEGER REFERENCES reliability_items(id));
+, reliability_item_id INTEGER REFERENCES reliability_items(id), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)));
 CREATE TABLE maintenance_resets (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -67,7 +67,7 @@ CREATE TABLE maintenance_resets (
  basis TEXT NOT NULL CHECK (basis IN ('CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED')),
  unit_cost_id INTEGER REFERENCES unit_costs(id),
  source_id INTEGER REFERENCES sources(id),
- notes TEXT,
+ notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  UNIQUE (listing_id, maintenance_item_id)
 );
 CREATE TABLE generations (
@@ -120,7 +120,7 @@ CREATE TABLE "observations" (
  category TEXT NOT NULL, metric TEXT NOT NULL, value_num REAL,
  value_text TEXT, unit TEXT, sample_count INTEGER, min_value REAL, max_value REAL,
  status TEXT NOT NULL, evidence_quality TEXT, observed_date TEXT,
- source_id INTEGER, notes TEXT,
+ source_id INTEGER, notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "insurance_data" (
@@ -133,7 +133,7 @@ CREATE TABLE "insurance_data" (
  annual_premium_eur REAL, premium_status TEXT, source_id INTEGER, notes TEXT,
  premium_min_eur REAL CHECK (premium_min_eur IS NULL OR premium_min_eur > 0), insurer TEXT, tariff TEXT,
  quote_date TEXT CHECK (quote_date IS NULL OR quote_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
- quote_profile TEXT CHECK (quote_profile IS NULL OR json_type(quote_profile) = 'object'),
+ quote_profile TEXT CHECK (quote_profile IS NULL OR json_type(quote_profile) = 'object'), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "tax_data" (
@@ -141,7 +141,7 @@ CREATE TABLE "tax_data" (
  vehicle_id INTEGER REFERENCES vehicles(id),
  engine_id INTEGER REFERENCES engines(id),
  generation_id INTEGER REFERENCES generations(id),
- annual_tax_eur REAL, status TEXT, basis TEXT, source_id INTEGER, notes TEXT,
+ annual_tax_eur REAL, status TEXT, basis TEXT, source_id INTEGER, notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "maintenance_items" (
@@ -155,7 +155,7 @@ CREATE TABLE "maintenance_items" (
  schedule TEXT NOT NULL DEFAULT 'PACKAGE' CHECK (schedule IN ('PACKAGE', 'ITEM')),
  diy INTEGER NOT NULL DEFAULT 0 CHECK (diy IN (0, 1)),
  diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
- active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+ active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "reliability_items" (
@@ -164,7 +164,7 @@ CREATE TABLE "reliability_items" (
  engine_id INTEGER REFERENCES engines(id),
  generation_id INTEGER REFERENCES generations(id),
  component TEXT NOT NULL, issue TEXT, evidence TEXT, severity TEXT,
- frequency_status TEXT, source_id INTEGER, inspection_action TEXT, part TEXT CHECK (part IN ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')), is_recall INTEGER NOT NULL DEFAULT 0 CHECK (is_recall IN (0, 1)),
+ frequency_status TEXT, source_id INTEGER, inspection_action TEXT, part TEXT CHECK (part IN ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')), is_recall INTEGER NOT NULL DEFAULT 0 CHECK (is_recall IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "repair_risks" (
@@ -182,7 +182,7 @@ CREATE TABLE "repair_risks" (
  diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
  status TEXT, evidence TEXT,
  source_id INTEGER REFERENCES sources(id),
- notes TEXT,
+ notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  CHECK (km_to > km_from),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
@@ -199,7 +199,7 @@ CREATE TABLE "tyre_data" (
  fitting_per_set_eur REAL CHECK (fitting_per_set_eur IS NULL OR fitting_per_set_eur >= 0),
  status TEXT,
  source_id INTEGER REFERENCES sources(id),
- notes TEXT,
+ notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "sources" (
@@ -273,7 +273,7 @@ CREATE TABLE "unit_costs" (
  parts_eur REAL, labor_eur REAL, diy_hours REAL,
  status TEXT NOT NULL,
  source_id INTEGER REFERENCES sources(id),
- notes TEXT,
+ notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  CHECK (parts_eur IS NOT NULL OR labor_eur IS NOT NULL)
 );
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);

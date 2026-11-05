@@ -6,7 +6,7 @@ import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
 from . import auth, config
 from .agent import (AGENT_TABLES, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotFound, QuotaExceeded,
-                    UnsupportedMediaType, agent_write, save_media, storage_usage, table_columns)
+                    UnsupportedMediaType, agent_delete, agent_write, save_media, storage_usage, table_columns)
 from .costs import budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
 from .models import model_tree, variant_detail
@@ -157,6 +157,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_PATCH(self):
         self.handle_request('PATCH')
+
+    def do_DELETE(self):
+        self.handle_request('DELETE')
 
     def handle_request(self, method):
         path = urlsplit(self.path).path
@@ -352,6 +355,12 @@ class Handler(BaseHTTPRequestHandler):
             if created:
                 export_markdown(c, uid)
             self.send_json({'table': 'listing_media', 'id': row_id, 'created': created}, 201 if created else 200)
+        elif agent and agent[1] in AGENT_TABLES and method == 'DELETE':
+            if not agent[2]:
+                self.send_json({'error': 'DELETE /api/agent/<table>/<id> deletes one row (ask the owner first)'}, 405); return
+            removed = agent_delete(c, agent[1], int(agent[2]), uid)
+            export_markdown(c, uid)
+            self.send_json({'table': agent[1], 'id': int(agent[2]), 'deleted': True, 'removed_children': removed})
         elif agent and agent[1] in AGENT_TABLES:
             data = self.read_json()
             if (method == 'PATCH') != bool(agent[2]):
