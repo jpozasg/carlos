@@ -32,6 +32,17 @@ def maintenance_plan(items, km, months, restarted=frozenset()):
     return plan
 
 
+def risk_price(r):
+    """Price of one failure: DIY parts, or parts plus workshop labour; None without a price. When the account's DIY
+    choice differs from how the row was priced (`diy_as_stored`), the price that choice needs (parts for DIY, labour
+    for the workshop) must be there: never the other price instead (#106 part 4)."""
+    if r['parts_eur'] is None and r['labor_eur'] is None:
+        return None
+    if r.get('diy_as_stored', r['diy']) != r['diy'] and (r['parts_eur'] if r['diy'] else r['labor_eur']) is None:
+        return None
+    return (r['parts_eur'] or 0) + (0 if r['diy'] else (r['labor_eur'] or 0))
+
+
 def risk_plan(risks, km_now, km_period):
     """Per-risk view of the expected repairs (what expected_repairs adds up): share of the km window driven in the
     period and expected cost."""
@@ -39,8 +50,7 @@ def risk_plan(risks, km_now, km_period):
     km_end = (km_now or 0) + km_period
     for r in risks:
         share = 0 if km_now is None else max(0, min(r['km_to'], km_end) - max(r['km_from'], km_now)) / (r['km_to'] - r['km_from'])
-        priced = not (r['parts_eur'] is None and r['labor_eur'] is None)
-        unit = (r['parts_eur'] or 0) + (0 if r['diy'] else (r['labor_eur'] or 0)) if priced else None
+        unit = risk_price(r)
         out.append({**{k: r[k] for k in ('id', 'component', 'km_from', 'km_to', 'probability', 'parts_eur', 'labor_eur', 'diy',
                                           'diy_hours', 'status', 'evidence', 'source_id', 'notes')}, 'level': r.get('level'),
                     'price_eur': unit, 'share': round(share, 3),
@@ -82,9 +92,9 @@ def expected_repairs(risks, km_now, km_period):
         share = max(0, min(r['km_to'], km_end) - max(r['km_from'], km_now)) / (r['km_to'] - r['km_from'])
         if not share:
             continue
-        if r['parts_eur'] is None and r['labor_eur'] is None:
-            return None, None  # a risk without any price makes the expected repairs unknown (never 0)
-        unit = (r['parts_eur'] or 0) + (0 if r['diy'] else (r['labor_eur'] or 0))
+        unit = risk_price(r)
+        if unit is None:
+            return None, None  # a risk without the price it needs makes the expected repairs unknown (never 0)
         cost += share * r['probability'] * unit
         if r['diy'] and r['diy_hours']:
             hours += share * r['probability'] * r['diy_hours']
@@ -161,14 +171,28 @@ FROM listings l JOIN vehicles v ON v.id=l.vehicle_id JOIN generations g ON g.id=
 ORDER BY l.is_reference DESC, l.id'''
 
 
+def diy_choice(c):
+    """The job codes this account does itself (preference diy_jobs, config.DIY_JOBS); None when it never answered, so
+    every row keeps its stored diy flag."""
+    v = c.execute("SELECT preference_value FROM project_preferences WHERE preference_key='diy_jobs'").fetchone()
+    if v is None or v[0] is None:
+        return None
+    return {j for name in v[0].split(',') for j in config.DIY_JOBS.get(name.strip(), ())}
+
+
 class Knowledge:
     """Every knowledge table loaded once and resolved per variant (variant + engine + generation rows)."""
 
     def __init__(self, c):
         self.t = {t: scoped(c, t) for t in config.SCOPED_TABLES}
+        self.jobs = diy_choice(c)
 
     def of(self, table, v):
-        return for_variant(self.t[table], v)
+        """The variant's rows; maintenance items and risks with a job code carry this account's DIY choice (#106 part 4)."""
+        rs = for_variant(self.t[table], v)
+        if self.jobs is None or table not in ('maintenance_items', 'repair_risks'):
+            return rs
+        return [{**r, 'diy': int(r['job'] in self.jobs), 'diy_as_stored': r['diy']} if r.get('job') else r for r in rs]
 
     def consumption(self, v):
         prim = [o for o in self.of('observations', v) if o['metric'] == config.PRIMARY_CONSUMPTION and o['value_num'] is not None]
@@ -180,9 +204,13 @@ class Knowledge:
         user = [r for r in rows_ if r['premium_status'] == config.USER_PREMIUM] if is_reference else []
         return max(user or rows_, key=lambda r: r['id'], default=None)
 
-    def tax(self, v):
-        """The tax row behind the cost: verified or official rows before estimates, then the newest (#107)."""
-        rows_ = [r for r in self.of('tax_data', v) if r['annual_tax_eur'] is not None]
+    def tax(self, v, first_registration=None):
+        """The tax row behind the cost: among the rows whose registration window covers the car's first registration (no
+        window = any car), verified or official rows before estimates, then the newest (#107)."""
+        fr = (first_registration or '')[:7]
+        covers = lambda r: (r.get('registered_from') is None or fr and fr >= r['registered_from'][:7]) and \
+            (r.get('registered_to') is None or fr and fr <= r['registered_to'][:7])
+        rows_ = [r for r in self.of('tax_data', v) if r['annual_tax_eur'] is not None and covers(r)]
         return max(rows_, key=lambda r: (STATUS_POINTS.get(r['status'], 0) == 1, r['id']), default=None)
 
     def tyres(self, v):
@@ -250,7 +278,7 @@ def tco_rows(c, p):
     out = []
     for u in units:
         v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
-        cons, ins_row, tax_row = know.consumption(v), know.insurance(v, u['is_reference']), know.tax(v)
+        cons, ins_row, tax_row = know.consumption(v), know.insurance(v, u['is_reference']), know.tax(v, u['first_registration'])
         u.update(consumption=cons['value_num'] if cons else None, consumption_sample=cons['sample_count'] if cons else None,
                  consumption_min=cons['min_value'] if cons else None, consumption_max=cons['max_value'] if cons else None,
                  consumption_metric=cons['metric'] if cons else None, consumption_source_id=cons['source_id'] if cons else None,
@@ -259,8 +287,13 @@ def tco_rows(c, p):
         unit_cost = {cat: sum((x['parts_eur'] or 0) + (x['labor_eur'] or 0) for x in costs if x['category'] == cat)
                      if any(x['category'] == cat for x in costs) else None for cat in config.UNIT_COST_CATEGORIES}
         dep, dep_pess, dep_opt = depreciation(u, vals.get(u['id'], {}))
-        maint, maint_hours = maintenance_cost(know.of('maintenance_items', v), km, years * 12, frozenset(resets.get(u['id'], ())))
-        risk, risk_hours = expected_repairs(know.of('repair_risks', v), u['mileage_km'], km)
+        m_rows, r_rows, restarted = know.of('maintenance_items', v), know.of('repair_risks', v), frozenset(resets.get(u['id'], ()))
+        maint, maint_hours = maintenance_cost(m_rows, km, years * 12, restarted)
+        risk, risk_hours = expected_repairs(r_rows, u['mileage_km'], km)
+        # the jobs whose price for this account's DIY choice is missing, named for the to-do
+        need = lambda x: f"{x.get('item') or x['component']} ({'DIY parts' if x['diy'] else 'workshop'} price)"
+        u['unpriced'] = ([need(x) for x in maintenance_plan(m_rows, km, years * 12, restarted) if x['cost_eur'] is None] if maint is None else []) + \
+            ([need(x) for x in risk_plan(r_rows, u['mileage_km'], km) if x['expected_eur'] is None] if risk is None and u['mileage_km'] is not None else [])
         wear = tyre_cost(know.tyres(v), km)
         price_l = p.get('diesel_price_eur_l') if (u['fuel_type'] or '').lower() == 'diesel' else p['fuel_price_eur_l']
         # certain one-off costs of the listing plus the model's expected costs; the expected part unknown (no risk or
@@ -298,7 +331,7 @@ def tco_rows(c, p):
         counts = u['inspection_counts']
         items = contract.resolved(v['id'])
         rel_rows = know.of('reliability_items', v)
-        items += research.listing_items(u, {'insurance': know.of('insurance_data', v), 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
+        items += research.listing_items(u, {'insurance': know.of('insurance_data', v), 'tax': tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
                                             'weak_points': {r['id'] for r in rel_rows}, 'checked': set(checks.get(u['id'], {})),
                                             'captured': u['id'] in captured}, today)
         u['research'] = items

@@ -192,10 +192,12 @@ def deactivate_packages(v, listing_id):
             patch('maintenance_items', m['id'], {'active': 0})
 
 
-def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, notes, level='variant'):
-    """Maintenance item: DIY → parts price + hours; workshop → total job price in `workshop`.
+def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, notes, level='variant', job=None):
+    """Maintenance item: `parts` = DIY parts price (+ `hours`), `workshop` = total workshop price; give both for a job an
+    owner may do themselves (`job` in config.DIYABLE_JOBS): each account's DIY choice picks one at calculation time, and the
+    research contract matches jobs by `job` (config.JOBS). `diy` is only the default for rows without a job.
     Engine jobs (oil, plugs, timing drive, coolant) belong on the engine; brakes, HU, wipers on the generation."""
-    return post('maintenance_items', {**scope(v, level), 'item': name, 'interval_km': km, 'interval_months': months,
+    return post('maintenance_items', {**scope(v, level), 'item': name, 'job': job, 'interval_km': km, 'interval_months': months,
                                       'schedule': 'ITEM', 'diy': 1 if diy else 0, 'diy_parts_cost_eur': parts,
                                       'reference_cost_eur': workshop, 'diy_hours': hours, 'labor_included': 0 if diy else 1,
                                       'status': status, 'source_id': source_id, 'notes': notes, 'active': 1})
@@ -203,15 +205,16 @@ def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, no
 
 def hu(v, level='generation'):
     return item(v, 'HU/AU inspection', None, 24, False, None, HU_FEE_EUR, None, shared_source('HU/AU price'),
-                'OFFICIAL FEE LEVEL', 'Every 24 months; 2 inspections in a 4-year period. Timing depends on the HU date of the car.', level)
+                'OFFICIAL FEE LEVEL', 'Every 24 months; 2 inspections in a 4-year period. Timing depends on the HU date of the car.', level, job='HU')
 
 
-def risk(v, component, km_from, km_to, probability, parts, labor, diy, hours, source_id, evidence, notes='', level='variant'):
+def risk(v, component, km_from, km_to, probability, parts, labor, diy, hours, source_id, evidence, notes='', level='variant', job=None):
     """Expected repair: probability of failure somewhere in [km_from, km_to]. Every risk needs a price: estimate one when
-    none is found (user decision 2026-11-03) and say how in `notes`."""
+    none is found (user decision 2026-11-03) and say how in `notes`. A plain replacement job (clutch, battery, timing
+    drive) takes its `job` code and both parts and labour, since each account's DIY choice decides whether labour counts."""
     if parts is None and labor is None:
         raise ValueError(f'{component}: every risk needs a price; estimate one and say how in notes')
-    return post('repair_risks', {**scope(v, level), 'component': component, 'km_from': km_from, 'km_to': km_to,
+    return post('repair_risks', {**scope(v, level), 'component': component, 'job': job, 'km_from': km_from, 'km_to': km_to,
                                  'probability': probability, 'parts_eur': parts, 'labor_eur': labor, 'diy': 1 if diy else 0,
                                  'diy_hours': hours, 'status': 'ESTIMATED', 'evidence': evidence, 'source_id': source_id, 'notes': notes})
 

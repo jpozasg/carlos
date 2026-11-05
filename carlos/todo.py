@@ -15,6 +15,8 @@ def todo(c, p, ranked):
         if u['listing_status'] == 'WITHDRAWN':
             continue
         t = [f'cost component missing: {k}' for k in u['missing_components']]
+        # the price this account's DIY choice needs is missing: never the other price instead (#106 part 4)
+        t += [f'price missing for the account\'s DIY choice: {x}' for x in u.get('unpriced', [])]
         if (u['fuel_type'] or '').lower() == 'diesel' and not p.get('diesel_price_eur_l'):
             t.append('diesel price missing (Settings: diesel_price_eur_l)')
         if u['is_reference'] and (u['id'], 'sale_today') not in vals:

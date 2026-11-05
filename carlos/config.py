@@ -28,6 +28,17 @@ UNIT_COST_CATEGORIES = ['repairs', 'maintenance', 'tyres', 'purchase_sale']
 RELIABILITY_PARTS = ['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS']
 RELIABILITY_TOP = 3
 RELIABILITY_PART_MAX = RELIABILITY_TOP * 3  # higher is better: each part starts at 9 (3 × HIGH) and loses its worst points
+# Controlled job codes of maintenance items and repair risks (migration 022, part 4 of #106); append new jobs here.
+JOBS = ['OIL_SERVICE', 'AIR_FILTER', 'CABIN_FILTER', 'SPARK_PLUGS', 'TIMING_DRIVE', 'COOLANT', 'BRAKE_FLUID', 'BRAKES_FRONT',
+        'BRAKES_REAR', 'BATTERY', 'BULBS', 'WIPERS', 'HU', 'FUEL_FILTER', 'DRIVE_BELT', 'CLUTCH']
+# The setup's DIY choices (preference diy_jobs, the values of DIY in static/js/pages/start.js) → the jobs they cover. A
+# job with a code is DIY for an account exactly when one of its choices covers it; a job no choice covers (HU, brake
+# fluid, drive belt) is a workshop job. "yearly service" has no job of its own: rows without a code keep their diy flag.
+DIY_JOBS = {'oil and filters': ['OIL_SERVICE', 'AIR_FILTER', 'CABIN_FILTER', 'FUEL_FILTER'], 'spark plugs': ['SPARK_PLUGS'],
+            'yearly service': [], 'brake pads and discs': ['BRAKES_FRONT', 'BRAKES_REAR'], 'battery': ['BATTERY'],
+            'bulbs': ['BULBS'], 'wipers': ['WIPERS'], 'coolant': ['COOLANT'], 'timing belt or chain': ['TIMING_DRIVE'],
+            'clutch': ['CLUTCH']}
+DIYABLE_JOBS = {j for jobs in DIY_JOBS.values() for j in jobs}  # the research needs both prices of these jobs
 STALE_LISTING_DAYS, STALE_FUEL_PRICE_DAYS = 14, 30
 QUOTE_MAX_AGE_DAYS = 60  # issue #5: insurance quotes expire
 TAX_OFFICIAL_SOURCE = 'tax_official_calculator'  # sources.source_type of the BMF Kfz-Steuer-Rechner

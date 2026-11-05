@@ -17,7 +17,8 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'engines.injection': ['PORT', 'DIRECT', 'DUAL', 'CARBURETTOR'],
                'engines.timing_drive': ['CHAIN', 'BELT', 'WET BELT', 'GEAR'],
                'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED'],
-               'reliability_items.part': config.RELIABILITY_PARTS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A']}
+               'reliability_items.part': config.RELIABILITY_PARTS,
+               'maintenance_items.job': config.JOBS, 'repair_risks.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A']}
 # Tables the agent may write. Those in the second set require source_id on insert.
 AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
                 'maintenance_items', 'reliability_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',

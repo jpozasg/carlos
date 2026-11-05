@@ -309,6 +309,49 @@ class AppTest(unittest.TestCase):
             c.close()
         return uid, tok
 
+    def test_account_prices_106(self):
+        """Part 4 of #106: each account's DIY choice picks the DIY parts or the workshop price of a shared row; a missing
+        price for that choice leaves the cost unknown and names the job in the to-do; tax rows have a registration window."""
+        plan = lambda d, job: next(x for x in d['maintenance_plan'] if x['item'].startswith(job))
+        base = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertEqual(plan(base, 'Spark plugs')['price_eur'], 40)                # no answer yet: the stored DIY flag
+        # the admin does only oil and filters: spark plugs and brakes become workshop jobs without a workshop price
+        self.assertEqual(self.req('POST', '/api/preferences', {'diy_jobs': 'oil and filters'})[0], 200)
+        a = self.units()[CAR_A]
+        self.assertIsNone(a['components']['maintenance'])                           # never the DIY price instead
+        todo = {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[CAR_A]
+        self.assertIn("price missing for the account's DIY choice: Spark plugs (DIY) (workshop price)", todo)
+        self.agent('PATCH', 'maintenance_items/2', {'reference_cost_eur': 140})
+        self.agent('PATCH', 'maintenance_items/4', {'reference_cost_eur': 220})
+        d = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertEqual((plan(d, 'Spark plugs')['price_eur'], plan(d, 'Spark plugs')['diy']), (140, 0))
+        self.assertIsNotNone(d['components']['maintenance'])
+        # a second account that does the plugs itself gets the DIY price from the same shared row
+        uid2, t2 = self.second_account()
+        H = {'X-Carlos-Account': str(uid2)}
+        st, src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, headers=H)
+        st, l = self.agent('POST', 'listings', {'vehicle_id': V_A, 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'P1',
+                                                'price_eur': 5000, 'mileage_km': 90000, 'first_registration': '2011-06'}, headers=H)
+        self.assertEqual(self.req('POST', '/api/preferences', {'diy_jobs': 'oil and filters, spark plugs, brake pads and discs'}, token=t2)[0], 200)
+        hers = self.req('GET', f'/api/listings/{l["id"]}', token=t2)[1]
+        self.assertEqual((plan(hers, 'Spark plugs')['price_eur'], plan(hers, 'Spark plugs')['diy']), (40, 1))
+        self.assertEqual(self.sql('SELECT diy, reference_cost_eur FROM maintenance_items WHERE id=2')[0], (1, 140))   # the row itself is unchanged
+        # the contract wants both prices of a job an account may do itself, found by its job code
+        eng = lambda: {x['id']: x for x in self.agent('GET', 'todo')[1]['catalogue']['engines']}[E_A]
+        self.assertNotIn('eng.spark_plugs', eng()['missing'])
+        self.agent('PATCH', 'maintenance_items/2', {'reference_cost_eur': None})
+        self.assertIn('eng.spark_plugs', eng()['missing'])
+        self.agent('PATCH', 'maintenance_items/2', {'reference_cost_eur': 140, 'job': None})
+        self.assertIn('eng.spark_plugs', eng()['missing'])                            # no code, no match
+        self.assertEqual(self.agent('PATCH', 'maintenance_items/2', {'job': 'PLUGS'})[0], 400)
+        # tax: the row whose registration window covers the car's first registration (2011-06)
+        self.agent('PATCH', 'tax_data/1', {'registered_from': '2012-01'})
+        self.assertIsNone(self.units()[CAR_A]['annual_tax'])
+        self.assertIn('lst.tax_covered', [i['id'] for i in self.units()[CAR_A]['research'] if i['grade'] == 'MISSING'])
+        self.agent('POST', 'tax_data', {'vehicle_id': V_A, 'annual_tax_eur': 102, 'status': 'VERIFIED', 'registered_from': '2009-07',
+                                        'registered_to': '2011-12', 'source_id': SRC_TAX_OFFICIAL})
+        self.assertEqual(self.units()[CAR_A]['annual_tax'], 102)
+
     def test_research_requests_113(self):
         uid2, t2 = self.second_account()
         st, r = self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1', 'note': 'blue one'}, token=t2)
@@ -447,7 +490,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'research_checks', bad)[0], 400)
         self.assertEqual(self.agent('POST', 'research_checks', {**bad, 'task': 'eng.coolant', 'result': 'MAYBE'})[0], 400)
         # raising an item's `since` makes checks recorded against the older contract stop counting
-        bumped = [i[:-1] + (2,) if i[0] == 'eng.coolant' else i for i in research.ITEMS]
+        bumped = [i[:-1] + (research.CONTRACT_VERSION + 1,) if i[0] == 'eng.coolant' else i for i in research.ITEMS]
         with mock.patch.object(research, 'ITEMS', bumped):
             self.assertIn('eng.coolant', lvl()['missing'])
         # a part without its required source checks is unknown: reliability unknown, never full points or 0
