@@ -393,8 +393,8 @@ class Handler(BaseHTTPRequestHandler):
         data = self.read_json()
         if kind == 'inspection_items' and method == 'PATCH' and row_id is not None:
             data = {k: v for k, v in data.items() if k in ('status', 'notes')}
-            if 'status' in data:
-                data['checked_date'] = today
+            if 'status' in data:  # back to PENDING means not checked: no date
+                data['checked_date'] = None if data['status'] == 'PENDING' else today
             new_id = agent_write(c, 'inspection_items', row_id, data, uid)
         elif kind == 'inspection_items' and method == 'POST':
             new_id = agent_write(c, 'inspection_items', None, {'listing_id': data.get('listing_id'), 'item': data.get('item')}, uid)

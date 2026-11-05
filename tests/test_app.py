@@ -668,6 +668,9 @@ class AppTest(unittest.TestCase):
         self.assertEqual((status, notes, date), ('OK', 'Quiet cold start', datetime.date.today().isoformat()))
         self.assertNotEqual(item, 'hacked')                                    # only status and notes are writable
         self.assertEqual(self.ui('PATCH', 'inspection_items/1', {'status': 'MAYBE'})[0], 400)
+        self.assertEqual(self.ui('PATCH', 'inspection_items/1', {'status': 'PENDING'})[0], 200)   # reset: no checked date
+        self.assertEqual(self.sql('SELECT status, checked_date FROM inspection_items WHERE id=1')[0], ('PENDING', None))
+        self.ui('PATCH', 'inspection_items/1', {'status': 'OK'})                                   # back to the state the test continues with
         st, r = self.ui('POST', 'listing_events', {'listing_id': CAR_A, 'text': 'Small dent on the rear door.'})
         self.assertEqual(st, 201)
         kind, src = self.sql('SELECT kind, source_id FROM listing_events WHERE id=?', (r['id'],))[0]
