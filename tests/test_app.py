@@ -407,6 +407,20 @@ class AppTest(unittest.TestCase):
         self.req('POST', '/api/parameters', {'ranking_weights': None})                 # back to the answers
         self.assertEqual(self.req('GET', '/api/ranking')[1]['manual'], False)
 
+    def test_owner_decision(self):
+        ls = self.req('GET', '/api/tco')[1]['listings']
+        cand = next(u for u in ls if not u['is_reference'] and u['listing_status'] != 'WITHDRAWN'); ref = next(u for u in ls if u['is_reference'])
+        st, _ = self.req('POST', f"/api/ui/decision/{cand['id']}", {'decision': 'reject', 'reason': 'too far away'})
+        self.assertEqual(st, 201)
+        d = self.req('GET', f"/api/listings/{cand['id']}")[1]
+        self.assertEqual((d['listing_status'], d['verdict']), ('WITHDRAWN', 'Rejected by the owner: too far away'))
+        self.assertTrue(any(e['kind'] == 'decision' for e in d['events']))
+        self.req('POST', f"/api/ui/decision/{cand['id']}", {'decision': 'reset'})
+        d = self.req('GET', f"/api/listings/{cand['id']}")[1]
+        self.assertEqual((d['listing_status'], d['verdict']), ('UNDER REVIEW', None))
+        self.assertEqual(self.req('POST', f"/api/ui/decision/{ref['id']}", {'decision': 'shortlist'})[0], 400)
+        self.assertEqual(self.req('POST', f"/api/ui/decision/{cand['id']}", {'decision': 'maybe'})[0], 400)
+
     def test_account_todo(self):
         d = self.req('GET', '/api/todo')[1]
         self.assertTrue(any(x.startswith('setup not finished') for x in d['account']))

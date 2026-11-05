@@ -302,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         # writes
         agent = re.fullmatch(r'/api/agent/([\w-]+)(?:/(\d+))?', path)
-        ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|media)(?:/(\d+))?', path)
+        ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|media|decision)(?:/(\d+))?', path)
         if path == '/api/parameters' and method == 'POST':
             data = clean_params(self.read_json())
             check_budget({**p, **data})
@@ -362,6 +362,12 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json({'error': 'Endpoint not found'}, 404)
 
+    def user_source(self, c, uid, today):
+        """The account's 'User-provided data' source (created on first use)."""
+        src = c.execute("SELECT id FROM sources WHERE source_type='user_reported' ORDER BY id LIMIT 1").fetchone()
+        return src[0] if src else agent_write(c, 'sources', None, {'title': 'User-provided data', 'source_type': 'user_reported', 'accessed_date': today,
+                                                                   'supports': 'Observations and decisions of the user', 'limitations': 'User statements'}, uid)
+
     def ui_write(self, c, method, kind, row_id, uid):
         """Viewing mode (phone): the few writes the UI does directly. Everything goes through agent_write."""
         today = datetime.date.today().isoformat()
@@ -383,6 +389,20 @@ class Handler(BaseHTTPRequestHandler):
             new_id = agent_write(c, 'inspection_items', row_id, data, uid)
         elif kind == 'inspection_items' and method == 'POST':
             new_id = agent_write(c, 'inspection_items', None, {'listing_id': data.get('listing_id'), 'item': data.get('item')}, uid)
+        elif kind == 'decision' and method == 'POST' and row_id is not None:
+            # the owner's decision on a car: verdict + a 'decision' log entry; rejecting archives it out of the ranking
+            d, reason = data.get('decision'), str(data.get('reason') or '').strip()[:300]
+            verdicts = {'shortlist': 'Shortlisted by the owner', 'viewing': 'Viewing planned by the owner',
+                        'reject': 'Rejected by the owner' + (f': {reason}' if reason else ''), 'reset': None}
+            if d not in verdicts:
+                raise ValueError('decision must be shortlist, viewing, reject or reset')
+            row = c.execute('SELECT is_reference FROM listings WHERE id=?', (row_id,)).fetchone()
+            if row is None or row[0]:
+                raise ValueError('Decisions apply to cars for sale, not to your own car')
+            agent_write(c, 'listings', row_id, {'verdict': verdicts[d], 'listing_status': 'WITHDRAWN' if d == 'reject' else 'UNDER REVIEW'}, uid)
+            src = self.user_source(c, uid, today)
+            new_id = agent_write(c, 'listing_events', None, {'listing_id': row_id, 'event_date': today, 'kind': 'decision',
+                                                             'text': verdicts[d] or 'Decision reset by the owner: back under review', 'source_id': src}, uid)
         elif kind == 'listing_events' and method == 'POST':
             src = c.execute("SELECT id FROM sources WHERE source_type='user_reported' ORDER BY id LIMIT 1").fetchone()
             if src is None:

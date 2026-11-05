@@ -753,5 +753,13 @@
  "disc_household": "Ubezpieczenie mieszkania",
  "disc_legal": "Ubezpieczenie ochrony prawnej",
  "disc_accident": "Ubezpieczenie NNW",
- "disc_other_policy": "Inne polisy na twoje nazwisko"
+ "disc_other_policy": "Inne polisy na twoje nazwisko",
+ "decision_label": "Twoja decyzja",
+ "decide_shortlist": "Na krótką listę",
+ "decide_viewing": "Zaplanuj oględziny",
+ "decide_reject": "Odrzuć",
+ "decide_reset": "Cofnij decyzję",
+ "decide_reason_ph": "Dlaczego? (opcjonalnie, np. za daleko)",
+ "decide_reject_confirm": "Odrzuć to auto",
+ "decision_saved": "Decyzja zapisana"
 }

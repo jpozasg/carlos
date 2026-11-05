@@ -46,5 +46,6 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 | `POST /api/agent/media/<listing id>?url=<original>&snapshot_id=<id>` | image bytes, `Content-Type: image/jpeg|png|webp`, max 1.5 MB | archives a photo; duplicates (same hash) return `created: false` |
 | `POST /api/agent/export-md` | | regenerates the account's Markdown dossiers |
 | `PATCH /api/ui/inspection_items/<id>`, `POST /api/ui/inspection_items`, `POST /api/ui/listing_events`, `POST /api/ui/media/<listing id>` | `{status, notes}`, `{listing_id, item}`, `{listing_id, text}` (kind `viewing`), image bytes | the viewing mode of the phone UI; same rules as the agent API |
+| `POST /api/ui/decision/<listing id>` | `{decision: shortlist|viewing|reject|reset, reason?}` | the owner's decision from the dossier: sets `verdict` ("Shortlisted by the owner", "Viewing planned by the owner", "Rejected by the owner: <reason>") and a `decision` log entry; `reject` archives the car (`WITHDRAWN`, out of the ranking), `reset` brings it back under review; not for the reference car |
 
 Every write is recorded in `change_log` and regenerates the account's dossiers in `data/dossiers/<account id>/`.

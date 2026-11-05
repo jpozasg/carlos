@@ -133,6 +133,7 @@ async function draw(id) {
   root.innerHTML = picker + `<div class="dossier-top">${viewer(d)}${plate(d)}</div><div class="grid">${viewingPanel()}
     <div class="card span2"><div class="unit-head"><div><div class="unit-name"><a class="carlink" href="#/models/${d.vehicle_id}">${unitName(d)} ${esc(d.trim ?? '')}</a></div><div class="unit-sub">${unitSub(d)} · ${esc(tv(d.listing_status) ?? '')} <a href="#/models/${d.vehicle_id}" style="margin-left:8px">${t('open_model')}</a></div></div>
       <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')}</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
+      ${d.is_reference ? '' : decisionBar(d)}
       ${gaps(S.todo.listings.find(x => x.listing_id === d.id)?.todo)}
       <div style="margin-top:12px">${facts([[t('asking_price'), d.is_reference ? t('owned') : eP(d.price_eur)], [t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km'], [t('registration'), d.first_registration ? esc(d.first_registration) : PEND()],
         [t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a> · ${esc(d.engine_description ?? '')}`], [t('generation'), `<a href="${modelsHref({ make: d.make, model: d.model })}">${esc(d.generation)}</a> ${d.generation_start_year ?? '?'}–${d.generation_end_year ?? '?'}`],
@@ -155,6 +156,10 @@ function bind() {
       if (ok) toast(t('photos_added', { n: ok })); await refresh(); } });
   root.addEventListener('click', async e => {
     if (e.target.closest('[data-viewing]')) { VIEWING = !VIEWING; await draw(D.id); return; }
+    const dc = e.target.closest('[data-decide]'); if (dc) { const k = dc.dataset.decide;
+      if (k === 'reject') { const w = root.querySelector('.decide-why'); w.hidden = false; $('rejectWhy').focus(); return; }
+      try { await send('POST', '/api/ui/decision/' + D.id, { decision: k === 'reject-confirm' ? 'reject' : k, reason: k === 'reject-confirm' ? $('rejectWhy').value : '' });
+        toast(t('decision_saved')); await refresh(); } catch (err) { toast(err.message, true); } return; }
     const b = e.target.closest('[data-insp]'); if (b) { try { await ui('PATCH', 'inspection_items/' + b.dataset.insp, { status: b.dataset.st }); await refresh(); } catch (err) { toast(err.message, true); } return; }
     if (e.target.closest('[data-addnote]')) { const v = $('vnote').value.trim(); if (!v) return; try { await ui('POST', 'listing_events', { listing_id: D.id, text: v }); toast(t('note_added')); await refresh(); } catch (err) { toast(err.message, true); } return; }
     if (e.target.closest('[data-addcheck]')) { const v = $('newcheck').value.trim(); if (!v) return; try { await ui('POST', 'inspection_items', { listing_id: D.id, item: v }); await refresh(); } catch (err) { toast(err.message, true); } return; }
@@ -162,6 +167,14 @@ function bind() {
     const st = e.target.closest('[data-step]'); if (st) { showPhoto(cur + +st.dataset.step); return; }
     if (e.target.closest('[data-zoom]')) { lb.showModal(); showPhoto(cur); return; }
   });
+}
+// the owner's decision: shortlist, plan a viewing or reject (archives the car out of the ranking), with a reason
+function decisionBar(d) {
+  const cur = /^Shortlisted/.test(d.verdict || '') ? 'shortlist' : /^Viewing planned/.test(d.verdict || '') ? 'viewing' : /^Rejected/.test(d.verdict || '') ? 'reject' : '';
+  return `<div class="decide" role="group" aria-label="${esc(t('decision_label'))}"><span class="small muted">${t('decision_label')}</span>
+    ${['shortlist', 'viewing', 'reject'].map(k => `<button type="button" class="btn sm ${cur === k ? '' : 'ghost'}" data-decide="${k}" aria-pressed="${cur === k}">${t('decide_' + k)}</button>`).join('')}
+    ${cur ? `<button type="button" class="linkbtn small" data-decide="reset">${t('decide_reset')}</button>` : ''}
+    <span class="decide-why" hidden><input id="rejectWhy" type="text" maxlength="300" placeholder="${esc(t('decide_reason_ph'))}" aria-label="${esc(t('decide_reason_ph'))}"><button type="button" class="btn sm danger" data-decide="reject-confirm">${t('decide_reject_confirm')}</button></span></div>`;
 }
 export async function render(main, r) {
   const id = r.id ?? S.units[0]?.id;
