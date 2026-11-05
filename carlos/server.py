@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
-from . import auth, config, research_requests as rq
+from . import auth, config, research, research_requests as rq
 from .agent import (AGENT_TABLES, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, save_media,
                     storage_usage, table_columns)
@@ -318,7 +318,8 @@ class Handler(BaseHTTPRequestHandler):
                                 'source_required_on_insert': sorted(SOURCE_REQUIRED),
                                 'code_formats': {f'{t}.{col}': pat for (t, col), pat in CODE_FORMATS.items()},
                                 'fixed_codes': FIXED_CODES, 'scoped_tables': list(config.SCOPED_TABLES),
-                                'scope_columns': list(config.SCOPE_COLUMNS), 'rules': RULES})
+                                'scope_columns': list(config.SCOPE_COLUMNS), 'rules': RULES,
+                                'research_contract': research.published()})
             else:
                 self.send_json({'error': 'Endpoint not found'}, 404)
             return

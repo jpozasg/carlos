@@ -96,7 +96,7 @@ def render(u, p):
                  ('Budget', u['budget_status'] or ('n/a (reference)' if u['is_reference'] else 'Pending')),
                  ('Not checked for over 14 days', None if u['stale'] is None else ('yes' if u['stale'] else 'no')),
                  ('Reliability (out of 36: each part 9 minus its 3 worst points, higher is better)', u['metrics']['reliability']),
-                 ('Reliability by part (out of 9)', ', '.join(f"{k.lower()} {v:g}" for k, v in (u.get('reliability_parts') or {}).items()) or None),
+                 ('Reliability by part (out of 9)', ', '.join(f"{k.lower()} {'unknown' if v is None else format(v, 'g')}" for k, v in (u.get('reliability_parts') or {}).items()) or None),
                  ('Data confidence (%)', u['metrics']['confidence']),
                  ('Ranking score (0–100)', f"{u['score']:g} (reference, not ranked)" if u['is_reference'] and u.get('score') is not None else u.get('score')),
                  ('Price history', ' → '.join(f"{x['date']} {val(x['price_eur'], '€')}" for x in u['price_history']) or None),

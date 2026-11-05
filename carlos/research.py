@@ -1,0 +1,252 @@
+"""The research contract (issue #114, part of #106): what must be known about a generation, an engine, a variant and a
+listing before it counts as researched, so "researched" is computed the same way for every car and does not depend on
+which listing triggered the research. Each item is graded from the rows on its own level:
+  MISSING  nothing acceptable (or only sources below the item's minimum quality, or checks older than the item),
+  ACCEPTED present, but estimated or from a C/D source,
+  VERIFIED a verified / official / primary row from an A/B source (a recorded check from an A/B source).
+A level is researched without MISSING items and verified when every item is VERIFIED. The table of items is
+documented in docs/cost-research-protocol.md (a test keeps both in step). Adding an item marks every level it applies to
+incomplete at once; raising an item's `since` makes checks recorded against an older contract stop counting."""
+import datetime, re
+from . import config
+from .db import rows
+from .ranking import STATUS_POINTS
+
+CONTRACT_VERSION = 1
+GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
+QUALITY_ORDER = 'ABCD'
+LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id'}
+REL_SOURCES = {'adac': 'B', 'tuev': 'B', 'guide': 'C', 'engine_specific': 'C'}  # the same sources for every car, minimum quality
+
+
+def _job(pattern, workshop_only=False, exclude=None):
+    """Maintenance rows of one job: active, with an interval and a price (the workshop price for workshop-only jobs)."""
+    rx, ex = re.compile(pattern, re.I), re.compile(exclude, re.I) if exclude else None
+    return lambda ctx: [r for r in ctx['rows']('maintenance_items') if r['active'] and rx.search(r['item'] or '')
+                        and not (ex and ex.search(r['item'] or '')) and (r['interval_km'] or r['interval_months'])
+                        and (r['reference_cost_eur'] is not None or not workshop_only and r['diy_parts_cost_eur'] is not None)]
+
+
+def _risks(ctx):
+    """Priced weak-point risks; one unpriced risk makes the item missing (every risk gets a price, AGENTS.md)."""
+    rs = ctx['rows']('repair_risks')
+    return [] if any(r['parts_eur'] is None and r['labor_eur'] is None for r in rs) else rs
+
+
+def _consumption(ctx):
+    return [r for r in ctx['rows']('observations') if r['metric'] == config.PRIMARY_CONSUMPTION and None not in
+            (r['value_num'], r['sample_count'], r['min_value'], r['max_value'])]
+
+
+def _tyres(ctx):
+    return [r for r in ctx['rows']('tyre_data', 'generation') if None not in (r['size'], r['price_per_tyre_eur'], r['life_km'])]
+
+
+def _tax(ctx):
+    return [r for r in ctx['rows']('tax_data') if r['annual_tax_eur'] is not None
+            and (ctx['sources'].get(r['source_id']) or {}).get('source_type') == config.TAX_OFFICIAL_SOURCE]
+
+
+def _fields(*cols, status='status', code=False):
+    """Identity fields of the level row: all filled (an engine code not 'unknown…'); graded by the row's status."""
+    def cands(ctx):
+        r = ctx['row']
+        if any(r.get(c) in (None, '') for c in cols) or code and (r.get('code') or '').lower().startswith('unknown'):
+            return []
+        return [{'_grade': 'VERIFIED' if r.get(status) == 'VERIFIED' else 'ACCEPTED'}]
+    return cands
+
+
+def _is(col, *values):
+    return lambda ctx: (ctx['row'].get(col) or '') in values
+
+
+petrol = lambda ctx: (ctx['row'].get('fuel_type') or '').lower() == 'petrol'
+diesel = lambda ctx: (ctx['row'].get('fuel_type') or '').lower() == 'diesel'
+automatic = lambda ctx: bool(re.search(r'auto|dsg|cvt|dual.clutch|tiptronic', ctx['row'].get('transmission') or '', re.I))
+always = lambda ctx: True
+# which research_checks results satisfy an item that is a check, or the alternative to rows ('NONE FOUND' etc.)
+FOUND_OR_NONE, NOT_APPLICABLE = ('FOUND', 'NONE FOUND', 'N/A'), ('N/A',)
+
+# (id, level, title, rows → candidates or None for a pure check, results accepted from research_checks, min quality,
+#  applies, since). Item ids are the research_checks.task values.
+ITEMS = [
+    ('gen.identity', 'generation', 'make, model, name, start and end year of the whole production run', _fields('start_year', 'end_year'), (), None, always, 1),
+    ('gen.facelift', 'generation', 'facelift year (check N/A when there was none)', _fields('facelift_year'), NOT_APPLICABLE, None, always, 1),
+    ('gen.hu', 'generation', 'HU/AU every 24 months with the official fee', _job(r'\bHU\b|hauptuntersuchung', True), (), None, always, 1),
+    ('gen.brake_fluid', 'generation', 'brake fluid interval and price', _job(r'brake fluid'), (), None, always, 1),
+    ('gen.brakes', 'generation', 'brake pads and discs: interval and price', _job(r'brake (pad|disc|shoe)'), (), None, always, 1),
+    ('gen.battery', 'generation', 'battery: life and price', _job(r'battery'), (), None, always, 1),
+    ('gen.wipers', 'generation', 'wiper blades: interval and price', _job(r'wiper'), (), None, always, 1),
+    ('gen.cabin_filter', 'generation', 'cabin (pollen) filter: interval and price', _job(r'cabin|pollen'), (), None, always, 1),
+    ('gen.recalls', 'generation', 'recall search (KBA / manufacturer)', None, FOUND_OR_NONE, 'B', always, 1),
+    ('gen.risks', 'generation', 'body/chassis repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
+    ('eng.identity', 'engine', 'code, fuel, displacement, power, aspiration, injection, timing drive', _fields(
+        'code', 'fuel_type', 'displacement_cc', 'power_ps', 'aspiration', 'injection', 'timing_drive', code=True), (), None, always, 1),
+    ('eng.oil', 'engine', 'oil and filter service: interval and price', _job(r'\boil\b', exclude=r'gear|transmission|dsg|brake'), (), None, always, 1),
+    ('eng.air_filter', 'engine', 'air filter: interval and price', _job(r'air filter'), (), None, always, 1),
+    ('eng.spark_plugs', 'engine', 'spark plugs: interval and price', _job(r'spark plug'), (), None, petrol, 1),
+    ('eng.fuel_filter', 'engine', 'fuel filter: interval and price', _job(r'fuel filter'), (), None, diesel, 1),
+    ('eng.timing_belt', 'engine', 'timing belt: interval and workshop price', _job(r'timing|cam ?belt|zahnriemen', True), (), None,
+     lambda ctx: not _is('timing_drive', 'CHAIN', 'GEAR')(ctx), 1),
+    ('eng.timing_chain', 'engine', 'timing chain/gear: a job or a check that none is scheduled', _job(r'timing|chain'), ('NONE FOUND',), None,
+     _is('timing_drive', 'CHAIN', 'GEAR'), 1),
+    ('eng.coolant', 'engine', 'coolant: interval and price (or a check: lifetime fill)', _job(r'coolant'), ('NONE FOUND',), None, always, 1),
+    ('eng.risks', 'engine', 'engine repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
+    ('var.identity', 'variant', 'HSN/TSN, gearbox, body, emissions class, CO2', _fields(
+        'hsn', 'tsn', 'transmission', 'body_style', 'emissions_standard', 'co2_g_km', status='technical_status'), (), None, always, 1),
+    ('var.consumption', 'variant', f'{config.PRIMARY_CONSUMPTION} with sample size, min and max', _consumption, (), 'C', always, 1),
+    ('var.tyres', 'variant', 'all-season tyres: size, price, tread life (variant or generation)', _tyres, (), None, always, 1),
+    ('var.tax', 'variant', 'annual tax from the BMF Kfz-Steuer-Rechner', _tax, (), 'A', always, 1),
+    ('var.gearbox', 'variant', 'automatic gearbox weak points checked for this variant', None, FOUND_OR_NONE, 'C', automatic, 1),
+]
+# weak points: the same four sources per part (docs/cost-research-protocol.md, step 2); the engine part on the engine,
+# the rest on the generation (owner decision 2026-11-05: gearbox on the generation, var.gearbox for automatics)
+for _part in config.RELIABILITY_PARTS:
+    for _src, _q in REL_SOURCES.items():
+        if _src != 'engine_specific' or _part == 'ENGINE':
+            ITEMS.append((f'rel.{_part}.{_src}', 'engine' if _part == 'ENGINE' else 'generation',
+                          f'{_part.lower()} weak points: {_src.replace("_", "-")} source checked', None, FOUND_OR_NONE, _q, always, 1))
+ITEM = {i[0]: i for i in ITEMS}
+TASKS = set(ITEM)
+
+
+def grade_rows(cands, sources, min_q):
+    """Best grade of the candidate rows (a candidate may carry its own '_grade', e.g. identity fields)."""
+    best = 'MISSING'
+    for r in cands:
+        g = r.get('_grade')
+        if g is None:
+            q = (sources.get(r.get('source_id')) or {}).get('quality')
+            if min_q and (q is None or QUALITY_ORDER.find(q) > QUALITY_ORDER.find(min_q)):
+                continue
+            ok = 'result' in r or STATUS_POINTS.get(r.get('status') or r.get('premium_status')) == 1
+            g = 'VERIFIED' if ok and q in ('A', 'B') else 'ACCEPTED'
+        if GRADE[g] > GRADE[best]:
+            best = g
+    return best
+
+
+def evaluate(level, row, rows, sources):
+    """Grades of the items of one level. `rows(table, *extra_levels)` returns the knowledge rows on this level."""
+    ctx = {'row': row, 'rows': rows, 'sources': sources}
+    out = []
+    for iid, lvl, title, cands, results, min_q, applies, since in ITEMS:
+        if lvl != level or not applies(ctx):
+            continue
+        found = list(cands(ctx)) if cands else []
+        found += [r for r in rows('research_checks') if r['task'] == iid and r['result'] in results and r['contract_version'] >= since]
+        out.append({'id': iid, 'level': lvl, 'title': title, 'grade': grade_rows(found, sources, min_q)})
+    return out
+
+
+def state(items):
+    return 'verified' if all(i['grade'] == 'VERIFIED' for i in items) else \
+        'researched' if all(i['grade'] != 'MISSING' for i in items) else 'incomplete'
+
+
+def summary(items):
+    return {'state': state(items), 'missing': [i['id'] for i in items if i['grade'] == 'MISSING'],
+            'accepted': [i['id'] for i in items if i['grade'] == 'ACCEPTED'], 'items': items}
+
+
+class Contract:
+    """Grades per level and resolved per variant, from Knowledge's rows (loaded once)."""
+
+    def __init__(self, c, know):
+        self.sources = {r['id']: r for r in rows(c, 'SELECT id, quality, source_type FROM sources')}
+        self.rows = {t: {r['id']: r for r in rows(c, f'SELECT * FROM {t}')} for t in ('vehicles', 'engines', 'generations')}
+        self.index = {}
+        for table, rs in know.t.items():
+            for r in rs:
+                for col in config.SCOPE_COLUMNS:
+                    if r.get(col) is not None:
+                        self.index.setdefault((col, r[col]), {}).setdefault(table, []).append(r)
+        self.cache = {}
+
+    def _rows(self, keys, extra=None):
+        """rows(table, *levels): the rows of `table` on `keys`, plus on the named extra levels (e.g. a variant's tyres
+        may sit on its generation)."""
+        def rows(table, *levels):
+            ks = list(keys) + [extra[l] for l in levels if extra and l in extra]
+            return [r for k in ks for r in self.index.get(k, {}).get(table, [])]
+        return rows
+
+    def level(self, level, row):
+        """Grades of one level from its own rows only (stable whichever listing triggered the research)."""
+        key = (level, row['id'])
+        if key not in self.cache:
+            extra = {'generation': ('generation_id', row.get('generation_id'))} if level == 'variant' else None
+            self.cache[key] = evaluate(level, row, self._rows([(LEVEL_COL[level], row['id'])], extra), self.sources)
+        return self.cache[key]
+
+    def resolved(self, vehicle_id):
+        """A variant with its engine and generation. An item missing on its level but present one level lower (e.g. an
+        engine job stored on the variant) counts as ACCEPTED at most, with a hint to move the row up."""
+        v = self.rows['vehicles'][vehicle_id]
+        engine, generation = self.rows['engines'][v['engine_id']], self.rows['generations'][v['generation_id']]
+        out = []
+        # only the variant counts as "too low": an engine row is the engine's research, not the generation's
+        lower = {'generation': [('vehicle_id', v['id'])], 'engine': [('vehicle_id', v['id'])], 'variant': []}
+        for level, row in (('generation', generation), ('engine', engine), ('variant', v)):
+            below = None
+            for i in self.level(level, row):
+                if i['grade'] == 'MISSING' and lower[level]:
+                    below = below or {x['id']: x['grade'] for x in evaluate(level, row, self._rows(lower[level]), self.sources)}
+                    if below.get(i['id'], 'MISSING') != 'MISSING':
+                        i = {**i, 'grade': 'ACCEPTED', 'hint': f'found on a lower level: move it to the {level}'}
+                out.append(i)
+        return out
+
+
+def known_parts(items):
+    """Reliability parts whose required source checks are all present (owner decision: otherwise the part is unknown)."""
+    return {p for p in config.RELIABILITY_PARTS
+            if all(i['grade'] != 'MISSING' for i in items if i['id'].startswith(f'rel.{p}.') or p == 'GEARBOX' and i['id'] == 'var.gearbox')}
+
+
+def listing_items(u, rows, today):
+    """The account's own part of the research for one listing (private): insurance, valuation, purchase costs, checklist,
+    capture and photos. `rows` has the listing's insurance rows (its own), valuations, unit costs, checklist links, captures."""
+    items = []
+    def add(iid, title, ok):
+        items.append({'id': iid, 'level': 'listing', 'title': title, 'grade': 'VERIFIED' if ok is True else ok or 'MISSING'})
+    ins = [r for r in rows['insurance'] if r['annual_premium_eur'] is not None]  # premiums are private rows (#109)
+    if u['is_reference']:
+        add('lst.insurance', 'the premium the owner pays (USER DATA)', any(r['premium_status'] == config.USER_PREMIUM for r in ins))
+    else:
+        fresh = [r for r in ins if r['premium_status'] == 'QUOTE' and _age(r['quote_date'], today) is not None
+                 and _age(r['quote_date'], today) <= config.QUOTE_MAX_AGE_DAYS]
+        add('lst.insurance', f'an insurance quote younger than {config.QUOTE_MAX_AGE_DAYS} days', bool(fresh))
+    add('lst.valuation', 'resale value at the end of the period', 'resale_end' in rows['valuations'])
+    if not u['is_reference']:
+        add('lst.purchase_sale', 'purchase costs of this car', any(x['category'] == 'purchase_sale' for x in rows['unit_costs']))
+        add('lst.checklist', 'a checklist item for every weak point', rows['weak_points'] <= rows['checked'])
+        add('lst.capture', 'listing captured', rows['captured'])
+        add('lst.photos', 'photos archived', bool(u['photo_count']))
+    return items
+
+
+def _age(iso_date, today):
+    try:
+        return (today - datetime.date.fromisoformat(iso_date[:10])).days
+    except (TypeError, ValueError):
+        return None
+
+
+def published():
+    """The contract as data, for GET /api/agent/schema."""
+    return {'version': CONTRACT_VERSION, 'grades': GRADE, 'check_results': ['FOUND', 'NONE FOUND', 'N/A'],
+            'items': [{'id': i[0], 'level': i[1], 'title': i[2], 'check_results': list(i[4]), 'min_quality': i[5], 'since': i[7],
+                       'kind': 'check' if i[3] is None else 'rows' + (' or check' if i[4] else '')} for i in ITEMS]}
+
+
+def levels(items):
+    """Summary per level (generation, engine, variant, listing) of resolved items, for the UI."""
+    return {lvl: summary([i for i in items if i['level'] == lvl]) for lvl in ('generation', 'engine', 'variant', 'listing')
+            if any(i['level'] == lvl for i in items)}
+
+
+def confidence(items):
+    """Mean grade of the applicable items (VERIFIED 1, ACCEPTED 0.5, MISSING 0) as a percentage; None without items."""
+    return round(sum(GRADE[i['grade']] for i in items) / len(items) * 100) if items else None

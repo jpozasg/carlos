@@ -1,8 +1,9 @@
 """Cost calculation per listing over the ownership period (README, "Calculation"). NULL means unknown, never 0."""
 import datetime, re
 from . import config
+from . import research
 from .db import for_variant, rows, scoped
-from .ranking import QUALITY_POINTS, SEVERITY_POINTS, STATUS_POINTS
+from .ranking import SEVERITY_POINTS, STATUS_POINTS
 
 
 def occurrences(interval_km, interval_months, km, months, restarted=False):
@@ -190,12 +191,13 @@ class Knowledge:
 
 
 
-def reliability(rel_rows, checks):
+def reliability(rel_rows, checks, known=frozenset(config.RELIABILITY_PARTS)):
     """Reliability of one listing (issue #54), higher is better: each part starts at config.RELIABILITY_PART_MAX and
     loses the severity points of its config.RELIABILITY_TOP worst documented weak points; the score is the sum of the
     parts (max 36). A recall drops out when its checklist item for this listing
-    (`checks`: reliability_item_id → status) is OK or N/A. Returns (total, per-part points left, detail with the points each weak point costs); total None without
-    research or while any row has no part (unclassified rows are never guessed into a part)."""
+    (`checks`: reliability_item_id → status) is OK or N/A. Returns (total, per-part points left, detail with the points each weak point costs); total None
+    while any row has no part (unclassified rows are never guessed into a part). A part outside `known`
+    (its required source checks are missing, issue #114) is None, and so is the total: never full points by default."""
     detail = []
     for r in sorted(rel_rows, key=lambda r: r['id']):
         check = checks.get(r['id'])
@@ -208,21 +210,10 @@ def reliability(rel_rows, checks):
         top = sorted((d for d in detail if d['part'] == part and not d['excluded']), key=lambda d: -d['points'])[:config.RELIABILITY_TOP]
         for d in top:
             d['counted'] = True
-        parts[part] = config.RELIABILITY_PART_MAX - sum(d['points'] for d in top)
-    total = None if not detail or any(d['part'] is None for d in detail) else sum(parts.values())
+        parts[part] = config.RELIABILITY_PART_MAX - sum(d['points'] for d in top) if part in known else None
+    # with the source checks recorded, a part without weak points is clean (9), not unresearched (issue #114)
+    total = None if any(d['part'] is None for d in detail) or None in parts.values() else sum(parts.values())
     return total, parts, detail
-
-
-def evidence(rows_, sources):
-    """Evidence quality of data rows (status and source quality), for the confidence criterion."""
-    out = []
-    for r in rows_:
-        if r is None:
-            continue
-        q = sources.get(r.get('source_id'), {}).get('quality')
-        out.append({'table': r.get('_table'), 'id': r['id'], 'status': r.get('status') or r.get('premium_status'),
-                    'quality': q, 'points': round((STATUS_POINTS.get(r.get('status') or r.get('premium_status'), 0) + QUALITY_POINTS.get(q, 0.3)) / 2, 2)})
-    return out
 
 
 def tco_rows(c, p):
@@ -251,7 +242,8 @@ def tco_rows(c, p):
     for r in c.execute('SELECT listing_id, captured_at, price_eur FROM listing_snapshots WHERE price_eur IS NOT NULL ORDER BY captured_at, id'):
         prices.setdefault(r['listing_id'], []).append({'date': r['captured_at'][:10], 'price_eur': r['price_eur']})
     today, limits = datetime.date.today(), budget(p)
-    sources = {s['id']: s for s in rows(c, 'SELECT id, quality FROM sources')}
+    contract = research.Contract(c, know)
+    captured = {r[0] for r in c.execute('SELECT DISTINCT listing_id FROM listing_snapshots')}
     units = rows(c, UNITS_SQL)
     ref = next((u for u in units if u['is_reference']), None)
     ref_sale = vals.get(ref['id'], {}).get('sale_today') if ref else None
@@ -304,13 +296,13 @@ def tco_rows(c, p):
                                  and u['price_eur'] is not None else None))
         age = age_years(u['first_registration'], today)
         counts = u['inspection_counts']
-        tagged = lambda table, rs: [{**r, '_table': table} for r in rs if r is not None]
-        ev = evidence(tagged('observations', [cons]) + tagged('insurance_data', [ins_row]) + tagged('tax_data', [tax_row]) +
-                      tagged('maintenance_items', [i for i in know.of('maintenance_items', v) if i['active'] and i['schedule'] == 'ITEM']) +
-                      tagged('repair_risks', know.of('repair_risks', v)) + tagged('tyre_data', [know.tyres(v)]) +
-                      tagged('valuations', [x for x in vals.get(u['id'], {}).values()]) + tagged('unit_costs', costs), sources)
-        u['evidence'] = ev
-        rel_total, rel_parts, u['reliability_detail'] = reliability(know.of('reliability_items', v), checks.get(u['id'], {}))
+        items = contract.resolved(v['id'])
+        rel_rows = know.of('reliability_items', v)
+        items += research.listing_items(u, {'insurance': know.of('insurance_data', v), 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
+                                            'weak_points': {r['id'] for r in rel_rows}, 'checked': set(checks.get(u['id'], {})),
+                                            'captured': u['id'] in captured}, today)
+        u['research'] = items
+        rel_total, rel_parts, u['reliability_detail'] = reliability(rel_rows, checks.get(u['id'], {}), research.known_parts(items))
         u['reliability_parts'] = rel_parts
         rc = recall_checks.get(u['id'], {})
         insp_ok, insp_problem = counts.get('OK', 0) - rc.get('OK', 0), counts.get('PROBLEM', 0) - rc.get('PROBLEM', 0)
@@ -321,7 +313,7 @@ def tco_rows(c, p):
             'reliability': rel_total,
             'inspection': insp_problem if insp_ok or insp_problem else None,
             'power': u['power_ps'],
-            'confidence': round(sum(e['points'] for e in ev) / len(ev) * 100) if ev else None,
+            'confidence': research.confidence(items),  # the contract's grades (issue #114), not the number of rows
             # informative, not ranked (they are inside cost_month)
             'price': None if u['is_reference'] else u['price_eur'],
             'km_per_year': round(u['mileage_km'] / age) if u['mileage_km'] is not None and age else None,
@@ -411,6 +403,7 @@ def listing_detail(c, listing_id, p, ranked):
              sources=rows(c, 'SELECT * FROM sources WHERE vehicle_id=? OR engine_id=? OR generation_id=? '
                              'OR id IN (SELECT source_id FROM listing_events WHERE listing_id=?) OR id=? ORDER BY id',
                           (v['id'], v['engine_id'], v['generation_id'], listing_id, u['source_id'])))
+    u['research_levels'] = research.levels(u['research'])
     months = p['ownership_years'] * 12
     restarted = frozenset(r['maintenance_item_id'] for r in u['maintenance_resets'])
     u['maintenance_plan'] = maintenance_plan(u['maintenance'], u['period_km'], months, restarted)

@@ -228,7 +228,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(a['metrics']['cash_now'], 6000 + 34 + 159)
         self.assertIsNone(ref['metrics']['cash_now'])
         self.assertTrue(0 < a['metrics']['confidence'] <= 100)
-        self.assertTrue(any(e['table'] == 'repair_risks' for e in a['evidence']))
+        self.assertEqual({i['id']: i['grade'] for i in a['research']}['eng.risks'], 'ACCEPTED')   # estimated risks, C source
         self.assertEqual(b['metrics']['inspection'], 0)
         self.assertIsNone(a['metrics']['inspection'])                 # nothing checked yet
 
@@ -401,9 +401,11 @@ class AppTest(unittest.TestCase):
         # a newer estimate does not hide a verified tax row
         self.agent('POST', 'tax_data', {'vehicle_id': V_A, 'annual_tax_eur': 120, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})
         self.assertEqual(self.units()[CAR_A]['annual_tax'], 94)
-        # the reference car's insurance evidence is the premium the cost uses (USER DATA), not the newer quote
-        ev = [e for e in self.units()[REF]['evidence'] if e['table'] == 'insurance_data']
-        self.assertEqual([e['status'] for e in ev], ['USER DATA'])
+        # the reference car's insurance is the premium the owner pays (USER DATA), not the newer quote, in the cost and
+        # in the research contract (#114 replaced the row evidence)
+        ref = self.units()[REF]
+        self.assertEqual(ref['annual_insurance'], 900)
+        self.assertEqual({i['id']: i['grade'] for i in ref['research']}['lst.insurance'], 'VERIFIED')
 
     def test_todo(self):
         d = self.agent('GET', 'todo')[1]
@@ -413,18 +415,66 @@ class AppTest(unittest.TestCase):
         self.assertNotIn('no verdict', lst[REF])
         self.assertIn('no listing capture (listing_snapshots)', lst[CAR_B])
         self.assertTrue(any(t.startswith('not checked for over') for t in lst[CAR_B]))
-        self.assertIn('tax not from the BMF Kfz-Steuer-Rechner', mod[V_B])
-        self.assertIn('annual tax missing', mod[V_B2])
-        self.assertIn('HSN/TSN missing (vehicles.hsn, vehicles.tsn)', mod[V_B2])
-        self.assertEqual(mod[V_A], [f'no weak points researched for part {x} (the same four sources as for every car)' for x in ('GEARBOX', 'ELECTRICS')])
-        old = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 800, 'quote_date': '2026-01-01', 'source_id': SRC_QUOTE}
-        self.agent('POST', 'insurance_data', old)
-        self.assertIn(f'insurance quote older than {config.QUOTE_MAX_AGE_DAYS} days: request a new quote',
-                      {x['vehicle_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['models']}[V_A])
+        self.assertIn('variant var.tax missing: annual tax from the BMF Kfz-Steuer-Rechner', mod[V_B])   # an estimate is not the calculator
+        self.assertIn('variant var.identity missing: HSN/TSN, gearbox, body, emissions class, CO2', mod[V_B2])
+        self.assertIn('variant var.gearbox missing: automatic gearbox weak points checked for this variant', mod[V_B2])
+        self.assertFalse(any('var.gearbox' in t for t in mod[V_A]))           # manual gearbox: the generation's checks suffice
+        self.assertIn('generation gen.recalls missing: recall search (KBA / manufacturer)', mod[V_A])
+        self.assertEqual({x['vehicle_id']: x['state'] for x in d['models']}[V_A], 'incomplete')
+        self.assertEqual(set(d['catalogue']), {'generations', 'engines', 'variants'})
+        e_a = {x['id']: x for x in d['catalogue']['engines']}[E_A]
+        self.assertIn('eng.coolant', e_a['missing'])
+        self.assertIn('eng.oil', e_a['accepted'])                               # a DIY price from a C source
+        self.assertNotIn('items', e_a)
+        # an expired quote is the listing's own research item
+        self.agent('PATCH', 'insurance_data/1', {'quote_date': '2026-01-01'})
+        self.assertIn(f'listing lst.insurance missing: an insurance quote younger than {config.QUOTE_MAX_AGE_DAYS} days',
+                      {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[CAR_A])
         self.agent('PATCH', f'listings/{CAR_A}', {'verdict': 'Strong candidate'})
         self.assertNotIn('no verdict', {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[CAR_A])
         self.agent('PATCH', f'listings/{CAR_B}', {'listing_status': 'WITHDRAWN'})
         self.assertNotIn(CAR_B, {x['listing_id'] for x in self.agent('GET', 'todo')[1]['listings']})
+
+    def test_research_contract(self):
+        from unittest import mock
+        from carlos import research
+        lvl = lambda: {x['id']: x for x in self.agent('GET', 'todo')[1]['catalogue']['engines']}[E_A]
+        # a check that consulted a source and found nothing satisfies an item (a C source: ACCEPTED, not VERIFIED)
+        st, _ = self.agent('POST', 'research_checks', {'engine_id': E_A, 'task': 'eng.coolant', 'result': 'NONE FOUND', 'source_id': SRC_GUIDE})
+        self.assertEqual(st, 201)
+        self.assertIn('eng.coolant', lvl()['accepted'])
+        bad = {'engine_id': E_A, 'task': 'eng.nonsense', 'result': 'FOUND', 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'research_checks', bad)[0], 400)
+        self.assertEqual(self.agent('POST', 'research_checks', {**bad, 'task': 'eng.coolant', 'result': 'MAYBE'})[0], 400)
+        # raising an item's `since` makes checks recorded against the older contract stop counting
+        bumped = [i[:-1] + (2,) if i[0] == 'eng.coolant' else i for i in research.ITEMS]
+        with mock.patch.object(research, 'ITEMS', bumped):
+            self.assertIn('eng.coolant', lvl()['missing'])
+        # a part without its required source checks is unknown: reliability unknown, never full points or 0
+        a = self.units()[CAR_A]
+        self.assertEqual(a['metrics']['reliability'], 33.5)
+        conf = a['metrics']['confidence']
+        self.assertEqual(conf, research.confidence(a['research']))
+        c = sqlite3.connect(config.DB)
+        check = c.execute('SELECT id FROM research_checks WHERE generation_id=? AND task=?', (G1, 'rel.CHASSIS.adac')).fetchone()[0]
+        c.close()
+        self.assertEqual(self.agent('PATCH', f'research_checks/{check}', {'archived': 1})[0], 200)
+        a = self.units()[CAR_A]
+        self.assertIsNone(a['metrics']['reliability'])
+        self.assertIsNone(a['reliability_parts']['CHASSIS'])
+        self.assertEqual(a['reliability_parts']['ENGINE'], 7)
+        self.assertLess(a['metrics']['confidence'], conf)                       # one required item fewer done
+        # every contract item is documented in the protocol, so code and docs stay in step
+        doc = (config.ROOT / 'docs' / 'cost-research-protocol.md').read_text()
+        self.assertEqual([i[0] for i in research.ITEMS if not i[0].startswith('rel.') and f'`{i[0]}`' not in doc], [])
+        self.assertIn('`rel.<PART>.<source>`', doc)
+        # the schema publishes the contract
+        sch = self.agent('GET', 'schema')[1]
+        self.assertEqual(sch['research_contract']['version'], research.CONTRACT_VERSION)
+        self.assertIn('rel.ENGINE.engine_specific', {i['id'] for i in sch['research_contract']['items']})
+        # the models API and the dossier carry the state per level
+        self.assertIn(self.req('GET', f'/api/vehicles/{V_A}')[1]['research']['engine']['state'], ('incomplete', 'researched', 'verified'))
+        self.assertIn('listing', self.req('GET', f'/api/listings/{CAR_A}')[1]['research_levels'])
 
     def test_price_history_and_todo_mismatch(self):
         u = self.units()[CAR_A]
@@ -529,7 +579,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual((parts['ELECTRICS'], total, next(d for d in det if d['id'] == 5)['excluded']), (9, 28.5, 'recall_checked'))
         self.assertEqual(costs.reliability(rows, {5: 'PROBLEM'})[0], 27)           # still open: counts
         self.assertIsNone(costs.reliability(rows + [dict(id=9, component='x', severity='LOW', part=None, is_recall=0, source_id=1)], {})[0])
-        self.assertEqual(costs.reliability([], {})[0], None)
+        self.assertEqual(costs.reliability([], {})[0], 36)                     # every source checked, nothing found: clean (#114)
+        self.assertEqual(costs.reliability([], {}, known={'ENGINE'})[:2], (None, {'ENGINE': 9, 'GEARBOX': None, 'CHASSIS': None, 'ELECTRICS': None}))
         # API: part is required; a recall gets its own linked check, which decides whether it counts and stays out of inspection
         self.assertEqual(self.agent('POST', 'reliability_items', {'engine_id': E_A, 'component': 'Injector', 'severity': 'LOW', 'source_id': SRC_GUIDE})[0], 400)
         self.assertEqual(self.agent('POST', 'reliability_items', {'engine_id': E_A, 'component': 'Injector', 'severity': 'LOW', 'part': 'MOTOR', 'source_id': SRC_GUIDE})[0], 400)

@@ -166,6 +166,14 @@ def reliability(v, component, issue, evidence, severity, source_id, inspection_a
                                       'inspection_action': inspection_action, 'part': part, 'is_recall': 1 if recall else 0})
 
 
+def check(level, level_id, task, source_id, result, notes=None):
+    """Record a research task of the contract as done on one level (issue #114): `task` is a contract item id such as
+    'rel.ENGINE.adac' or 'gen.recalls' (GET /api/agent/schema → research_contract), result FOUND, NONE FOUND
+    ('consulted, nothing to report': a clean part counts as researched) or N/A (e.g. gen.facelift without a facelift)."""
+    return post('research_checks', {LEVEL_COLUMNS[level]: level_id, 'task': task, 'source_id': source_id, 'result': result,
+                                    'checked_date': DAY, 'notes': notes})
+
+
 def checklist_from_reliability(listing_id):
     """One checklist item per weak point of the model, linked by reliability_item_id (capture_listing does this at
     capture time). A recall gets its own item naming the recall, because its result decides whether it counts."""

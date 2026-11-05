@@ -45,6 +45,16 @@ export function statusTags(u) {
   if (u.listing_status === 'WITHDRAWN') tags.push(`<span class="tag">${esc(tv('WITHDRAWN'))}</span>`);
   return tags;
 }
+// the research contract per level (issue #114): state, what is missing and what is only estimated; item titles are
+// English agent texts (lang="en"), like the to-do
+const RS = { verified: 'good', researched: '', incomplete: 'warn' };
+export function researchLevels(levels) {
+  const rows = Object.entries(levels || {}).map(([lvl, x]) => {
+    const open = x.items.filter(i => i.grade !== 'VERIFIED');
+    return `<li>${lvlTag(lvl)} <span class="tag ${RS[x.state]}">${t('rs_' + x.state)}</span>${x.missing.length ? ` <span class="small">${t('rs_missing', { n: x.missing.length })}</span>` : ''}${x.accepted.length ? ` <span class="small muted">· ${t('rs_accepted', { n: x.accepted.length })}</span>` : ''}
+      ${open.length ? `<details class="small"><summary style="cursor:pointer">${open.length}</summary><ul lang="en" style="margin:4px 0 0;padding-left:18px">${open.map(i => `<li>${i.grade === 'MISSING' ? '✗' : '½'} <code>${esc(i.id)}</code> ${esc(i.title)}${i.hint ? ` <span class="tag warn">${t('rs_move')}</span>` : ''}</li>`).join('')}</ul></details>` : ''}</li>`; }).join('');
+  return rows ? `<ul class="rs-levels">${rows}</ul>` : '';
+}
 export function gaps(items) {
   if (!items || !items.length) return `<p class="small" style="margin:10px 0 0"><span class="tag good">✓ ${t('no_gaps')}</span></p>`;
   return `<details style="margin-top:10px"><summary class="small" style="cursor:pointer"><span class="tag warn">${t('gaps', { n: items.length })}</span></summary>

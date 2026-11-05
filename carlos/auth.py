@@ -9,7 +9,7 @@ LOGIN_MAX_FAILS, LOGIN_LOCK_SECONDS = 10, 300
 FAILS = {}  # shortcut: per-client lock in memory; resets on restart (single process)
 OWNED = ('generations', 'engines', 'vehicles', 'sources', 'listings', 'project_parameters', 'project_preferences')
 MODEL = ('generations', 'engines', 'vehicles')  # owner_id NULL = the shared catalogue (issue #109)
-_KNOW = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data')
+_KNOW = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data', 'research_checks')
 _LISTING_CHILDREN = ('valuations', 'unit_costs', 'inspection_items', 'listing_events', 'listing_snapshots', 'listing_media', 'maintenance_resets')
 # Archivable tables (issue #58): <table> shows only rows with archived=0 (every read and calculation), <table>_all
 # also the archived ones (to restore a row with PATCH archived=0). Both are filtered by account.

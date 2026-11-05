@@ -17,7 +17,7 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 
 **Do:** steps 1–9 of the protocol for this car:
 1. identification of generation, engine (aspiration, injection, timing drive) and variant (HSN/TSN);
-2. reliability items at the right level, each with its `part` (ENGINE / GEARBOX / CHASSIS / ELECTRICS: research all four) and every manufacturer recall as its own row with `recall=True`, then the checklist;
+2. reliability items at the right level, each with its `part` (ENGINE / GEARBOX / CHASSIS / ELECTRICS: research all four) and every manufacturer recall as its own row with `recall=True`, then the checklist; record every source consulted with `check(level, id, task, source_id, result)` (`rel.<PART>.<source>`, `gen.recalls`, `gen.facelift`, …), `NONE FOUND` when it lists nothing;
 3. autokostencheck consumption of the exact variant;
 4. item maintenance schedule at the right level, with HU;
 5. repair risks at the right level for the window {MILEAGE_KM} → {MILEAGE_KM} + {PERIOD_KM} km;
@@ -36,7 +36,7 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 - Every repair risk gets a price: when no price is found, estimate parts and labour (status `ESTIMATED`, say how). Never store a risk without a price.
 - Same sources and depth as for every other car (protocol step 2); severity, status and quality by the rules in `docs/ranking.md`.
 - If a write fails, read the API error, fix the row and retry once. Never use SQLite directly.
-- **Reliability:** research all four parts (ENGINE, GEARBOX, CHASSIS, ELECTRICS) with the same four sources; each part starts at 9 and loses the points of its 3 worst weak points, and a part without rows keeps its full 9, so an unresearched part flatters the car. Every manufacturer recall is its own row (`recall=True`); never bundle several recalls in one row.
+- **Reliability:** research all four parts (ENGINE, GEARBOX, CHASSIS, ELECTRICS) with the same four sources; each part starts at 9 and loses the points of its 3 worst weak points; a part counts only with all its source checks recorded (`check(..., "rel.<PART>.<source>", ..., "FOUND" | "NONE FOUND")`), otherwise reliability is unknown. Done means the variant's `state` in `todo(vehicle_id=V)` is `researched` (docs/cost-research-protocol.md, "The research contract"). Every manufacturer recall is its own row (`recall=True`); never bundle several recalls in one row.
 - **Risk windows:** follow the window rule in protocol step 5: this car's ownership window for variant rows, a generic window with the probability for that whole window for engine and generation rows that other listings inherit.
 - **Certain costs:** a scheduled job due at purchase is `certain(L, 'maintenance', ...)` plus `restart(..., 'CERTAIN REPAIR', unit_cost_id=...)`, never `repairs`; apply the service-book rule in protocol step 6 (a generic "Scheckheftgepflegt" does not cover the timing belt, coolant, brake fluid or spark plugs).
 - **Consumption:** only the reported average with its number of reports; if the page shows only the stored "Praxisverbrauch" (the average is rendered by JavaScript), write no consumption and report the URL.

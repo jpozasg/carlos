@@ -73,6 +73,7 @@ select.inline{padding:6px 10px;border:var(--border-w) solid var(--border-strong)
 .tag.ref{background:var(--accent-soft);color:var(--accent-ink)}.tag.good{background:var(--good-soft);color:var(--good-ink)}.tag.warn{background:var(--warn-soft);color:var(--warn-ink)}.tag.bad{background:var(--bad-soft);color:var(--bad-ink)}
 .tag.lvl{background:transparent;border-color:var(--border-strong);color:var(--text-2)}
 .tags{display:flex;flex-wrap:wrap;gap:4px}
+.rs-levels{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}.rs-levels>li{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.rs-levels details{flex-basis:100%}.rs-levels code{font-size:11px}
 .q{display:inline-grid;place-items:center;min-width:24px;height:22px;border-radius:var(--radius-s);font-size:12px;font-weight:700;flex:none}
 .q.A{background:var(--good-soft);color:var(--good-ink)}.q.B{background:var(--accent-soft);color:var(--accent-ink)}.q.C{background:var(--warn-soft);color:var(--warn-ink)}.q.D{background:var(--bad-soft);color:var(--bad-ink)}.q.X{background:var(--surface-2);color:var(--text-3)}
 .meter{height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden}

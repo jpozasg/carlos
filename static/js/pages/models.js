@@ -3,7 +3,7 @@
 import { S, go } from '../app.js';
 import { get } from '../api.js';
 import { t, tv } from '../i18n.js';
-import { esc, num, PEND, eP, euro, empty, facts, gaps, lvlTag, qTag, sevTag, intervalTxt, safeUrl, store, modelsHref, carLabel } from '../ui.js';
+import { esc, num, PEND, eP, euro, empty, facts, gaps, lvlTag, qTag, sevTag, intervalTxt, safeUrl, store, modelsHref, carLabel, researchLevels } from '../ui.js';
 
 let root, filters = store.get('mfilters', { make: '', model: '', engine: '', transmission: '', fuel: '' });
 const vlist = tree => tree.makes.flatMap(mk => mk.models.flatMap(md => md.generations.flatMap(g => g.engines.flatMap(e => e.variants.map(v => ({ v, mk, md, g, e }))))));
@@ -45,6 +45,7 @@ async function variant(id) {
   const vname = i => { const x = vlist(S.models).find(x => x.v.id === i); return x ? esc(`${x.mk.make} ${x.md.model} ${x.v.trim ?? ''} ${x.e.code}`.trim()) : '#' + i; };
   root.innerHTML = `<p class="small"><a href="#/models">${t('models_title')}</a></p><div class="section"><h2><a class="carlink" href="${modelsHref({ make: v.make, model: v.model })}">${esc(v.make)} ${esc(v.model)}</a> ${esc(v.trim ?? '')}</h2><p class="lead"><a href="${modelsHref({ make: v.make, model: v.model })}">${esc(v.generation)}</a> · <a href="${modelsHref({ engine: v.engine_code })}">${esc(v.engine_code)}</a> · ${esc(v.transmission ?? '')}</p>
     <div class="grid">
+      <div class="card span2"><h3>${t('research_title')}</h3><p class="small muted" style="margin:0">${t('research_lead')}</p>${researchLevels(v.research)}</div>
       <div class="card"><h3>${t('variant')} ${lvlTag('variant')}</h3>${facts([[t('gearbox'), v.transmission ? esc(v.transmission) : PEND()], [t('body'), v.body_style ? esc(v.body_style) : PEND()], ['HSN/TSN', v.hsn ? `${esc(v.hsn)} / ${esc(v.tsn ?? '?')}` : PEND()], [t('emissions'), v.emissions_standard ? esc(v.emissions_standard) : PEND()], ['CO₂', v.co2_g_km ? num(v.co2_g_km, 0) + ' g/km' : PEND()], [t('status'), `<span class="tag">${esc(tv(v.technical_status) ?? '—')}</span>`], [t('notes'), v.vehicle_notes ? esc(v.vehicle_notes) : '—']])}${gaps(S.todo.models.find(m => m.vehicle_id === v.id)?.todo)}
         <p class="small" style="margin:10px 0 0"><b>${t('listings')}:</b> ${v.listings.map(l => { const u = S.units.find(x => x.id === l.id); return `<a href="#/listing/${l.id}">${u ? carLabel(u) : ''} ${l.is_reference ? t('reference') : esc(l.listing_id ?? '#' + l.id)}</a>`; }).join(', ') || t('no_listings')}</p></div>
       <div class="card"><h3>${t('engine')} ${lvlTag('engine')}</h3>${facts([[t('code'), esc(v.engine_row.code)], [t('description'), esc(v.engine_row.description ?? '') || PEND()], [t('fuel_type'), v.engine_row.fuel_type ? esc(tv(v.engine_row.fuel_type)) : PEND()], [t('displacement'), v.engine_row.displacement_cc ? num(v.engine_row.displacement_cc, 0) + ' cm³' : PEND()], [t('power'), v.engine_row.power_ps ? num(v.engine_row.power_ps, 0) + ' PS' : PEND()], [t('aspiration'), v.engine_row.aspiration ? esc(tv(v.engine_row.aspiration)) : PEND()], [t('injection'), v.engine_row.injection ? esc(tv(v.engine_row.injection)) : PEND()], [t('timing_drive'), v.engine_row.timing_drive ? esc(tv(v.engine_row.timing_drive)) : PEND()], [t('notes'), v.engine_row.notes ? esc(v.engine_row.notes) : '—']])}
