@@ -54,7 +54,7 @@ function relBox(d) {
     return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter rb-${relBand(v)}" role="img" aria-label="${esc(t('part_' + k))} ${num(v, 1)} / 9"><i style="width:${Math.max(2, v / 9 * 100)}%"></i></span><span class="rb-val num">${num(v, 1)}</span>`; }).join('')}</div></div>`;
 }
 // the cost per month, the other key figure, as a strip at the top of the plate (issue #80)
-const costStrip = d => `<div class="plate-cost"><span>${t('plate_cost')}</span><b>${d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month) + t('per_month')}</b></div>`;
+const costStrip = d => `<div class="plate-cost"><span>${t('plate_cost')}</span><b>${d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month)}</b></div>`;  // the label says per month
 function plate(d) {
   const row = (k, v, cls = '') => `<dt class="${cls}">${k}</dt><dd class="${cls}">${v}</dd>`;
   return `<aside class="plate"><span class="rv"></span><h3>${t('plate_title')}</h3>${costStrip(d)}<dl>
