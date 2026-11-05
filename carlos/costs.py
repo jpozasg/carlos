@@ -188,22 +188,28 @@ class Knowledge:
         rows_ = self.of('tyre_data', v)
         return max(rows_, key=lambda r: r['id']) if rows_ else None  # the latest tyre row wins
 
-    def reliability_points(self, v):
-        """Severity points of the documented watch points (not proven defects); None without research."""
-        rel = self.of('reliability_items', v)
-        return sum(SEVERITY_POINTS.get(r['severity'], 0) for r in rel) if rel else None
-
-    def reliability_detail(self, v):
-        return [{'id': r['id'], 'component': r['component'], 'severity': r['severity'], 'points': SEVERITY_POINTS.get(r['severity'], 0),
-                 'level': r['level'], 'source_id': r['source_id']} for r in self.of('reliability_items', v)]
 
 
-def simplicity(u):
-    """Mechanical simplicity 0–4 from engine and variant data; None while any of the four fields is unknown."""
-    if None in (u['aspiration'], u['injection'], u['timing_drive'], u['transmission']):
-        return None
-    return ((u['aspiration'] == 'NATURALLY ASPIRATED') + (u['injection'] in ('PORT', 'CARBURETTOR'))
-            + {'CHAIN': 1, 'GEAR': 1, 'BELT': 0.5}.get(u['timing_drive'], 0) + (u['transmission'].lower().startswith('manual')))
+def reliability(rel_rows, checks):
+    """Reliability of one listing (issue #54): severity points of the documented weak points, per part the
+    config.RELIABILITY_TOP worst ones, summed over the parts. A recall drops out when its checklist item for this listing
+    (`checks`: reliability_item_id → status) is OK or N/A. Returns (total, per-part points, detail); total None without
+    research or while any row has no part (unclassified rows are never guessed into a part)."""
+    detail = []
+    for r in sorted(rel_rows, key=lambda r: r['id']):
+        check = checks.get(r['id'])
+        detail.append({'id': r['id'], 'component': r['component'], 'severity': r['severity'], 'part': r.get('part'),
+                       'is_recall': bool(r.get('is_recall')), 'check': check, 'level': r.get('level'), 'source_id': r['source_id'],
+                       'points': SEVERITY_POINTS.get(r['severity'], 0), 'counted': False,
+                       'excluded': 'recall_checked' if r.get('is_recall') and check in ('OK', 'N/A') else None})
+    parts = {}
+    for part in config.RELIABILITY_PARTS:
+        top = sorted((d for d in detail if d['part'] == part and not d['excluded']), key=lambda d: -d['points'])[:config.RELIABILITY_TOP]
+        for d in top:
+            d['counted'] = True
+        parts[part] = sum(d['points'] for d in top)
+    total = None if not detail or any(d['part'] is None for d in detail) else sum(parts.values())
+    return total, parts, detail
 
 
 def evidence(rows_, sources):
@@ -230,6 +236,15 @@ def tco_rows(c, p):
         by_listing.setdefault(uc['listing_id'], []).append(uc)
     for r in c.execute('SELECT listing_id, status, count(*) n FROM inspection_items GROUP BY listing_id, status'):
         insp.setdefault(r['listing_id'], {})[r['status']] = r['n']
+    # checklist items linked to a weak point: a recall's check decides whether it counts in reliability, and recall
+    # checks stay out of the inspection criterion so an open recall is not counted twice
+    recall_ids = {r['id'] for r in know.t['reliability_items'] if r.get('is_recall')}
+    checks, recall_checks = {}, {}
+    for r in c.execute('SELECT listing_id, reliability_item_id, status FROM inspection_items WHERE reliability_item_id IS NOT NULL'):
+        checks.setdefault(r['listing_id'], {})[r['reliability_item_id']] = r['status']
+        if r['reliability_item_id'] in recall_ids:
+            recall_checks.setdefault(r['listing_id'], {}).setdefault(r['status'], 0)
+            recall_checks[r['listing_id']][r['status']] += 1
     for m in c.execute('SELECT listing_id, file_path FROM listing_media ORDER BY id'):  # the first upload is the cover
         photos.setdefault(m['listing_id'], []).append(m['file_path'])
     for r in c.execute('SELECT listing_id, captured_at, price_eur FROM listing_snapshots WHERE price_eur IS NOT NULL ORDER BY captured_at, id'):
@@ -296,14 +311,17 @@ def tco_rows(c, p):
                       tagged('repair_risks', know.of('repair_risks', v)) + tagged('tyre_data', [know.tyres(v)]) +
                       tagged('valuations', [x for x in vals.get(u['id'], {}).values()]) + tagged('unit_costs', costs), sources)
         u['evidence'] = ev
-        u['reliability_detail'] = know.reliability_detail(v)
+        rel_total, rel_parts, u['reliability_detail'] = reliability(know.of('reliability_items', v), checks.get(u['id'], {}))
+        u['reliability_parts'] = rel_parts
+        rc = recall_checks.get(u['id'], {})
+        insp_ok, insp_problem = counts.get('OK', 0) - rc.get('OK', 0), counts.get('PROBLEM', 0) - rc.get('PROBLEM', 0)
         u['metrics'] = {
             'cost_month': u['known_cost_per_month'] if complete else None,
             'cash_now': None if u['is_reference'] or u['price_eur'] is None or unit_cost['purchase_sale'] is None else u['price_eur'] + unit_cost['purchase_sale'],
             'mileage': u['mileage_km'], 'age': age,
-            'reliability': know.reliability_points(v),
-            'inspection': counts.get('PROBLEM', 0) if counts.get('OK') or counts.get('PROBLEM') else None,
-            'power': u['power_ps'], 'simplicity': simplicity(u),
+            'reliability': rel_total,
+            'inspection': insp_problem if insp_ok or insp_problem else None,
+            'power': u['power_ps'],
             'confidence': round(sum(e['points'] for e in ev) / len(ev) * 100) if ev else None,
             # informative, not ranked (they are inside cost_month)
             'price': None if u['is_reference'] else u['price_eur'],

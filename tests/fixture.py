@@ -100,9 +100,9 @@ ROWS = {
         dict(generation_id=G2, tyre_type='ALL-SEASON', size='185/60 R15', price_per_tyre_eur=75, tyres_per_set=4, life_km=45000, fitting_per_set_eur=125, status='ESTIMATED', source_id=SRC_GUIDE),
     ],
     'reliability_items': [
-        dict(engine_id=E_A, component='Timing chain', issue='Rattle on cold start', evidence='Owner reports', severity='MEDIUM', frequency_status='DOCUMENTED FOR ENGINE', source_id=SRC_GUIDE, inspection_action='Cold start: listen for chain rattle for 5 s'),
-        dict(generation_id=G1, component='Body', issue='Rust at the tailgate seam', evidence='TÜV report', severity='LOW', frequency_status='DOCUMENTED FOR MODEL', source_id=SRC_GUIDE, inspection_action='Check the tailgate seam for rust'),
-        dict(engine_id=E_B, component='Timing belt', issue='Belt degrades early', evidence='Recall', severity='HIGH', frequency_status='DOCUMENTED FOR ENGINE', source_id=SRC_GUIDE, inspection_action='Ask for the timing belt invoice'),
+        dict(engine_id=E_A, component='Timing chain', part='ENGINE', issue='Rattle on cold start', evidence='Owner reports', severity='MEDIUM', frequency_status='DOCUMENTED FOR ENGINE', source_id=SRC_GUIDE, inspection_action='Cold start: listen for chain rattle for 5 s'),
+        dict(generation_id=G1, component='Body', part='CHASSIS', issue='Rust at the tailgate seam', evidence='TÜV report', severity='LOW', frequency_status='DOCUMENTED FOR MODEL', source_id=SRC_GUIDE, inspection_action='Check the tailgate seam for rust'),
+        dict(engine_id=E_B, component='Timing belt', part='ENGINE', issue='Belt degrades early', evidence='Recall', severity='HIGH', frequency_status='DOCUMENTED FOR ENGINE', source_id=SRC_GUIDE, inspection_action='Ask for the timing belt invoice'),
     ],
     'valuations': [
         dict(listing_id=REF, kind='sale_today', expected_eur=2500, status='ESTIMATED', valued_date=TODAY, source_id=SRC_GUIDE),

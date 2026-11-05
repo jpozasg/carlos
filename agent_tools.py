@@ -14,7 +14,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from capture_listing import Api, load_token  # noqa: E402
+from capture_listing import Api, checklist_items, load_token  # noqa: E402
 
 API_BASE = os.environ.get('CAR_API', 'http://127.0.0.1:8000')
 api = Api(API_BASE, load_token())
@@ -142,26 +142,26 @@ def consumption(v, value, n, lo, hi, source_id, notes='', level='variant'):
                                  'notes': ('Primary consumption figure (same source for all cars, user decision 2026-11-03). ' + notes).strip()})
 
 
-def reliability(v, component, issue, evidence, severity, source_id, inspection_action, frequency_status='PENDING', level='variant'):
+def reliability(v, component, issue, evidence, severity, source_id, inspection_action, frequency_status='PENDING',
+                level='variant', *, part, recall=False):
     """Known weak point; inspection_action becomes a checklist item for every listing of the model. Engine faults go
-    on the engine (level='engine'), body/chassis faults on the generation, variant-only quirks on the variant."""
+    on the engine (level='engine'), body/chassis faults on the generation, variant-only quirks on the variant.
+    part (required): ENGINE (incl. intake, cooling, turbo, injection, timing drive, emissions), GEARBOX (gearbox,
+    clutch, driveshafts), CHASSIS (suspension, steering, brakes, body, rust, exhaust pipes) or ELECTRICS. Each part
+    counts its 3 worst points. recall=True for a manufacturer recall: it counts until its checklist item is OK or N/A."""
     return post('reliability_items', {**scope(v, level), 'component': component, 'issue': issue, 'evidence': evidence,
                                       'severity': severity, 'frequency_status': frequency_status, 'source_id': source_id,
-                                      'inspection_action': inspection_action})
+                                      'inspection_action': inspection_action, 'part': part, 'is_recall': 1 if recall else 0})
 
 
 def checklist_from_reliability(listing_id):
-    """Add missing checklist items from the model's reliability_items (capture_listing does this only at capture time)."""
+    """One checklist item per weak point of the model, linked by reliability_item_id (capture_listing does this at
+    capture time). A recall gets its own item naming the recall, because its result decides whether it counts."""
     u = listing(listing_id)
-    have = {i['item'] for i in u.get('inspection', [])}
     added = 0
-    for r in u.get('reliability', []):
-        text = r.get('inspection_action')
-        if text and text not in have:
-            post('inspection_items', {'listing_id': listing_id, 'item': text, 'status': 'PENDING',
-                                      'notes': f"From reliability item: {r.get('component')}"})
-            have.add(text)
-            added += 1
+    for item, rel_id in checklist_items(u.get('reliability', []), u.get('inspection', [])):
+        post('inspection_items', {'listing_id': listing_id, 'item': item, 'status': 'PENDING', 'reliability_item_id': rel_id})
+        added += 1
     return added
 
 

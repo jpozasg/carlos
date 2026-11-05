@@ -21,7 +21,7 @@ Carlos is a small self-hosted web app for people choosing a used car on the Germ
 | Page | What it does |
 |---|---|
 | **Compare** | Overview table (rank, score, price, km, age, cost per month, total, difference against your car, warnings), cost composition bars with selectable components, break-even chart "keep your car or switch", detail table of every figure, photo cards. Sort, filter by budget or withdrawn, select the cars, export CSV. |
-| **Ranking** | Eight questions in plain language set the weights; sliders can still override them. The ranked list shows how much each criterion contributed; the formula and every criterion's basis are on the page. |
+| **Ranking** | Fourteen quick choices between four cars set the weights of eight criteria; sliders can still override them. Reliability is the sum of four parts (engine, gearbox & clutch, chassis & brakes, electrics), each counting its 3 worst known weak points; a recall counts until the viewing checklist shows it was done. The ranked list shows how much each criterion contributed; the formula and every criterion's basis are on the page. |
 | **Dossier** (click a car) | Photos, listing facts and seller claims, the ranking explanation with the evidence behind it, the maintenance plan and repair risks (each row tagged with the level it comes from: variant, engine or generation), checklist, valuations, own costs, watch points, listing archive, log, sources. *Viewing mode* on a phone: tick the checklist, add notes and photos while looking at the car. |
 | **Models** | Make → model → generation → engine → variant with filters; each variant shows its listings and inherits the rows of its engine and generation. |
 | **Sources** | Every source with its quality A–D, what it supports and its limitations. |

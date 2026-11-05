@@ -17,7 +17,7 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 
 **Do:** steps 1–9 of the protocol for this car:
 1. identification of generation, engine (aspiration, injection, timing drive) and variant (HSN/TSN);
-2. reliability items at the right level, then the checklist;
+2. reliability items at the right level, each with its `part` (ENGINE / GEARBOX / CHASSIS / ELECTRICS: research all four) and every manufacturer recall as its own row with `recall=True`, then the checklist;
 3. autokostencheck consumption of the exact variant;
 4. item maintenance schedule at the right level, with HU;
 5. repair risks at the right level for the window {MILEAGE_KM} → {MILEAGE_KM} + {PERIOD_KM} km;

@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=16). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=17). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -59,7 +59,7 @@ CREATE TABLE "inspection_items" (
  item TEXT NOT NULL,
  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'OK', 'PROBLEM', 'N/A')),
  checked_date TEXT, notes TEXT
-);
+, reliability_item_id INTEGER REFERENCES reliability_items(id));
 CREATE TABLE maintenance_resets (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -164,7 +164,7 @@ CREATE TABLE "reliability_items" (
  engine_id INTEGER REFERENCES engines(id),
  generation_id INTEGER REFERENCES generations(id),
  component TEXT NOT NULL, issue TEXT, evidence TEXT, severity TEXT,
- frequency_status TEXT, source_id INTEGER, inspection_action TEXT,
+ frequency_status TEXT, source_id INTEGER, inspection_action TEXT, part TEXT CHECK (part IN ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')), is_recall INTEGER NOT NULL DEFAULT 0 CHECK (is_recall IN (0, 1)),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "repair_risks" (

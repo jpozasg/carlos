@@ -130,6 +130,24 @@ def read_photo(photo, base_dir):
     return body, mime
 
 
+def checklist_items(reliability_rows, existing):
+    """(item text, reliability_item_id) for the weak points that have no checklist item yet. One item per weak point,
+    keyed by reliability_item_id; a recall's item names the recall so each recall has its own check (issue #54)."""
+    linked = {i.get('reliability_item_id') for i in existing}
+    texts = {i['item'] for i in existing}
+    out = []
+    for r in sorted(reliability_rows, key=lambda r: r['id']):
+        action = (r.get('inspection_action') or '').strip()
+        if not action or r['id'] in linked:
+            continue
+        text = f"Recall: {r['component']} — {action}" if r.get('is_recall') else action
+        if text in texts and not r.get('is_recall'):
+            continue  # the same check already on the list for another weak point
+        out.append((text, r['id']))
+        texts.add(text)
+    return out
+
+
 def fmt(v, unit):
     return 'unknown' if v is None else f'{v:g} {unit}'
 
@@ -188,9 +206,10 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
 
     # checklist from the model's reliability items (new listings only; re-captures keep the user's ticks)
     if existing is None:
-        actions = [] if dry_run else [r['inspection_action'] for r in api.call('GET', f'/api/listings/{lid}')['reliability']]
-        for item in dict.fromkeys(a.strip() for a in actions if a and a.strip()):
-            write('POST', '/api/agent/inspection_items', {'listing_id': lid, 'item': item, 'status': 'PENDING'}, 'checklist item')
+        rel = [] if dry_run else api.call('GET', f'/api/listings/{lid}')['reliability']
+        for item, rel_id in checklist_items(rel, []):
+            write('POST', '/api/agent/inspection_items', {'listing_id': lid, 'item': item, 'status': 'PENDING',
+                                                          'reliability_item_id': rel_id}, 'checklist item')
         if dry_run:
             log('[dry-run] checklist items from the model reliability_items.inspection_action')
 

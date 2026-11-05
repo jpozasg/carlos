@@ -24,7 +24,7 @@ SQLite, one file (`cars.sqlite` in the data directory). `schema.sql` is the exec
 |---|---|---|
 | `maintenance_items` | a scheduled job (`schedule='ITEM'`; old `PACKAGE` rows are history, `active=0`) | `item`, `interval_km`, `interval_months`, `diy` (0/1), `diy_parts_cost_eur`, `diy_hours`, `reference_cost_eur` (workshop price of the whole job), `labor_included`, `status`, `source_id`, `notes`, `active` |
 | `repair_risks` | a failure that may happen in a km window | `component`, `km_from`, `km_to`, `probability` (0–1 over the window, with the reason in `evidence`/`notes`), `parts_eur`, `labor_eur`, `diy`, `diy_hours`, `status`, `evidence`, `source_id`, `notes` |
-| `reliability_items` | a documented watch point (not a proven defect) | `component`, `issue`, `evidence`, `severity` (HIGH / HIGH IF APPLICABLE / MEDIUM / LOW-MEDIUM / LOW), `frequency_status`, `source_id`, `inspection_action` (becomes a checklist item of every listing) |
+| `reliability_items` | a documented watch point (not a proven defect) | `component`, `issue`, `evidence`, `severity` (HIGH / HIGH IF APPLICABLE / MEDIUM / LOW-MEDIUM / LOW), `frequency_status`, `source_id`, `inspection_action` (becomes a checklist item of every listing), `part` ENGINE / GEARBOX / CHASSIS / ELECTRICS (required on insert; reliability counts the 3 worst per part), `is_recall` (a recall counts until its checklist item is OK or N/A) |
 | `observations` | a measured figure, above all consumption | `category`, `metric` (`Autokostencheck average` is the primary consumption; `Owner measured average` a cross-check), `value_num`, `value_text`, `unit`, `sample_count`, `min_value`, `max_value`, `status`, `evidence_quality`, `observed_date`, `source_id`, `notes` |
 | `tax_data` | annual road tax | `annual_tax_eur`, `status`, `basis` (every input of the calculator), `source_id`, `notes` |
 | `insurance_data` | a quote or the premium paid | `hsn`, `tsn`, `year`, the three Typklassen, `annual_premium_eur` (median of the 5 cheapest reasonable offers), `premium_min_eur`, `insurer`, `tariff`, `premium_status` (QUOTE / USER DATA / PENDING), `quote_date`, `quote_profile` (JSON, no personal data), `source_id`, `notes` |
@@ -41,7 +41,7 @@ SQLite, one file (`cars.sqlite` in the data directory). `schema.sql` is the exec
 | `valuations` | `kind` `sale_today` (reference only) or `resale_end`, `horizon_years`, `low_eur`, `expected_eur`, `high_eur`, `status`, `valued_date`, `source_id`. |
 | `unit_costs` | certain one-off costs of this car: `category` maintenance (a scheduled job due at purchase, with a CERTAIN REPAIR reset) / repairs (a present fault) / tyres / purchase_sale; `item` names the job, `item`, `parts_eur`, `labor_eur`, `diy_hours`, `status`, `source_id`. |
 | `maintenance_resets` | a scheduled job done at the start of ownership (`basis` CERTAIN REPAIR / SELLER CLAIM / DOCUMENTED): the schedule restarts for this listing. |
-| `inspection_items` | the checklist: `item`, `status` PENDING / OK / PROBLEM / N/A, `checked_date`, `notes`. |
+| `inspection_items` | the checklist: `item`, `status` PENDING / OK / PROBLEM / N/A, `checked_date`, `notes`, `reliability_item_id` (the weak point the check comes from; for a recall its result decides whether the recall counts). |
 | `listing_events` | the log, the agent's memory: `event_date`, `kind` (found, verification, correction, price, decision, user_data, warning, archive, photos, viewing), `text` (English), `source_id`. |
 | `change_log` | audit trail of every write through the API (`table_name`, `row_id`, `action`, `old_json`, `new_json`, `user_id`). |
 
@@ -50,6 +50,6 @@ SQLite, one file (`cars.sqlite` in the data directory). `schema.sql` is the exec
 - **Every external data point cites a source** (`source_id`) with URL, access date, quality A–D, what it supports and its limitations.
 - **Statuses** are English upper-case codes: `VERIFIED` (official or primary source for this engine/variant), `ESTIMATED` (derived, with the derivation in `notes`), `PENDING` (unknown; never with a number), `OBSERVED`, `USER DATA`, `QUOTE`, `OFFICIAL FEE LEVEL`, `PRIMARY`.
 - **Free text is English** (notes, log, verdicts, checklist items, descriptions of reliability items, `sources.supports`/`limitations`). Verbatim third-party content (`listing_snapshots.description`, `attributes_json`) keeps its original language.
-- **Generations always record** start and end of sale and the facelift year; **engines** record aspiration, injection and timing drive (they feed the simplicity criterion of the ranking).
+- **Generations always record** start and end of sale and the facelift year; **engines** record aspiration, injection and timing drive (they identify the engine; since issue #54 they are not scored).
 - **Never duplicate** a knowledge row on two levels. Re-scope a row with one PATCH that sets the old level column to null and the new one to the id.
 - **No DELETE** through the API: archive listings with `listing_status='WITHDRAWN'`, deactivate schedules with `active=0`, neutralise a wrong risk with `probability=0` and a note.

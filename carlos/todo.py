@@ -80,8 +80,15 @@ def todo(c, p, ranked):
                 t.append('insurance quote without quote_date')
             elif age > config.QUOTE_MAX_AGE_DAYS:
                 t.append(f'insurance quote older than {config.QUOTE_MAX_AGE_DAYS} days: request a new quote')
-        if not know.of('reliability_items', v):
+        rel = know.of('reliability_items', v)
+        if not rel:
             t.append('reliability research missing')
+        else:
+            loose = [r['id'] for r in rel if r.get('part') is None]
+            if loose:
+                t.append(f"reliability items without a part (reliability_items.part), reliability unknown: ids {loose}")
+            t += [f'no weak points researched for part {p} (the same four sources as for every car)'
+                  for p in config.RELIABILITY_PARTS if not any(r.get('part') == p for r in rel)]
         models.append({'vehicle_id': v['id'], 'engine_id': v['engine_id'], 'generation_id': v['generation_id'],
                        'name': variant_name(v), 'todo': t})
     return {'account': account_todo(c, p, today), 'listings': listings, 'models': models}

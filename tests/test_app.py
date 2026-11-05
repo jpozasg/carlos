@@ -223,7 +223,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(a['initial_outlay'], 6000 - 2500)
         self.assertEqual(a['metrics']['reliability'], 2.5)                     # MEDIUM engine item 2 + LOW generation item 0.5
         self.assertEqual(b['metrics']['reliability'], 3)                       # HIGH engine item
-        self.assertEqual((a['metrics']['simplicity'], b['metrics']['simplicity']), (4, 1.5))   # NA+port+chain+manual vs turbo+direct+belt+manual
+        self.assertEqual(a['reliability_parts'], {'ENGINE': 2, 'GEARBOX': 0, 'CHASSIS': 0.5, 'ELECTRICS': 0})
+        self.assertNotIn('simplicity', a['metrics'])                           # removed from the ranking (issue #54)
         self.assertEqual(a['metrics']['cash_now'], 6000 + 34 + 159)
         self.assertIsNone(ref['metrics']['cash_now'])
         self.assertTrue(0 < a['metrics']['confidence'] <= 100)
@@ -322,7 +323,7 @@ class AppTest(unittest.TestCase):
         self.assertIn('tax not from the BMF Kfz-Steuer-Rechner', mod[V_B])
         self.assertIn('annual tax missing', mod[V_B2])
         self.assertIn('HSN/TSN missing (vehicles.hsn, vehicles.tsn)', mod[V_B2])
-        self.assertEqual(mod[V_A], [])
+        self.assertEqual(mod[V_A], [f'no weak points researched for part {x} (the same four sources as for every car)' for x in ('GEARBOX', 'ELECTRICS')])
         old = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 800, 'quote_date': '2026-01-01', 'source_id': SRC_QUOTE}
         self.agent('POST', 'insurance_data', old)
         self.assertIn(f'insurance quote older than {config.QUOTE_MAX_AGE_DAYS} days: request a new quote',
@@ -375,9 +376,9 @@ class AppTest(unittest.TestCase):
         rows = [{'id': 1, 'is_reference': 1, 'listing_status': 'OWNED', 'metrics': m(cash_now=None, mileage=200000)},
                 {'id': 2, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'metrics': m(cash_now=5000, mileage=100000, power=90)},
                 {'id': 3, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'metrics': m(cash_now=7000, mileage=50000, power=120)},
-                {'id': 4, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'metrics': m(cash_now=6000, simplicity=3)},
+                {'id': 4, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'metrics': m(cash_now=6000, confidence=70)},
                 {'id': 5, 'is_reference': 0, 'listing_status': 'WITHDRAWN', 'metrics': m(cash_now=1, mileage=1)}]
-        w = {k: 0 for k in ranking.CRITERIA} | {'cash_now': 2, 'mileage': 1, 'power': 1, 'simplicity': 3}
+        w = {k: 0 for k in ranking.CRITERIA} | {'cash_now': 2, 'mileage': 1, 'power': 1, 'confidence': 3}
         self.assertEqual(ranking.rank(rows, w), 3)                 # reference and withdrawn are not candidates
         r = {x['id']: x for x in rows}
         self.assertEqual(r[2]['score_parts'], {'cash_now': 100, 'mileage': 0, 'power': 0})
@@ -386,7 +387,7 @@ class AppTest(unittest.TestCase):
         self.assertTrue(all(r[i]['score'] is None and r[i]['rank'] is None for i in (1, 5)))
         ex = {e['criterion']: e for e in r[4]['explain']}
         self.assertEqual((ex['cash_now']['score'], ex['cash_now']['contribution'], ex['cash_now']['bounds']), (50, 50.0, {'min': 5000, 'max': 7000, 'n': 3}))
-        self.assertEqual(ex['simplicity']['why_missing'], 'fewer than two cars with a value')
+        self.assertEqual(ex['confidence']['why_missing'], 'fewer than two cars with a value')
         self.assertEqual(ex['mileage']['why_missing'], 'no value for this car')
         self.assertEqual(ex['age']['why_missing'], 'weight 0')
 
@@ -394,31 +395,62 @@ class AppTest(unittest.TestCase):
         C, T = ranking.CRITERIA, ranking.TASKS
         self.assertEqual(set(ranking.weights_from_answers({}).values()), {ranking.NEUTRAL_WEIGHT})   # no answers: neutral
         seen = {k: sum(k in x['criteria'] for x in T) for k in C}
-        self.assertEqual(set(seen.values()), {4})                         # every criterion in exactly four tasks
+        self.assertEqual((len(C), len(T), set(len(x['criteria']) for x in T)), (8, 14, {4}))
+        self.assertEqual(set(seen.values()), {7})                         # every criterion in exactly seven tasks
         pairs = [frozenset(p) for x in T for p in __import__('itertools').combinations(x['criteria'], 2)]
-        self.assertEqual((len(pairs), len(set(pairs))), (36, 36))         # every pair of criteria meets exactly once
+        self.assertEqual((len(pairs), len(set(pairs)), set(pairs.count(x) for x in set(pairs))), (84, 28, {3}))   # every pair meets exactly three times
         always = {x['id']: f"power>{[k for k in x['criteria'] if k != 'power'][0]}" if 'power' in x['criteria'] else None for x in T}
         w = ranking.weights_from_answers({k: v for k, v in always.items() if v})
         self.assertEqual(w['power'], 5)                                   # picked first every time it was shown
         never = {x['id']: f"{x['criteria'][1] if x['criteria'][0] == 'power' else x['criteria'][0]}>power" for x in T if 'power' in x['criteria']}
         self.assertEqual(ranking.weights_from_answers(never)['power'], 1)  # picked last every time: floor 1
-        self.assertEqual(ranking.weights_from_answers({'t1': 'cost_month>power'})['age'], 3)   # middle once → neutral
-        self.assertEqual(ranking.known_answers({'cash': 'tight', 't1': 'power>age', 't2': 'power>age'}), {'t1': 'power>age'})
+        self.assertEqual(ranking.weights_from_answers({'q1': 'cost_month>power'})['mileage'], 3)   # middle once → neutral
+        self.assertEqual(ranking.known_answers({'cash': 'tight', 'q1': 'power>mileage', 'q2': 'power>age', 't1': 'power>age'}), {'q1': 'power>mileage'})   # t…: retired
         with self.assertRaises(ValueError):
-            ranking.check_answers({'t1': 'power>power'})
+            ranking.check_answers({'q1': 'power>power'})
         st, d = self.req('GET', '/api/ranking')
-        self.assertEqual((st, d['answered'], d['manual'], len(d['tasks'])), (200, False, False, 12))
-        st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'t1': 'power>cost_month'}})
+        self.assertEqual((st, d['answered'], d['manual'], len(d['tasks'])), (200, False, False, 14))
+        st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'q1': 'power>cost_month'}})
         self.assertEqual(st, 200)
         d = self.req('GET', '/api/ranking')[1]
         self.assertEqual((d['answered'], d['weights']['power'], d['weights']['cost_month'], d['weights']['age'], d['tally']['power']),
                          (True, 5, 1, 3, {'shown': 1, 'best': 1, 'worst': 0}))
-        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'t1': 'mileage>age'}})[0], 400)
+        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'q1': 'age>cash_now'}})[0], 400)
         self.req('POST', '/api/parameters', {'ranking_weights': {'power': 2}})
         d = self.req('GET', '/api/ranking')[1]
         self.assertEqual((d['manual'], d['weights']['power'], d['derived_weights']['power']), (True, 2, 5))
         self.req('POST', '/api/parameters', {'ranking_weights': None})                 # back to the answers
         self.assertEqual(self.req('GET', '/api/ranking')[1]['manual'], False)
+
+    def test_reliability_parts(self):
+        """Issue #54: each part counts its 3 worst points; a recall drops out once its check is OK; no part = unknown."""
+        rows = [dict(id=i, component=f'c{i}', severity=sev, part=part, is_recall=rec, source_id=1)
+                for i, (sev, part, rec) in enumerate([('HIGH', 'ENGINE', 0), ('MEDIUM', 'ENGINE', 0), ('MEDIUM', 'ENGINE', 0),
+                                                      ('LOW', 'ENGINE', 0), ('HIGH IF APPLICABLE', 'ELECTRICS', 1), ('LOW', 'CHASSIS', 0)], 1)]
+        total, parts, det = costs.reliability(rows, {})
+        self.assertEqual((parts, total), ({'ENGINE': 7, 'GEARBOX': 0, 'CHASSIS': 0.5, 'ELECTRICS': 1.5}, 9))   # the 4th engine point is not counted
+        self.assertFalse(next(d for d in det if d['id'] == 4)['counted'])
+        total, parts, det = costs.reliability(rows, {5: 'OK'})                     # recall checked: done
+        self.assertEqual((parts['ELECTRICS'], total, next(d for d in det if d['id'] == 5)['excluded']), (0, 7.5, 'recall_checked'))
+        self.assertEqual(costs.reliability(rows, {5: 'PROBLEM'})[0], 9)            # still open: counts
+        self.assertIsNone(costs.reliability(rows + [dict(id=9, component='x', severity='LOW', part=None, is_recall=0, source_id=1)], {})[0])
+        self.assertEqual(costs.reliability([], {})[0], None)
+        # API: part is required; a recall gets its own linked check, which decides whether it counts and stays out of inspection
+        self.assertEqual(self.agent('POST', 'reliability_items', {'engine_id': E_A, 'component': 'Injector', 'severity': 'LOW', 'source_id': SRC_GUIDE})[0], 400)
+        self.assertEqual(self.agent('POST', 'reliability_items', {'engine_id': E_A, 'component': 'Injector', 'severity': 'LOW', 'part': 'MOTOR', 'source_id': SRC_GUIDE})[0], 400)
+        st, r = self.agent('POST', 'reliability_items', {'generation_id': G1, 'component': 'Airbag recall', 'severity': 'HIGH IF APPLICABLE', 'part': 'ELECTRICS',
+                                                         'is_recall': 1, 'source_id': SRC_GUIDE, 'inspection_action': 'Dealer check by VIN'})
+        self.assertEqual(st, 201)
+        before = self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'] - 1.5   # the new recall already counts (no check yet)
+        st, i = self.agent('POST', 'inspection_items', {'listing_id': CAR_A, 'item': 'Recall: airbag', 'status': 'PENDING', 'reliability_item_id': r['id']})
+        self.assertEqual(st, 201)
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before + 1.5)   # pending: counts
+        before += 1.5
+        self.assertEqual(self.ui('PATCH', f"inspection_items/{i['id']}", {'status': 'PROBLEM'})[0], 200)
+        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertEqual((a['metrics']['reliability'], a['metrics']['inspection']), (before, None))   # open recall counts in reliability only; inspection still unchecked
+        self.ui('PATCH', f"inspection_items/{i['id']}", {'status': 'OK'})
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before - 1.5)
 
     def test_owner_decision(self):
         ls = self.req('GET', '/api/tco')[1]['listings']

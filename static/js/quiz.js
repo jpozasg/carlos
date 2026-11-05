@@ -1,4 +1,4 @@
-// The ranking questionnaire (issue #19): twelve best–worst tasks. Each task shows three cars of the same model that are
+// The ranking questionnaire (issues #19, #54): fourteen best–worst tasks. Each task shows four cars of the same model that are
 // equal except for one advantage each; the person taps the car they would buy first, then the one they would buy
 // last. Numbers are concrete and follow the account's budget and period. Used by the Ranking page and the setup
 // wizard; the scoring lives in carlos/ranking.py (TASKS, tally, weights_from_answers).
@@ -14,11 +14,11 @@ export function attributes(p = {}) {
     cost_month: [euro(330) + t('per_month'), euro(290) + t('per_month')], cash_now: [euro(price), euro(price - 1500)],
     mileage: [num(150000, 0) + ' km', num(100000, 0) + ' km'], age: [String(y - 13), String(y - 9)], power: ['75 PS', '115 PS'],
     reliability: [t('bw_rel_base'), t('bw_rel_adv')], inspection: [t('bw_insp_base'), t('bw_insp_adv')],
-    simplicity: [t('bw_simp_base'), t('bw_simp_adv')], confidence: [t('bw_conf_base'), t('bw_conf_adv')],
+    confidence: [t('bw_conf_base'), t('bw_conf_adv')],
   };
 }
 
-// tasks: [{id, criteria: [3 keys]}] from the API; answers: {taskId: 'best>worst'}
+// tasks: [{id, criteria: [4 keys]}] from the API; answers: {taskId: 'best>worst'}
 export function quiz(el, { tasks, answers = {}, params = {}, onDone, onCancel, doneLabel }) {
   const ans = { ...answers }, A = attributes(params), years = params.ownership_years || 4;
   const order = shuffle(tasks).map(x => ({ ...x, cars: shuffle(x.criteria) }));  // cars[n] = the criterion car n is better on
@@ -35,7 +35,7 @@ export function quiz(el, { tasks, answers = {}, params = {}, onDone, onCancel, d
       <h3 class="qz-title" aria-live="polite">${t('bw_ask_' + phase)}</h3>
       <div class="bw" role="group" aria-label="${esc(t('bw_cars'))}">${x.cars.map((k, n) => { const b = badge(k);
         return `<button type="button" class="bw-car${k === best || k === pick ? ' first' : k === worst ? ' last' : ''}" data-car="${k}" aria-pressed="${!!b}">
-          <span class="bw-h"><b>${t('car_letter', { l: 'ABC'[n] })}</b>${b ? `<span class="bw-badge">${b}</span>` : `<span class="k num" aria-hidden="true">${n + 1}</span>`}</span>
+          <span class="bw-h"><b>${t('car_letter', { l: 'ABCD'[n] })}</b>${b ? `<span class="bw-badge">${b}</span>` : `<span class="k num" aria-hidden="true">${n + 1}</span>`}</span>
           ${x.criteria.map(c => `<span class="bw-row${c === k ? ' adv' : ''}"><small>${esc(t('bw_row_' + c))}</small><span>${esc(A[c][c === k ? 1 : 0])}</span></span>`).join('')}</button>`; }).join('')}</div>
       <p class="small muted bw-note">${x.criteria.includes('cost_month') ? esc(t('bw_month_note', { v: euro(40 * 12 * years), y: years })) + ' ' : ''}${t('bw_equal')}</p>
       <div class="qz-nav"><button class="btn ghost" type="button" data-qz-back ${i ? '' : 'disabled'}>${t('back')}</button>
