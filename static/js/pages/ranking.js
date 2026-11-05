@@ -8,6 +8,8 @@ import { quiz, profileHtml } from '../quiz.js';
 
 let root, timer;
 const CRIT = () => Object.keys(S.ranking.criteria);
+// eight validated series colours (docs/frontend.md); a ninth criterion gets a neutral colour instead of an undefined, invisible --s9
+const critColor = k => { const i = CRIT().indexOf(k); return i >= 0 && i < 8 ? `var(--s${i + 1})` : 'var(--text-3)'; };
 async function save(body, msg) {
   try { await post('/api/parameters', body); await refreshTco(); toast(t(msg)); return true; } catch (e) { toast(t('not_saved', { m: e.message }), true); return false; }
 }
@@ -17,7 +19,7 @@ function draw() {
   const list = cands.map(u => { const ex = (u.explain || []).filter(x => x.contribution);
     const miss = (u.explain || []).filter(x => x.why_missing === 'no value for this car' && x.weight);
     return `<li><span class="rank-pos num">${u.rank}</span><div><a class="rank-car" href="#/listing/${u.id}">${thumb(u, 'sm')}<span>${carLabel(u)}</span></a>
-      <div class="contrib" role="img" aria-label="${esc(ex.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}%`).join(', '))}">${ex.map(x => `<i style="width:${x.contribution}%;background:var(--s${CRIT().indexOf(x.criterion) + 1})" data-tip="${esc(t('c_' + x.criterion))}: ${num(x.score, 0)} × ${x.weight} → ${num(x.contribution, 0)}%"></i>`).join('')}</div>
+      <div class="contrib" role="img" aria-label="${esc(ex.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}%`).join(', '))}">${ex.map(x => `<i style="width:${x.contribution}%;background:${critColor(x.criterion)}" data-tip="${esc(t('c_' + x.criterion))}: ${num(x.score, 0)} × ${x.weight} → ${num(x.contribution, 0)}%"></i>`).join('')}</div>
       <div class="small muted">${t('coverage', { n: num(u.coverage * 100, 0) })}${miss.length ? ' · ' + t('missing_criteria', { l: miss.map(x => t('c_' + x.criterion)).join(', ') }) : ''}</div></div>
       <b class="score num${u.coverage < 0.5 ? ' provisional' : ''}" ${u.coverage < 0.5 ? `title="${esc(t('provisional_hint'))}"` : ''}>${num(u.score, 0)}${u.coverage < 0.5 ? '<small>?</small>' : ''}</b></li>`; }).join('');
   const thin = cands.some(u => u.coverage < 0.5);
@@ -27,7 +29,7 @@ function draw() {
     <div class="rank-layout">
       <div class="card"><h3>${t('rank_result')} <span class="muted small">${t('candidates_n', { n: R.candidates })}</span></h3>
         ${thin ? `<p class="note small">${t('provisional_note')}</p>` : ''}${cands.length ? `<ol class="rank-list">${list}</ol>` : `<p class="empty">${t('need_two')}</p>`}
-        <div class="legend" style="margin-top:12px">${CRIT().map((k, i) => `<span><i class="sw" style="background:var(--s${i + 1})"></i>${t('c_' + k)}</span>`).join('')}</div></div>
+        <div class="legend" style="margin-top:12px">${CRIT().map((k, i) => `<span><i class="sw" style="background:${critColor(k)}"></i>${t('c_' + k)}</span>`).join('')}</div></div>
       <div class="card prio"><h3>${t('prio_title')} ${R.manual ? `<span class="tag warn">${t('weights_manual')}</span>` : R.answered ? `<span class="tag good">${t('weights_from_answers')}</span>` : ''}</h3>
         ${state}<p class="small muted" style="margin-top:0">${t('prio_lead')}</p>${profileHtml(R)}
         <div class="row" style="margin-top:14px">${R.answered ? `<a class="btn ghost sm" href="#/ranking?quiz=1">${t('quiz_retake')}</a>` : ''}</div>
