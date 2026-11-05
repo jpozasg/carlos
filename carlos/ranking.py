@@ -102,17 +102,19 @@ def weights_from(p):
 def rank(rows, weights):
     """Weighted 0–100 score among candidates with a per-criterion explanation. Returns the number of candidates."""
     cands = [r for r in rows if not r['is_reference'] and r['listing_status'] != 'WITHDRAWN']
-    norm, bounds = {r['id']: {} for r in cands}, {}
+    refs = [r for r in rows if r['is_reference']]  # scored for reference (issue #72): same bounds, no rank
+    norm, bounds = {r['id']: {} for r in cands + refs}, {}
     for k, spec in CRITERIA.items():
         vals = [r['metrics'][k] for r in cands if r['metrics'][k] is not None]
         if not weights.get(k) or len(vals) < 2:
             continue
         lo, hi = min(vals), max(vals)
         bounds[k] = {'min': lo, 'max': hi, 'n': len(vals)}
-        for r in cands:
+        for r in cands + refs:  # bounds come from the candidates only; the reference is clamped to them
             v = r['metrics'][k]
             if v is not None:
-                norm[r['id']][k] = 1.0 if hi == lo else ((hi - v) if spec['better'] == 'lower' else (v - lo)) / (hi - lo)
+                s = 1.0 if hi == lo else ((hi - v) if spec['better'] == 'lower' else (v - lo)) / (hi - lo)
+                norm[r['id']][k] = min(1.0, max(0.0, s))
     total_w = sum(w for w in weights.values() if w > 0)
     for r in rows:
         n = norm.get(r['id'], {})
@@ -126,6 +128,6 @@ def rank(rows, weights):
                            'bounds': bounds.get(k),
                            'why_missing': None if k in n else ('weight 0' if not weights[k] else 'no value for this car' if r['metrics'][k] is None else 'fewer than two cars with a value')}
                           for k in CRITERIA] if r['id'] in norm else [])
-    for i, r in enumerate(sorted((r for r in rows if r['score'] is not None), key=lambda r: -r['score']), 1):
+    for i, r in enumerate(sorted((r for r in rows if r['score'] is not None and not r['is_reference']), key=lambda r: -r['score']), 1):
         r['rank'] = i
     return len(cands)

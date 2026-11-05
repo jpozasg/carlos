@@ -175,7 +175,7 @@
  "preview_on": "Vorschau mit ungespeicherten Parametern",
  "save_params": "Parameter speichern",
  "ranking": "Ranking",
- "ranking_lead": "Die Autos zum Verkauf, geordnet nach dem, was dir wichtig ist. Jeder Balken zeigt, wie viel jedes Kriterium beigetragen hat. Kraftstoff, Versicherung und Steuer stecken in den Gesamtkosten, nichts zählt doppelt; fehlende Daten senken die Abdeckung und zählen nie als 0. Dein eigenes Auto wird nicht gerankt.",
+ "ranking_lead": "Die Autos zum Verkauf, geordnet nach dem, was dir wichtig ist. Jeder Balken zeigt, wie viel jedes Kriterium beigetragen hat. Kraftstoff, Versicherung und Steuer stecken in den Gesamtkosten, nichts zählt doppelt; fehlende Daten senken die Abdeckung und zählen nie als 0. Dein eigenes Auto wird genauso bewertet und zum Vergleich gezeigt, ohne Rang.",
  "rank_result": "Ergebnis",
  "candidates_n": "{n} Kandidaten",
  "need_two": "Das Ranking braucht mindestens zwei angebotene Autos mit Daten in den gewichteten Kriterien.",

@@ -1,6 +1,6 @@
 # Ranking: formula and objectivity rules
 
-The ranking answers one question: *given what matters to this account, which car for sale looks best?* It is a weighted score 0–100 among the candidates (listings that are not the reference car and not withdrawn). The reference car is never ranked.
+The ranking answers one question: *given what matters to this account, which car for sale looks best?* It is a weighted score 0–100 among the candidates (listings that are not the reference car and not withdrawn). The reference car is never ranked, but it gets a score for comparison (issue #72): the same formula with the candidates' bounds (it does not move them), each criterion clamped to 0–100 when the reference lies outside the candidates' range; `cash_now` does not apply to keeping the car and stays missing. The ranking page lists it at its score, marked as the owner's car.
 
 ## Criteria (no metric counts twice)
 | Key | Better | Value | Why it is separate |

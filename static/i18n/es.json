@@ -175,7 +175,7 @@
  "preview_on": "Vista previa de parámetros sin guardar",
  "save_params": "Guardar los parámetros",
  "ranking": "Ranking",
- "ranking_lead": "Los coches en venta ordenados según lo que te importa. Cada barra muestra cuánto aportó cada criterio. Combustible, seguro e impuesto están dentro del coste total, así que nada cuenta dos veces; los datos que faltan bajan la cobertura y nunca cuentan como 0. Tu propio coche no entra en el ranking.",
+ "ranking_lead": "Los coches en venta ordenados según lo que te importa. Cada barra muestra cuánto aportó cada criterio. Combustible, seguro e impuesto están dentro del coste total, así que nada cuenta dos veces; los datos que faltan bajan la cobertura y nunca cuentan como 0. Tu propio coche se puntúa igual y se muestra para comparar, sin puesto.",
  "rank_result": "Resultado",
  "candidates_n": "{n} candidatos",
  "need_two": "El ranking necesita al menos dos coches en venta con datos en los criterios ponderados.",

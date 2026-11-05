@@ -15,10 +15,13 @@ async function save(body, msg) {
 }
 function draw() {
   const R = S.ranking, cands = S.units.filter(u => u.rank).sort((a, b) => a.rank - b.rank);
+  // the owner's car is scored the same way (issue #72) and listed at its score, without a rank
+  const ref = S.units.find(u => u.is_reference && u.score != null);
+  const rows = ref ? [...cands.filter(u => u.score >= ref.score), ref, ...cands.filter(u => u.score < ref.score)] : cands;
   const sliders = CRIT().map(k => `<label for="w-${k}">${t('c_' + k)}</label><input id="w-${k}" type="range" min="0" max="5" step="1" value="${R.weights[k]}" data-weight="${k}"><output for="w-${k}">${R.weights[k]}</output>`).join('');
-  const list = cands.map(u => { const ex = (u.explain || []).filter(x => x.contribution);
+  const list = rows.map(u => { const ex = (u.explain || []).filter(x => x.contribution);
     const miss = (u.explain || []).filter(x => x.why_missing === 'no value for this car' && x.weight);
-    return `<li><span class="rank-pos num">${u.rank}</span><div><a class="rank-car" href="#/listing/${u.id}">${thumb(u, 'sm')}<span>${carLabel(u)}</span></a>
+    return `<li${u.is_reference ? ' class="is-ref"' : ''}><span class="rank-pos num">${u.is_reference ? '–' : u.rank}</span><div><a class="rank-car" href="#/listing/${u.id}">${thumb(u, 'sm')}<span>${carLabel(u)}${u.is_reference ? ` <span class="tag ref">${t('your_car')}</span>` : ''}</span></a>
       <div class="contrib" role="img" aria-label="${esc(ex.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}%`).join(', '))}">${ex.map(x => `<i style="width:${x.contribution}%;background:${critColor(x.criterion)}" data-tip="${esc(t('c_' + x.criterion))}: ${num(x.score, 0)} × ${x.weight} → ${num(x.contribution, 0)}%"></i>`).join('')}</div>
       <div class="small muted">${t('coverage', { n: num(u.coverage * 100, 0) })}${miss.length ? ' · ' + t('missing_criteria', { l: miss.map(x => t('c_' + x.criterion)).join(', ') }) : ''}</div></div>
       <b class="score num${u.coverage < 0.5 ? ' provisional' : ''}" ${u.coverage < 0.5 ? `title="${esc(t('provisional_hint'))}"` : ''}>${num(u.score, 0)}${u.coverage < 0.5 ? '<small>?</small>' : ''}</b></li>`; }).join('');
