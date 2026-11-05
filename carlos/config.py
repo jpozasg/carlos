@@ -23,9 +23,11 @@ TCO_COMPONENTS = ['fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres',
 RUNNING_COMPONENTS = ('fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres')
 UNIT_COST_CATEGORIES = ['repairs', 'maintenance', 'tyres', 'purchase_sale']
 # Reliability (issue #54): every weak point belongs to one part; each part counts its RELIABILITY_TOP worst points, so
-# documenting more mild issues never makes a car look worse, only a more severe finding does.
+# documenting more mild issues never makes a car look worse, only a more severe finding does. Higher is better:
+# each part keeps RELIABILITY_PART_MAX minus those points, the score is the sum of the parts (max 36).
 RELIABILITY_PARTS = ['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS']
 RELIABILITY_TOP = 3
+RELIABILITY_PART_MAX = RELIABILITY_TOP * 3  # higher is better: each part starts at 9 (3 × HIGH) and loses its worst points
 STALE_LISTING_DAYS, STALE_FUEL_PRICE_DAYS = 14, 30
 QUOTE_MAX_AGE_DAYS = 60  # issue #5: insurance quotes expire
 TAX_OFFICIAL_SOURCE = 'tax_official_calculator'  # sources.source_type of the BMF Kfz-Steuer-Rechner

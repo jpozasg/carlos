@@ -221,9 +221,9 @@ class AppTest(unittest.TestCase):
         self.assertEqual(b['components']['repairs'], 0)                        # turbo window not reached: 0, not unknown
         self.assertAlmostEqual(a['delta_vs_reference'], a['known_cost_subtotal'] + (ref['components']['purchase_sale'] or 0) - ref['known_cost_subtotal'])
         self.assertEqual(a['initial_outlay'], 6000 - 2500)
-        self.assertEqual(a['metrics']['reliability'], 2.5)                     # MEDIUM engine item 2 + LOW generation item 0.5
-        self.assertEqual(b['metrics']['reliability'], 3)                       # HIGH engine item
-        self.assertEqual(a['reliability_parts'], {'ENGINE': 2, 'GEARBOX': 0, 'CHASSIS': 0.5, 'ELECTRICS': 0})
+        self.assertEqual(a['metrics']['reliability'], 33.5)                    # 36 − MEDIUM engine item 2 − LOW generation item 0.5
+        self.assertEqual(b['metrics']['reliability'], 33)                      # 36 − HIGH engine item
+        self.assertEqual(a['reliability_parts'], {'ENGINE': 7, 'GEARBOX': 9, 'CHASSIS': 8.5, 'ELECTRICS': 9})   # points left of 9
         self.assertNotIn('simplicity', a['metrics'])                           # removed from the ranking (issue #54)
         self.assertEqual(a['metrics']['cash_now'], 6000 + 34 + 159)
         self.assertIsNone(ref['metrics']['cash_now'])
@@ -425,16 +425,16 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', '/api/ranking')[1]['manual'], False)
 
     def test_reliability_parts(self):
-        """Issue #54: each part counts its 3 worst points; a recall drops out once its check is OK; no part = unknown."""
+        """Issue #54: each part starts at 9 and loses its 3 worst points (higher is better); a recall drops out once its check is OK; no part = unknown."""
         rows = [dict(id=i, component=f'c{i}', severity=sev, part=part, is_recall=rec, source_id=1)
                 for i, (sev, part, rec) in enumerate([('HIGH', 'ENGINE', 0), ('MEDIUM', 'ENGINE', 0), ('MEDIUM', 'ENGINE', 0),
                                                       ('LOW', 'ENGINE', 0), ('HIGH IF APPLICABLE', 'ELECTRICS', 1), ('LOW', 'CHASSIS', 0)], 1)]
         total, parts, det = costs.reliability(rows, {})
-        self.assertEqual((parts, total), ({'ENGINE': 7, 'GEARBOX': 0, 'CHASSIS': 0.5, 'ELECTRICS': 1.5}, 9))   # the 4th engine point is not counted
+        self.assertEqual((parts, total), ({'ENGINE': 2, 'GEARBOX': 9, 'CHASSIS': 8.5, 'ELECTRICS': 7.5}, 27))   # the 4th engine point is not counted
         self.assertFalse(next(d for d in det if d['id'] == 4)['counted'])
         total, parts, det = costs.reliability(rows, {5: 'OK'})                     # recall checked: done
-        self.assertEqual((parts['ELECTRICS'], total, next(d for d in det if d['id'] == 5)['excluded']), (0, 7.5, 'recall_checked'))
-        self.assertEqual(costs.reliability(rows, {5: 'PROBLEM'})[0], 9)            # still open: counts
+        self.assertEqual((parts['ELECTRICS'], total, next(d for d in det if d['id'] == 5)['excluded']), (9, 28.5, 'recall_checked'))
+        self.assertEqual(costs.reliability(rows, {5: 'PROBLEM'})[0], 27)           # still open: counts
         self.assertIsNone(costs.reliability(rows + [dict(id=9, component='x', severity='LOW', part=None, is_recall=0, source_id=1)], {})[0])
         self.assertEqual(costs.reliability([], {})[0], None)
         # API: part is required; a recall gets its own linked check, which decides whether it counts and stays out of inspection
@@ -443,16 +443,16 @@ class AppTest(unittest.TestCase):
         st, r = self.agent('POST', 'reliability_items', {'generation_id': G1, 'component': 'Airbag recall', 'severity': 'HIGH IF APPLICABLE', 'part': 'ELECTRICS',
                                                          'is_recall': 1, 'source_id': SRC_GUIDE, 'inspection_action': 'Dealer check by VIN'})
         self.assertEqual(st, 201)
-        before = self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'] - 1.5   # the new recall already counts (no check yet)
+        before = self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'] + 1.5   # the new recall already costs its points (no check yet)
         st, i = self.agent('POST', 'inspection_items', {'listing_id': CAR_A, 'item': 'Recall: airbag', 'status': 'PENDING', 'reliability_item_id': r['id']})
         self.assertEqual(st, 201)
-        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before + 1.5)   # pending: counts
-        before += 1.5
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before - 1.5)   # pending: counts
+        before -= 1.5
         self.assertEqual(self.ui('PATCH', f"inspection_items/{i['id']}", {'status': 'PROBLEM'})[0], 200)
         a = self.req('GET', f'/api/listings/{CAR_A}')[1]
         self.assertEqual((a['metrics']['reliability'], a['metrics']['inspection']), (before, None))   # open recall counts in reliability only; inspection still unchecked
         self.ui('PATCH', f"inspection_items/{i['id']}", {'status': 'OK'})
-        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before - 1.5)
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before + 1.5)
 
     def test_archive_and_delete(self):
         """Issue #58: archived rows drop out of every read and calculation and can be restored; delete refuses while a
@@ -462,7 +462,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 1})[0], 200)
         a2 = self.req('GET', f'/api/listings/{CAR_A}')[1]
         self.assertNotIn(chain['id'], [r['id'] for r in a2['reliability']])
-        self.assertEqual(a2['metrics']['reliability'], a['metrics']['reliability'] - 2)          # the MEDIUM point is gone
+        self.assertEqual(a2['metrics']['reliability'], a['metrics']['reliability'] + 2)          # the MEDIUM point no longer costs
         self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 0})[0], 200)   # restore
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], a['metrics']['reliability'])
         self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 2})[0], 400)
