@@ -40,6 +40,7 @@ OWNER_CONSUMPTION = 'Owner measured average'
 USER_PREMIUM = 'USER DATA'
 
 # Knowledge tables attach to exactly one level: variant (vehicle_id), engine (engine_id) or generation (generation_id).
-SCOPED_TABLES = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data')
+SCOPED_TABLES = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data',
+                 'research_checks')  # research_checks: the contract's recorded source checks (issue #114)
 SCOPE_COLUMNS = ('vehicle_id', 'engine_id', 'generation_id')
 LEVELS = {'vehicle_id': 'variant', 'engine_id': 'engine', 'generation_id': 'generation'}

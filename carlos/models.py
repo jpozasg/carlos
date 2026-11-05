@@ -1,5 +1,5 @@
 """The models browser: make → model → generation → engine → variant, each with its linked listings and knowledge."""
-from . import config
+from . import config, research
 from .costs import Knowledge
 from .db import rows, variants
 
@@ -10,9 +10,11 @@ def model_tree(c):
     for r in c.execute('SELECT id, vehicle_id, listing_status, is_reference, price_eur, mileage_km, listing_id, platform FROM listings ORDER BY id'):
         per_vehicle.setdefault(r['vehicle_id'], []).append(dict(r))
     know = Knowledge(c)
+    contract = research.Contract(c, know)
     makes = {}
     for v in variants(c):
         v['listings'] = per_vehicle.get(v['id'], [])
+        v['research'] = {k: x['state'] for k, x in research.levels(contract.resolved(v['id'])).items()}
         v['knowledge'] = {t: len(know.of(t, v)) for t in config.SCOPED_TABLES}
         mk = makes.setdefault(v['make'], {'make': v['make'], 'models': {}})
         md = mk['models'].setdefault(v['model'], {'model': v['model'], 'generations': {}})
@@ -48,6 +50,8 @@ def variant_detail(c, vehicle_id):
     v = vs[0]
     know = Knowledge(c)
     v.update({t: know.of(t, v) for t in config.SCOPED_TABLES})
+    contract = research.Contract(c, know)
+    v['research'] = research.levels(contract.resolved(v['id']))
     v['engine_row'] = rows(c, 'SELECT * FROM engines WHERE id=?', (v['engine_id'],))[0]
     v['generation_row'] = rows(c, 'SELECT * FROM generations WHERE id=?', (v['generation_id'],))[0]
     v['siblings'] = {'same_engine': [x['id'] for x in variants(c, 'WHERE v.engine_id=? AND v.id<>?', (v['engine_id'], v['id']))],
@@ -57,3 +61,5 @@ def variant_detail(c, vehicle_id):
     v['sources'] = rows(c, 'SELECT * FROM sources WHERE vehicle_id=? OR engine_id=? OR generation_id=? ORDER BY id',
                         (v['id'], v['engine_id'], v['generation_id']))
     return v
+
+

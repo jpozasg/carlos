@@ -1,6 +1,7 @@
-"""What the agent should research next, per listing and per variant (resolved over variant, engine and generation)."""
+"""What the agent should research next: per listing, per variant (resolved over variant, engine and generation) and per
+catalogue level on its own, all from the research contract (carlos/research.py, issue #114)."""
 import datetime
-from . import config
+from . import config, research
 from .costs import Knowledge, days_since
 from .db import rows, variant_name, variants
 
@@ -35,63 +36,34 @@ def todo(c, p, ranked):
                 t.append('no inspection checklist')
             if u['verdict'] is None:
                 t.append('no verdict')
+        # the contract's listing items that no line above covers (an expired quote, a weak point without a checklist item)
+        t += [f"listing {i['id']} missing: {i['title']}" for i in u['research']
+              if i['id'] in ('lst.insurance', 'lst.checklist') and i['grade'] == 'MISSING']
         listings.append({'listing_id': u['id'], 'name': f"{u['make']} {u['model']} {u['listing_id'] or '(reference)'}", 'todo': t})
     know = Knowledge(c)
-    sources = {r['id']: r for r in rows(c, 'SELECT id, source_type FROM sources')}
+    contract = research.Contract(c, know)
+    level = contract.rows
     models = []
     for v in variants(c):
-        t = [f'generation field missing: {f}' for f, col in (('start_year', 'generation_start_year'), ('end_year', 'generation_end_year'),
-                                                            ('facelift_year', 'facelift_year')) if v[col] is None]
-        t += [f'engine field missing: {f}' for f, col in (('power_ps', 'power_ps'), ('timing_drive', 'timing_drive'),
-                                                         ('aspiration', 'aspiration'), ('injection', 'injection')) if v[col] is None]
-        if v['transmission'] is None:
-            t.append('variant field missing: transmission')
-        if (v['engine_code'] or '').startswith('unknown'):
-            t.append('engine code missing (engines.code)')
-        if v['hsn'] is None or v['tsn'] is None:
-            t.append('HSN/TSN missing (vehicles.hsn, vehicles.tsn)')
-        if know.consumption(v) is None:
-            t.append(f'real-world consumption missing ({config.PRIMARY_CONSUMPTION})')
-        if not know.of('repair_risks', v):
-            t.append('repair risks missing (repair_risks)')
-        tyres = know.tyres(v)
-        if tyres is None or tyres['price_per_tyre_eur'] is None or tyres['life_km'] is None:
-            t.append('tyre data missing (tyre_data)')
-        maint = know.of('maintenance_items', v)
-        if not any(m['active'] and (m['item'] or '').startswith('HU') for m in maint):
-            t.append('HU/AU inspection missing from the maintenance schedule')
-        if not any(m['interval_km'] is not None for m in maint):
-            t.append('maintenance schedule missing')
-        tax_rows = [r for r in know.of('tax_data', v) if r['annual_tax_eur'] is not None]
-        if not tax_rows:
-            t.append('annual tax missing')
-        else:
-            tx = max(tax_rows, key=lambda r: r['id'])
-            if (sources.get(tx['source_id']) or {}).get('source_type') != config.TAX_OFFICIAL_SOURCE:
-                t.append('tax not from the BMF Kfz-Steuer-Rechner')
-        ins = [r for r in know.of('insurance_data', v) if r['annual_premium_eur'] is not None]
-        if not ins:
-            t.append('insurance premium missing (a Typklasse is not a premium)')
-        quotes = [r for r in ins if r['premium_status'] == 'QUOTE']
-        if quotes:
-            q = max(quotes, key=lambda r: r['id'])
-            age = days_since(q['quote_date'], today)
-            if age is None:
-                t.append('insurance quote without quote_date')
-            elif age > config.QUOTE_MAX_AGE_DAYS:
-                t.append(f'insurance quote older than {config.QUOTE_MAX_AGE_DAYS} days: request a new quote')
-        rel = know.of('reliability_items', v)
-        if not rel:
-            t.append('reliability research missing')
-        else:
-            loose = [r['id'] for r in rel if r.get('part') is None]
-            if loose:
-                t.append(f"reliability items without a part (reliability_items.part), reliability unknown: ids {loose}")
-            t += [f'no weak points researched for part {p} (the same four sources as for every car)'
-                  for p in config.RELIABILITY_PARTS if not any(r.get('part') == p for r in rel)]
+        items = contract.resolved(v['id'])
+        t = [f"{i['level']} {i['id']} missing: {i['title']}" for i in items if i['grade'] == 'MISSING']
+        t += [f"{i['level']} {i['id']}: {i['hint']}" for i in items if i.get('hint')]
+        loose = [r['id'] for r in know.of('reliability_items', v) if r.get('part') is None]
+        if loose:
+            t.append(f"reliability items without a part (reliability_items.part), reliability unknown: ids {loose}")
         models.append({'vehicle_id': v['id'], 'engine_id': v['engine_id'], 'generation_id': v['generation_id'],
-                       'name': variant_name(v), 'todo': t})
-    return {'account': account_todo(c, p, today), 'listings': listings, 'models': models}
+                       'name': variant_name(v), 'state': research.state(items), 'todo': t})
+    # each catalogue level on its own rows only, so "researched" does not depend on the listing that triggered it
+    labels = (('generations', 'generations', 'generation', lambda r: f"{r['make']} {r['model']} {r['name']}"),
+              ('engines', 'engines', 'engine', lambda r: r['code']),
+              ('variants', 'vehicles', 'variant', lambda r: r['trim'] or f"#{r['id']}"))
+    catalogue = {name: [{'id': r['id'], 'name': label(r), **without_items(research.summary(contract.level(lvl, r)))}
+                        for r in level[table].values()] for name, table, lvl, label in labels}
+    return {'account': account_todo(c, p, today), 'listings': listings, 'models': models, 'catalogue': catalogue}
+
+
+def without_items(summary):
+    return {k: v for k, v in summary.items() if k != 'items'}
 
 
 # What a comparison-site quote needs from the account (docs/browser-tasks.md, setup wizard Drivers/Insurance steps).

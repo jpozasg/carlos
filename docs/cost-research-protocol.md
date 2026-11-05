@@ -39,7 +39,7 @@ Before writing, read `variant(V)`: rows already inherited must not be written ag
 Start with `todo(listing_id=L)` and `todo(vehicle_id=V)`, read the listing (`listing(L)`: description, attributes, claims, photo count) and the variant (`variant(V)`: engine, generation, inherited rows).
 
 1. **Identify the car**: PATCH `generations/<id>` (name and code, start/end of sale, facelift year), `engines/<id>` (code, description, fuel, displacement, power, aspiration, injection, timing drive) and `vehicles/V` (trim, gearbox, body, emissions, CO2, HSN/TSN). Sources: ADAC Autokatalog (HSN/TSN, tyres, engine), Wikipedia, manufacturer data, dieversicherer.de for HSN/TSN candidates. A TSN not on the listing is recorded as the best candidate with "assumed" in `notes`; the user confirms it from the registration document (field 2.2). Set `status`/`technical_status` to `VERIFIED` (two agreeing sources) or `PARTIAL`.
-2. **Reliability** (`reliability()` per weak point at its level, then `checklist_from_reliability(L)`): the same four sources for every car: ADAC Pannenstatistik or Gebrauchtwagen-Info, the TÜV-Report, one buying guide, one engine-specific source. Severity by the rule in `ranking.md`; `inspection_action` is a concrete check for a viewing ("cold start: listen for chain rattle for 5 s"). One row per distinct failure. Every row gets a **part** (`part=` in `reliability()`): `ENGINE` (everything that makes it run: block and head, timing drive, oil consumption and leaks, intake, turbo, injection and fuel pump, ignition, cooling incl. water pump and thermostat, EGR/DPF/catalyst, engine mounts and engine sensors), `GEARBOX` (gearbox, clutch and its hydraulics, dual-mass flywheel, driveshafts), `CHASSIS` (suspension, steering, wheel bearings, brakes and brake lines, body, rust, water ingress, exhaust pipes and silencers), `ELECTRICS` (battery, alternator, starter, lighting, locks, windows, A/C electronics and compressor clutch, infotainment, airbag/ABS/ESP electronics, steering lock). Each part starts at 9 and loses the points of its 3 worst weak points, so research all four parts with the same sources (the to-do lists a part without any row). A **manufacturer recall** is its own row with `recall=True` and an `inspection_action` that names the check ("dealer check by VIN that recall X was done"); `checklist_from_reliability(L)` gives every recall its own checklist item, linked by `reliability_item_id`, and the recall stops counting when that item is OK or N/A.
+2. **Reliability** (`reliability()` per weak point at its level, then `checklist_from_reliability(L)`): the same four sources for every car: ADAC Pannenstatistik or Gebrauchtwagen-Info, the TÜV-Report, one buying guide, one engine-specific source. Severity by the rule in `ranking.md`; `inspection_action` is a concrete check for a viewing ("cold start: listen for chain rattle for 5 s"). One row per distinct failure. Every row gets a **part** (`part=` in `reliability()`): `ENGINE` (everything that makes it run: block and head, timing drive, oil consumption and leaks, intake, turbo, injection and fuel pump, ignition, cooling incl. water pump and thermostat, EGR/DPF/catalyst, engine mounts and engine sensors), `GEARBOX` (gearbox, clutch and its hydraulics, dual-mass flywheel, driveshafts), `CHASSIS` (suspension, steering, wheel bearings, brakes and brake lines, body, rust, water ingress, exhaust pipes and silencers), `ELECTRICS` (battery, alternator, starter, lighting, locks, windows, A/C electronics and compressor clutch, infotainment, airbag/ABS/ESP electronics, steering lock). Each part starts at 9 and loses the points of its 3 worst weak points, so research all four parts with the same sources and record every source consulted per part with `check(level, id, 'rel.<PART>.<source>', source_id, 'FOUND' | 'NONE FOUND')`, also when it lists nothing: a part without its checks is unknown (see "The research contract"). A **manufacturer recall** is its own row with `recall=True` and an `inspection_action` that names the check ("dealer check by VIN that recall X was done"); `checklist_from_reliability(L)` gives every recall its own checklist item, linked by `reliability_item_id`, and the recall stops counting when that item is OK or N/A.
    - **Only recalls that can apply to this car:** check the engine, gearbox and build window against the car (first registration as the latest possible build date). A recall for another engine is written on that engine or not at all; one whose build window starts after this car's first registration is not written for it. When it cannot be decided, write it and leave its checklist item PENDING for the owner's VIN check.
    - **Generic wear is not a weak point.** Clutch, brake pads and discs, battery, bulbs and wipers wear on every car: their cost is a priced risk or a maintenance item. They become a `reliability_items` row only when a source flags them for this model or engine as above average (e.g. "clutch wears early", a known dual-mass flywheel fault), and the row says which source.
    - **The checklist is the owner's.** Agents create checklist items but never set their status (OK, PROBLEM, N/A): that is the result of the owner's viewing.
@@ -59,8 +59,45 @@ Start with `todo(listing_id=L)` and `todo(vehicle_id=V)`, read the listing (`lis
 10. **Tax**: the official calculator with registration period, fuel, displacement and CO2 or emissions class; record as in `AGENTS.md`.
 11. **Insurance**: the comparison site with the confirmed profile and HSN/TSN; median of the 5 cheapest reasonable offers; record as in `AGENTS.md` and `browser-tasks.md`.
 
+## The research contract (what "researched" means)
+`carlos/research.py` lists what must be known on each level; `GET /api/agent/schema` → `research_contract` publishes it, and `todo()` reports every missing item (`catalogue` per generation, engine and variant on its own; `models` per variant with its engine and generation). Each item is graded from the rows **on its own level**, so a level counts as researched the same way whichever listing triggered the research:
+- **MISSING**: nothing acceptable, a source below the item's minimum quality, or a check recorded against an older contract (`since`).
+- **ACCEPTED**: present, but `ESTIMATED` or from a C/D source. A row found one level too low (an engine job on the variant) counts as ACCEPTED at most, and the to-do says to move it.
+- **VERIFIED**: a verified, official or primary row from an A/B source; for a check, an A/B source.
+
+A level is **researched** when no item is MISSING and **verified** when every item is VERIFIED. The confidence criterion is the mean grade of the variant's, its engine's, its generation's and its listing's items (VERIFIED 1, ACCEPTED 0.5, MISSING 0).
+
+**Checks** (`check(level, id, task, source_id, result, notes)`, table `research_checks`) record a task done on one level: `FOUND`, `NONE FOUND` ("consulted, nothing to report": a clean part counts as researched) or `N/A` (does not apply, e.g. no facelift). Write one per source consulted, also when the source lists nothing.
+
+| Item | Level | Accepted when | Min. quality |
+|---|---|---|---|
+| `gen.identity` | generation | start and end year of the whole production run (status VERIFIED to verify) | – |
+| `gen.facelift` | generation | `facelift_year`, or a check `N/A` when there was none | – |
+| `gen.hu` | generation | HU/AU job with an interval and the workshop fee | – |
+| `gen.brake_fluid`, `gen.brakes`, `gen.battery`, `gen.wipers`, `gen.cabin_filter` | generation | the job with an interval and a price | – |
+| `gen.recalls` | generation | check: recall search (KBA or manufacturer), FOUND or NONE FOUND | B |
+| `gen.risks` | generation | body/chassis risks, every one priced, or a check `NONE FOUND` | – |
+| `eng.identity` | engine | code (not "unknown…"), fuel, displacement, power, aspiration, injection, timing drive | – |
+| `eng.oil`, `eng.air_filter` | engine | the job with an interval and a price | – |
+| `eng.spark_plugs` (petrol), `eng.fuel_filter` (diesel) | engine | the job with an interval and a price | – |
+| `eng.timing_belt` | engine (belt or unknown) | the job with an interval and a workshop price | – |
+| `eng.timing_chain` | engine (chain or gear) | a job, or a check `NONE FOUND` (no scheduled replacement) | – |
+| `eng.coolant` | engine | the job, or a check `NONE FOUND` citing the lifetime fill | – |
+| `eng.risks` | engine | engine risks, every one priced, or a check `NONE FOUND` | – |
+| `var.identity` | variant | HSN, TSN, gearbox, body, emissions class, CO2 (`technical_status` VERIFIED to verify) | – |
+| `var.consumption` | variant | `Autokostencheck average` with sample size, min and max | C |
+| `var.tyres` | variant (or its generation) | size, price per tyre, tread life | – |
+| `var.tax` | variant | a tax row from the BMF Kfz-Steuer-Rechner (`tax_official_calculator`) | A |
+| `var.gearbox` | variant (automatics) | check: weak points of this automatic gearbox | C |
+| `rel.<PART>.<source>` | engine (ENGINE) or generation (GEARBOX, CHASSIS, ELECTRICS) | check per part and source: `adac`, `tuev` (B), `guide` (C) and, for ENGINE, `engine_specific` (C). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
+| `lst.insurance` | listing | a quote younger than 60 days (the reference car: the premium the owner pays) | – |
+| `lst.valuation` | listing | a `resale_end` valuation | – |
+| `lst.purchase_sale`, `lst.checklist`, `lst.capture`, `lst.photos` | listing (for sale) | purchase costs; a checklist item for every weak point; a capture; archived photos | – |
+
+Changing the contract: add the item to `research.py` and this table in the same PR (a test checks the ids); a new item makes every level it applies to incomplete at once. When an item's rule gets stricter, raise its `since` to the new `CONTRACT_VERSION`, so checks recorded against the older contract stop counting.
+
 ## Definition of done
-- `todo(vehicle_id=V)` and `todo(listing_id=L)` are empty except owner decisions (verdict) and items that need the user (TSN confirmation).
+- `todo(vehicle_id=V)` and `todo(listing_id=L)` are empty except owner decisions (verdict) and items that need the user (TSN confirmation); the variant's `state` is `researched` or `verified`.
 - `GET /api/listings/L` shows every TCO component not NULL and `tco_complete` true.
 - Every risk has a price (estimated when necessary); every engine has aspiration, injection and timing drive.
 - The agent's report lists: what was written (rows per table and level), every assumption (TSN, sizes, intervals), risks priced only by estimate, questions for the user.

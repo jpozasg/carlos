@@ -2,7 +2,7 @@
 import { S, refreshTco, go } from '../app.js';
 import { get, send } from '../api.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt, critColor } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt, critColor, researchLevels } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
 let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true;  // SWEEP: the score needle animates on open, not on quiet refreshes
@@ -71,8 +71,8 @@ function relBox(d) {
   const total = (d.metrics || {}).reliability;
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_rel_note'))}" data-tip="${esc(t('plate_rel_note'))}">${INFO_SVG}</span>`;
   const head = `<div class="rb-head">${t('plate_reliability')} ${tip}<span class="rb-total num">${total == null ? PEND() : t('plate_rel_total', { n: num(total, 1) })}</span></div>`;
-  if (total == null) return `<div class="relbox">${head}</div>`;
-  return `<div class="relbox">${head}<div class="rb-rows">${PARTS.map(k => { const v = (d.reliability_parts || {})[k] ?? 9;
+  return `<div class="relbox">${head}<div class="rb-rows">${PARTS.map(k => { const v = (d.reliability_parts || {})[k];
+    if (v == null) return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter"></span><span class="rb-val small muted">${t('part_unknown')}</span>`;
     return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter rb-${relBand(v)}" role="img" aria-label="${esc(t('part_' + k))} ${num(v, 1)} / 9"><i style="width:${Math.max(2, v / 9 * 100)}%"></i></span><span class="rb-val num">${num(v, 1)}</span>`; }).join('')}</div></div>`;
 }
 // the cost per month, the other key figure, as a strip at the top of the plate (issue #80)
@@ -111,10 +111,10 @@ function rankCard(d) {  // the reference car is scored too (issue #72), only not
     return `<tr><td><b>${t('c_' + k)}</b><div class="small muted">${esc(t('cb_' + k))}</div></td><td class="n">${x.weight || '<span class="muted">0</span>'}</td><td class="n">${x.value == null ? PEND() : FMT[k](x.value)}${x.bounds ? `<div class="small muted">${FMT[k](x.bounds.min)} – ${FMT[k](x.bounds.max)}</div>` : ''}</td>
       <td style="min-width:120px">${x.score == null ? `<span class="muted small">${t('why_' + (x.why_missing || 'no value for this car').replace(/ /g, '_'))}</span>` : `<div class="scorebar" title="${x.score}"><i style="width:${x.score}%"></i></div><span class="small">${x.score} · ${t('contribution')} ${num(x.contribution, 0)}%</span>`}</td></tr>`; }).join('');
   const head = d.score == null ? `<span class="pending">${t('not_ranked')}</span>` : `<b class="big" style="font-size:22px">${scoreTxt(d)}</b> <span class="muted small">${d.rank ? t('rank_n', { n: d.rank }) : t('ref_not_ranked')} · ${t('coverage', { n: num(d.coverage * 100, 0) })}</span>`;
-  const ev = d.evidence || [], rel = d.reliability_detail || [];
+  const rel = d.reliability_detail || [];
   return `<div class="card span2"><h3>${t('ranking')}</h3><div style="margin-bottom:8px">${head} ${R.manual ? `<span class="tag warn">${t('weights_manual')}</span>` : ''}</div><div class="tags">${statusTags(d).join('')}</div>
     <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>${t('criterion')}</th><th class="n">${t('weight')}</th><th class="n">${t('value')}</th><th>${t('score')}</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <details style="margin-top:10px"><summary class="small" style="cursor:pointer">${t('evidence_title', { n: ev.length })}</summary><div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>${t('ev_table')}</th><th>${t('status')}</th><th>${t('quality')}</th><th class="n">${t('ev_points')}</th></tr></thead><tbody>${ev.map(e => `<tr><td>${esc(tv(e.table))} #${e.id}</td><td>${esc(tv(e.status) ?? '—')}</td><td>${qTag(e.quality)}</td><td class="n">${num(e.points, 2)}</td></tr>`).join('')}</tbody></table></div>
+    <details style="margin-top:10px"><summary class="small" style="cursor:pointer">${t('research_title')}: ${t('c_confidence')} ${d.metrics.confidence == null ? '–' : num(d.metrics.confidence, 0) + ' %'}</summary><p class="small muted" style="margin:6px 0 0">${t('research_lead')}</p>${researchLevels(d.research_levels)}
       ${rel.length ? `<p class="small" style="margin:8px 0 0"><b>${t('c_reliability')}:</b> ${rel.map(r => `${esc(r.component)} ${sevTag(r.severity)} −${num(r.points, 1)}`).join(' · ')}</p>` : ''}</details>
     <p class="small muted" style="margin:8px 0 0"><a href="#/ranking">${t('ranking_edit')}</a></p></div>`;
 }
@@ -161,7 +161,7 @@ function reliabilityCard(d) {
   const det = Object.fromEntries((d.reliability_detail || []).map(x => [x.id, x]));
   const state = r => { const x = det[r.id] || {};
     return x.excluded ? `<span class="tag good">${t('rel_recall_done')}</span>` : x.counted ? `<span class="tag">${t('rel_counted')} −${num(x.points, 1)}</span>` : `<span class="small muted">${t('rel_not_counted')}</span>`; };
-  const group = (part, rows) => rows.length ? `<h4 class="small" style="margin:12px 0 4px">${part ? esc(t('part_' + part)) : esc(t('rel_no_part'))}${part ? ` <span class="muted num">${num((d.reliability_parts || {})[part] ?? 9, 1)} / 9 ${t('rel_pts')}</span>` : ''}</h4>
+  const group = (part, rows) => rows.length ? `<h4 class="small" style="margin:12px 0 4px">${part ? esc(t('part_' + part)) : esc(t('rel_no_part'))}${part ? ` <span class="muted num">${(d.reliability_parts || {})[part] == null ? t('part_unknown') : `${num(d.reliability_parts[part], 1)} / 9 ${t('rel_pts')}`}</span>` : ''}</h4>
     <ul class="check">${rows.sort((a, b) => (det[b.id]?.points || 0) - (det[a.id]?.points || 0)).map(r => `<li><span class="ico pend" aria-hidden="true">i</span><div><b>${esc(r.component)}</b> · ${esc(r.issue ?? '')}<div class="small" style="margin:4px 0">${sevTag(r.severity)} ${lvlTag(r.level)}${r.is_recall ? ` <span class="tag warn">${t('rel_recall')}</span>` : ''} ${state(r)}</div>${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}</div></li>`).join('')}</ul>` : '';
   const total = (d.metrics || {}).reliability;
   return `<div class="card"><h3>${t('reliability')} ${total == null ? '' : `<span class="muted small num">${t('plate_rel_total', { n: num(total, 1) })}</span>`}</h3><p class="small muted" style="margin-top:0">${t('rel_lead')}</p>

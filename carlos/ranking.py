@@ -13,11 +13,10 @@ CRITERIA = {
     'reliability': {'better': 'higher', 'unit': 'points', 'basis': 'Known weak points of the variant, its engine and its generation in four parts (engine incl. intake, cooling, turbo and injection; gearbox and clutch; chassis, brakes and body; electrics). Severity points HIGH 3, MEDIUM 2, HIGH IF APPLICABLE 1.5, LOW-MEDIUM 1, LOW 0.5; each part starts at 9 and loses the points of its 3 worst weak points (score out of 36, higher is better), so more documentation never makes a car look worse. A recall counts until its checklist item for this car is OK or N/A. Unknown while a weak point has no part.'},
     'inspection': {'better': 'lower', 'unit': 'problems', 'basis': 'Checklist items marked PROBLEM at a viewing; unknown until at least one item was checked.'},
     'power': {'better': 'higher', 'unit': 'ps', 'basis': 'Engine power in PS.'},
-    'confidence': {'better': 'higher', 'unit': 'percent', 'basis': 'Average evidence quality of the rows behind the costs (consumption, insurance, tax, maintenance, risks, tyres, valuation): status VERIFIED/official/primary 1, ESTIMATED 0.5, else 0; source quality A 1, B 0.8, C 0.5, D 0.3, none 0.3.'},
+    'confidence': {'better': 'higher', 'unit': 'percent', 'basis': 'How much of the research contract is done for this car: every required item of its generation, engine, variant and listing scores VERIFIED 1 (verified or official data from an A/B source), ACCEPTED 0.5 (estimated or a C/D source), MISSING 0; the mean as a percentage (docs/cost-research-protocol.md).'},
 }
 SEVERITY_POINTS = {'HIGH': 3, 'HIGH IF APPLICABLE': 1.5, 'MEDIUM': 2, 'LOW-MEDIUM': 1, 'LOW': 0.5}
 STATUS_POINTS = {'VERIFIED': 1, 'OFFICIAL FEE LEVEL': 1, 'PRIMARY': 1, 'USER DATA': 1, 'QUOTE': 1, 'ESTIMATED': 0.5}
-QUALITY_POINTS = {'A': 1, 'B': 0.8, 'C': 0.5, 'D': 0.3, None: 0.3}
 MAX_WEIGHT = 5
 
 # The questionnaire (issues #19, #54, #64): eight best–worst tasks. Each shows four cars of the same model, equal in

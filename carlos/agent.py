@@ -1,7 +1,7 @@
 """The agent's write API: validation against the real schema, change log, photo storage, quota."""
 import hashlib, json, math, os, re, time
 from pathlib import Path
-from . import config
+from . import config, research
 from .auth import _KNOW, ARCHIVABLE, MODEL, OWNED
 
 # Format of controlled codes written by the agent (English: upper-case statuses, snake_case kinds).
@@ -17,14 +17,14 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'engines.injection': ['PORT', 'DIRECT', 'DUAL', 'CARBURETTOR'],
                'engines.timing_drive': ['CHAIN', 'BELT', 'WET BELT', 'GEAR'],
                'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED'],
-               'reliability_items.part': config.RELIABILITY_PARTS}
+               'reliability_items.part': config.RELIABILITY_PARTS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A']}
 # Tables the agent may write. Those in the second set require source_id on insert.
 AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
                 'maintenance_items', 'reliability_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',
-                'listing_snapshots', 'repair_risks', 'tyre_data', 'maintenance_resets'}
+                'listing_snapshots', 'repair_risks', 'tyre_data', 'maintenance_resets', 'research_checks'}
 SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
                    'reliability_items', 'valuations', 'unit_costs', 'listing_snapshots', 'repair_risks', 'tyre_data',
-                   'maintenance_resets'}
+                   'maintenance_resets', 'research_checks'}
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'))
 RULES = ('null = unknown (never 0); archive outdated rows with PATCH archived=1 (listings: listing_status WITHDRAWN); DELETE only after the owner confirmed it; source quality A–D; free text '
          'in English; knowledge rows attach to exactly one level: vehicle_id (variant), engine_id or generation_id; see AGENTS.md')
@@ -103,6 +103,10 @@ def clean_row(c, table, data, insert):
         raise ValueError(f'{table} requires source_id (register the source in sources first)')
     if not insert and table in SOURCE_REQUIRED and 'source_id' in out and out['source_id'] is None:
         raise ValueError('Cannot remove the source of a data point')
+    if table == 'research_checks' and 'task' in out and out['task'] not in research.TASKS:
+        raise ValueError(f"task must be a research contract item: {sorted(research.TASKS)} (docs/cost-research-protocol.md)")
+    if insert and table == 'research_checks' and out.get('contract_version') is None:
+        out['contract_version'] = research.CONTRACT_VERSION
     if insert and table == 'reliability_items' and out.get('part') is None:
         raise ValueError(f"reliability_items requires part: one of {config.RELIABILITY_PARTS} (docs/cost-research-protocol.md, step 2)")
     if insert and table in config.SCOPED_TABLES and sum(out.get(k) is not None for k in config.SCOPE_COLUMNS) != 1:

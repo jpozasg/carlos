@@ -105,6 +105,13 @@ ROWS = {
         dict(generation_id=G1, component='Body', part='CHASSIS', issue='Rust at the tailgate seam', evidence='TÜV report', severity='LOW', frequency_status='DOCUMENTED FOR MODEL', source_id=SRC_GUIDE, inspection_action='Check the tailgate seam for rust'),
         dict(engine_id=E_B, component='Timing belt', part='ENGINE', issue='Belt degrades early', evidence='Recall', severity='HIGH', frequency_status='DOCUMENTED FOR ENGINE', source_id=SRC_GUIDE, inspection_action='Ask for the timing belt invoice'),
     ],
+    # the contract's reliability source checks (issue #114): every part of every engine and generation, so reliability
+    # is known; a test removes some to see a part become unknown
+    'research_checks': [dict({col: lvl}, task=f'rel.{part}.{src}', result='NONE FOUND', contract_version=1, checked_date=TODAY,
+                             source_id=SRC_HU if src in ('adac', 'tuev') else SRC_GUIDE)
+                        for col, lvl, parts in [('engine_id', e, ['ENGINE']) for e in (E_A, E_B, E_REF)] +
+                        [('generation_id', g, ['GEARBOX', 'CHASSIS', 'ELECTRICS']) for g in (G1, G2)]
+                        for part in parts for src in ('adac', 'tuev', 'guide') + (('engine_specific',) if part == 'ENGINE' else ())],
     'valuations': [
         dict(listing_id=REF, kind='sale_today', expected_eur=2500, status='ESTIMATED', valued_date=TODAY, source_id=SRC_GUIDE),
         dict(listing_id=REF, kind='resale_end', horizon_years=4, expected_eur=1500, status='ESTIMATED', valued_date=TODAY, source_id=SRC_GUIDE),
