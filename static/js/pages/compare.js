@@ -9,7 +9,7 @@ const VIEWS = ['ruler', 'overview', 'costs', 'breakeven', 'details', 'photos'];
 const SORTS = { score: [u => u.score, 'desc'], price: [u => u.metrics.price, 'asc'], mileage: [u => u.metrics.mileage, 'asc'], age: [u => u.metrics.age, 'asc'],
   km_per_year: [u => u.metrics.km_per_year, 'asc'], consumption: [u => u.metrics.consumption, 'asc'], insurance: [u => u.metrics.insurance, 'asc'],
   tax: [u => u.metrics.tax, 'asc'], cost_month: [u => u.metrics.cost_month, 'asc'], known_month: [u => u.known_cost_per_month, 'asc'],
-  power: [u => u.metrics.power, 'desc'], reliability: [u => u.metrics.reliability, 'asc'], inspection: [u => u.metrics.inspection, 'asc'],
+  power: [u => u.metrics.power, 'desc'], reliability: [u => u.metrics.reliability, 'desc'], inspection: [u => u.metrics.inspection, 'asc'],
   confidence: [u => u.metrics.confidence, 'desc'],
   selected_cost: [u => { const r = selCost(u); return r.complete ? r.sum : null; }, 'asc'] };
 let sortState = store.get('sort', { key: 'score', dir: 'desc' });

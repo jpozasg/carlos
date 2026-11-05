@@ -191,9 +191,10 @@ class Knowledge:
 
 
 def reliability(rel_rows, checks):
-    """Reliability of one listing (issue #54): severity points of the documented weak points, per part the
-    config.RELIABILITY_TOP worst ones, summed over the parts. A recall drops out when its checklist item for this listing
-    (`checks`: reliability_item_id → status) is OK or N/A. Returns (total, per-part points, detail); total None without
+    """Reliability of one listing (issue #54), higher is better: each part starts at config.RELIABILITY_PART_MAX and
+    loses the severity points of its config.RELIABILITY_TOP worst documented weak points; the score is the sum of the
+    parts (max 36). A recall drops out when its checklist item for this listing
+    (`checks`: reliability_item_id → status) is OK or N/A. Returns (total, per-part points left, detail with the points each weak point costs); total None without
     research or while any row has no part (unclassified rows are never guessed into a part)."""
     detail = []
     for r in sorted(rel_rows, key=lambda r: r['id']):
@@ -207,7 +208,7 @@ def reliability(rel_rows, checks):
         top = sorted((d for d in detail if d['part'] == part and not d['excluded']), key=lambda d: -d['points'])[:config.RELIABILITY_TOP]
         for d in top:
             d['counted'] = True
-        parts[part] = sum(d['points'] for d in top)
+        parts[part] = config.RELIABILITY_PART_MAX - sum(d['points'] for d in top)
     total = None if not detail or any(d['part'] is None for d in detail) else sum(parts.values())
     return total, parts, detail
 

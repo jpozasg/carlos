@@ -56,15 +56,15 @@ function scoreBox(d) {
     <div class="sc-read"><span class="sc-end">0</span><span class="sc-mid"><b class="sc-num">${scoreTxt(d)}</b><span class="sc-word">${word}</span></span><span class="sc-end">100</span></div>
     <p class="sc-cov">${t('coverage', { n: num(d.coverage * 100, 0) })}</p></div>`;
 }
-// reliability as its own element (issue #80): total out of 36 and one meter per part out of 9 (3 worst points each);
-// lower is better: ≤3 green, ≤6 amber, above 6 red
-const relBand = v => v <= 3 ? 'good' : v <= 6 ? 'avg' : 'poor';
+// reliability as its own element (issue #80): total out of 36 and one meter per part out of 9; each part starts at 9
+// and loses its 3 worst points, so higher is better: ≥6 green, ≥3 amber, below 3 red
+const relBand = v => v >= 6 ? 'good' : v >= 3 ? 'avg' : 'poor';
 function relBox(d) {
   const total = (d.metrics || {}).reliability;
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_rel_note'))}" data-tip="${esc(t('plate_rel_note'))}">${INFO_SVG}</span>`;
   const head = `<div class="rb-head">${t('plate_reliability')} ${tip}<span class="rb-total num">${total == null ? PEND() : t('plate_rel_total', { n: num(total, 1) })}</span></div>`;
   if (total == null) return `<div class="relbox">${head}</div>`;
-  return `<div class="relbox">${head}<div class="rb-rows">${PARTS.map(k => { const v = (d.reliability_parts || {})[k] ?? 0;
+  return `<div class="relbox">${head}<div class="rb-rows">${PARTS.map(k => { const v = (d.reliability_parts || {})[k] ?? 9;
     return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter rb-${relBand(v)}" role="img" aria-label="${esc(t('part_' + k))} ${num(v, 1)} / 9"><i style="width:${Math.max(2, v / 9 * 100)}%"></i></span><span class="rb-val num">${num(v, 1)}</span>`; }).join('')}</div></div>`;
 }
 // the cost per month, the other key figure, as a strip at the top of the plate (issue #80)
@@ -107,7 +107,7 @@ function rankCard(d) {  // the reference car is scored too (issue #72), only not
   return `<div class="card span2"><h3>${t('ranking')}</h3><div style="margin-bottom:8px">${head} ${R.manual ? `<span class="tag warn">${t('weights_manual')}</span>` : ''}</div><div class="tags">${statusTags(d).join('')}</div>
     <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>${t('criterion')}</th><th class="n">${t('weight')}</th><th class="n">${t('value')}</th><th>${t('score')}</th></tr></thead><tbody>${rows}</tbody></table></div>
     <details style="margin-top:10px"><summary class="small" style="cursor:pointer">${t('evidence_title', { n: ev.length })}</summary><div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>${t('ev_table')}</th><th>${t('status')}</th><th>${t('quality')}</th><th class="n">${t('ev_points')}</th></tr></thead><tbody>${ev.map(e => `<tr><td>${esc(tv(e.table))} #${e.id}</td><td>${esc(tv(e.status) ?? '—')}</td><td>${qTag(e.quality)}</td><td class="n">${num(e.points, 2)}</td></tr>`).join('')}</tbody></table></div>
-      ${rel.length ? `<p class="small" style="margin:8px 0 0"><b>${t('c_reliability')}:</b> ${rel.map(r => `${esc(r.component)} ${sevTag(r.severity)} ${num(r.points, 1)}`).join(' · ')}</p>` : ''}</details>
+      ${rel.length ? `<p class="small" style="margin:8px 0 0"><b>${t('c_reliability')}:</b> ${rel.map(r => `${esc(r.component)} ${sevTag(r.severity)} −${num(r.points, 1)}`).join(' · ')}</p>` : ''}</details>
     <p class="small muted" style="margin:8px 0 0"><a href="#/ranking">${t('ranking_edit')}</a></p></div>`;
 }
 const srcLink = (d, id) => { const x = d.sources.find(s => s.id === id); return x ? qTag(x.quality, x.title + (x.limitations ? ' — ' + x.limitations : '')) : ''; };
@@ -152,11 +152,11 @@ function reliabilityCard(d) {
   if (!d.reliability.length) return `<div class="card"><h3>${t('reliability')}</h3>${empty(t('no_reliability'))}</div>`;
   const det = Object.fromEntries((d.reliability_detail || []).map(x => [x.id, x]));
   const state = r => { const x = det[r.id] || {};
-    return x.excluded ? `<span class="tag good">${t('rel_recall_done')}</span>` : x.counted ? `<span class="tag">${t('rel_counted')}</span>` : `<span class="small muted">${t('rel_not_counted')}</span>`; };
-  const group = (part, rows) => rows.length ? `<h4 class="small" style="margin:12px 0 4px">${part ? esc(t('part_' + part)) : esc(t('rel_no_part'))}${part ? ` <span class="muted num">${num((d.reliability_parts || {})[part] ?? 0, 1)} ${t('rel_pts')}</span>` : ''}</h4>
+    return x.excluded ? `<span class="tag good">${t('rel_recall_done')}</span>` : x.counted ? `<span class="tag">${t('rel_counted')} −${num(x.points, 1)}</span>` : `<span class="small muted">${t('rel_not_counted')}</span>`; };
+  const group = (part, rows) => rows.length ? `<h4 class="small" style="margin:12px 0 4px">${part ? esc(t('part_' + part)) : esc(t('rel_no_part'))}${part ? ` <span class="muted num">${num((d.reliability_parts || {})[part] ?? 9, 1)} / 9 ${t('rel_pts')}</span>` : ''}</h4>
     <ul class="check">${rows.sort((a, b) => (det[b.id]?.points || 0) - (det[a.id]?.points || 0)).map(r => `<li><span class="ico pend" aria-hidden="true">i</span><div><b>${esc(r.component)}</b> · ${esc(r.issue ?? '')}<div class="small" style="margin:4px 0">${sevTag(r.severity)} ${lvlTag(r.level)}${r.is_recall ? ` <span class="tag warn">${t('rel_recall')}</span>` : ''} ${state(r)}</div>${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}</div></li>`).join('')}</ul>` : '';
   const total = (d.metrics || {}).reliability;
-  return `<div class="card"><h3>${t('reliability')} ${total == null ? '' : `<span class="muted small num">${t('plate_rel', { n: num(total, 1) })}</span>`}</h3><p class="small muted" style="margin-top:0">${t('rel_lead')}</p>
+  return `<div class="card"><h3>${t('reliability')} ${total == null ? '' : `<span class="muted small num">${t('plate_rel_total', { n: num(total, 1) })}</span>`}</h3><p class="small muted" style="margin-top:0">${t('rel_lead')}</p>
     ${[...PARTS, null].map(p => group(p, d.reliability.filter(r => (r.part ?? null) === p))).join('')}</div>`;
 }
 function inspectionCard(d) {
