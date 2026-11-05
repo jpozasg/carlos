@@ -37,9 +37,12 @@ function plate(d) {
     ${d.is_reference ? '' : row(t('asking_price'), eP(d.price_eur))}
     ${row(t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km')}
     ${row(t('registration'), d.first_registration ? esc(d.first_registration) : PEND())}
+    ${row(t('age'), (d.metrics || {}).age == null ? PEND() : yrs(d.metrics.age))}
     ${row(t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a>`)}
     ${row(t('power'), d.power_ps == null ? PEND() : num(d.power_ps, 0) + ' PS')}
     ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' l/100 km')}
+    ${row(`${t('plate_reliability')}<span class="small muted" style="display:block">${t('plate_lower_better')}</span>`, (d.metrics || {}).reliability == null ? PEND() : t('plate_rel', { n: num(d.metrics.reliability, 1) }))}
+    ${row(t('plate_simplicity'), (d.metrics || {}).simplicity == null ? PEND() : num(d.metrics.simplicity, 1) + ' / 4')}
     ${d.is_reference ? '' : row(t('plate_rank'), d.rank ? `#${d.rank} · ${scoreTxt(d)}` : `<span class="pending">${t('not_ranked')}</span>`)}
     ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>
     ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;
