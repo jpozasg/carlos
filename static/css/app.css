@@ -170,11 +170,31 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 .plate dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:14px}
 .plate dt{color:var(--text-3)}.plate dd{margin:0;font-variant-numeric:tabular-nums;font-family:var(--readout);text-align:right;overflow-wrap:anywhere}
 .plate dd.hi{font-size:22px;font-weight:700;line-height:1.1}
+/* the Carlos score element (issue #80): band colour on the soft/ink tokens every theme defines */
+.scorebox{margin:0 0 12px;padding:10px 12px;border-radius:var(--radius-s);background:var(--surface);border:var(--border-w) solid var(--border)}
+.sb-head{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--text)}
+.sb-main{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:4px 0 8px}
+.sb-num{font-family:var(--readout);font-size:32px;line-height:1;font-variant-numeric:tabular-nums}
+.sb-band{font-size:12px;font-weight:700;padding:2px 8px;border-radius:var(--radius-pill);text-transform:var(--tag-case)}
+.sb-meter{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}.sb-meter>i{display:block;height:100%;border-radius:99px}
+.sb-good{background:var(--good-soft);border-color:var(--good-ink)}.sb-good .sb-band{background:var(--good-ink);color:var(--surface)}.sb-good .sb-meter>i{background:var(--good-ink)}
+.sb-avg{background:var(--warn-soft);border-color:var(--warn-ink)}.sb-avg .sb-band{background:var(--warn-ink);color:var(--surface)}.sb-avg .sb-meter>i{background:var(--warn-ink)}
+.sb-poor{background:var(--bad-soft);border-color:var(--bad-ink)}.sb-poor .sb-band{background:var(--bad-ink);color:var(--surface)}.sb-poor .sb-meter>i{background:var(--bad-ink)}
+.relbox{margin:12px 0 0;padding:10px 12px;border-radius:var(--radius-s);background:var(--surface);border:var(--border-w) solid var(--border)}
+.rb-total{margin-left:auto;font-family:var(--readout);font-size:14px}
+.rb-rows{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px 10px;margin-top:8px;font-size:12px}
+.rb-part{color:var(--text-2)}.rb-val{font-family:var(--readout);text-align:right;min-width:2.5em}
+.rb-meter{height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden}.rb-meter>i{display:block;height:100%;border-radius:99px}
+.rb-good>i{background:var(--good-ink)}.rb-avg>i{background:var(--warn-ink)}.rb-poor>i{background:var(--bad-ink)}
 /* the key figures (Carlos score, cost per month): label highlighted too, value on one line (never broken mid-number) */
 .plate dt.hi{color:var(--text);font-weight:700;align-self:center}.plate dd.hi{overflow-wrap:normal;white-space:nowrap}
 .stamp{display:inline-block;margin-top:12px;padding:4px 10px;border:2px solid var(--accent);color:var(--accent-ink);border-radius:4px;font-weight:700;font-size:13px;transform:rotate(-2deg);max-width:100%;overflow-wrap:anywhere}
 .dossier-top{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:16px;margin-bottom:16px}
 @media (max-width:860px){.dossier-top{grid-template-columns:1fr}}
+/* the Carlos score card sits above the spec plate, outside it; the cost per month is a strip at the top of the plate (issue #80) */
+.plate-cost{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin:0 0 12px;padding:10px 12px;border-radius:var(--radius-s);background:var(--accent-soft);color:var(--accent-ink)}
+.plate-cost span{font-size:13px;font-weight:700}.plate-cost b{font-family:var(--readout);font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dossier-side{display:flex;flex-direction:column;gap:12px;align-self:start;min-width:0}.dossier-side>.plate{align-self:stretch}.dossier-side>.scorebox{margin:0;border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
 
 /* compare bar and views */
 .cbar{position:sticky;top:var(--hdr,0px);z-index:4;background:var(--bg);padding:8px 0 4px;margin-bottom:10px;border-bottom:1px solid var(--border)}

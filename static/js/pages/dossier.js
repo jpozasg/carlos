@@ -10,7 +10,6 @@ const lb = $('lightbox');
 const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, mileage: v => num(v, 0) + ' km', age: yrs, reliability: v => num(v, 1), inspection: v => num(v, 0),
   power: v => num(v, 0) + ' PS', confidence: v => num(v, 0) + ' %' };
 const PARTS = ['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'];  // reliability parts (config.RELIABILITY_PARTS)
-const partsLine = d => PARTS.map(k => `${t('part_' + k)} ${num((d.reliability_parts || {})[k] ?? 0, 1)}`).join(' · ');
 
 function viewer(d) {
   PHOTOS = d.media.map(m => m.file_path); cur = 0;
@@ -32,11 +31,33 @@ lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.co
 document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !document.contains(root)) return; if (e.target.closest('input,textarea,select')) return;
   if (e.key === 'ArrowRight') { showPhoto(cur + 1); e.preventDefault(); } else if (e.key === 'ArrowLeft') { showPhoto(cur - 1); e.preventDefault(); } });
 
+// the Carlos score as its own element (issue #80): number, 0–100 meter and a rating word by band; the score is
+// relative to the compared cars (best ≈ 100), so the bands read: ≥70 good, 40–69 average, <40 poor
+const SCORE_BANDS = [[70, 'good'], [40, 'avg'], [0, 'poor']];
+function scoreBox(d) {
+  const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_score_note'))}" data-tip="${esc(t('plate_score_note'))}">${INFO_SVG}</span>`;
+  if (d.score == null) return `<div class="scorebox"><div class="sb-head">${t('plate_score')} ${tip}</div><div class="sb-main">${PEND()}</div></div>`;
+  const band = SCORE_BANDS.find(([min]) => d.score >= min)[1];
+  return `<div class="scorebox sb-${band}"><div class="sb-head">${t('plate_score')} ${tip}</div>
+    <div class="sb-main"><b class="sb-num">${scoreTxt(d)}</b><span class="sb-band">${t('score_' + band)}</span></div>
+    <div class="sb-meter" role="img" aria-label="${esc(t('plate_score'))} ${num(d.score, 0)} / 100, ${esc(t('score_' + band))}"><i style="width:${Math.max(2, Math.min(100, d.score))}%"></i></div></div>`;
+}
+// reliability as its own element (issue #80): total out of 36 and one meter per part out of 9 (3 worst points each);
+// lower is better: ≤3 green, ≤6 amber, above 6 red
+const relBand = v => v <= 3 ? 'good' : v <= 6 ? 'avg' : 'poor';
+function relBox(d) {
+  const total = (d.metrics || {}).reliability;
+  const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_rel_note'))}" data-tip="${esc(t('plate_rel_note'))}">${INFO_SVG}</span>`;
+  const head = `<div class="sb-head">${t('plate_reliability')} ${tip}<span class="rb-total num">${total == null ? PEND() : t('plate_rel_total', { n: num(total, 1) })}</span></div>`;
+  if (total == null) return `<div class="relbox">${head}</div>`;
+  return `<div class="relbox">${head}<div class="rb-rows">${PARTS.map(k => { const v = (d.reliability_parts || {})[k] ?? 0;
+    return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter rb-${relBand(v)}" role="img" aria-label="${esc(t('part_' + k))} ${num(v, 1)} / 9"><i style="width:${Math.max(2, v / 9 * 100)}%"></i></span><span class="rb-val num">${num(v, 1)}</span>`; }).join('')}</div></div>`;
+}
+// the cost per month, the other key figure, as a strip at the top of the plate (issue #80)
+const costStrip = d => `<div class="plate-cost"><span>${t('plate_cost')}</span><b>${d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month) + t('per_month')}</b></div>`;
 function plate(d) {
   const row = (k, v, cls = '') => `<dt class="${cls}">${k}</dt><dd class="${cls}">${v}</dd>`;
-  return `<aside class="plate"><span class="rv"></span><h3>${t('plate_title')}</h3><dl>
-    ${row(`${t('plate_score')} <span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_score_note'))}" data-tip="${esc(t('plate_score_note'))}">${INFO_SVG}</span>`, d.score == null ? PEND() : scoreTxt(d), 'hi')}
-    ${row(t('plate_cost'), d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month) + t('per_month'), 'hi')}
+  return `<aside class="plate"><span class="rv"></span><h3>${t('plate_title')}</h3>${costStrip(d)}<dl>
     ${d.is_reference ? '' : row(t('asking_price'), eP(d.price_eur))}
     ${row(t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km')}
     ${row(t('registration'), d.first_registration ? esc(d.first_registration) : PEND())}
@@ -44,9 +65,8 @@ function plate(d) {
     ${row(t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a>`)}
     ${row(t('power'), d.power_ps == null ? PEND() : num(d.power_ps, 0) + ' PS')}
     ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' l/100 km')}
-    ${row(`${t('plate_reliability')}<span class="muted" style="display:block;font-size:.8em">(${t('plate_lower_better')})</span>`, (d.metrics || {}).reliability == null ? PEND() : `${t('plate_rel', { n: num(d.metrics.reliability, 1) })}<span class="small muted" style="display:block;font-family:inherit">${partsLine(d)}</span>`)}
     ${row(t('plate_position'), d.rank ? `#${d.rank}` : `<span class="pending">${t(d.is_reference ? 'ref_not_ranked' : 'not_ranked')}</span>`)}
-    ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>
+    ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>${relBox(d)}
     ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;
 }
 function valuationRow(v) {
@@ -162,7 +182,7 @@ async function draw(id, quiet = false) {
   let d; try { d = await get('/api/listings/' + id); } catch (e) { root.innerHTML = picker + `<div class="card err">${t('dossier_failed', { m: esc(e.message) })}</div>`; return; }
   D = d;
   const claim = x => x == null ? PEND() : `${esc(x)} <span class="tag">${t('claimed')}</span>`;
-  root.innerHTML = picker + `<div class="dossier-top">${viewer(d)}${plate(d)}</div><div class="grid">${viewingPanel()}
+  root.innerHTML = picker + `<div class="dossier-top">${viewer(d)}<div class="dossier-side">${scoreBox(d)}${plate(d)}</div></div><div class="grid">${viewingPanel()}
     <div class="card span2"><div class="unit-head"><div><div class="unit-name"><a class="carlink" href="#/models/${d.vehicle_id}">${unitName(d)} ${esc(d.trim ?? '')}</a></div><div class="unit-sub">${unitSub(d)} · ${esc(tv(d.listing_status) ?? '')} <a href="#/models/${d.vehicle_id}" style="margin-left:8px">${t('open_model')}</a></div></div>
       <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')}</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
       ${d.is_reference ? '' : decisionBar(d)}
