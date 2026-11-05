@@ -46,6 +46,15 @@ The same steps, with these differences (owner decisions 2026-11-05; sources in t
 - **THG-Quote:** information only (volatile, broker-dependent); never deducted from the cost.
 - **Charging:** the account's answers (setup step Charging) set the electricity price; nothing to research per car.
 
+## Leasing and car subscriptions (Auto-Abo)
+A lease offer is a fact of the listing, not of the model: the research of the variant, engine and generation is the same as for a purchase (owner decisions 2026-11-05; EV/leasing design, #127).
+- **Read the offer** (`docs/browser-tasks.md`, "Leasing offers"): `lease_kind` (`km` kilometre leasing, `residual` residual-value leasing, `abo` car subscription), `lease_monthly_eur`, `lease_term_months`, `lease_km_per_year`, `lease_down_payment_eur` (Anzahlung / Sonderzahlung), `lease_fees_eur` (Bereitstellung/Überführung + Zulassung + other one-off fees as stated), `lease_extra_km_eur` / `lease_fewer_km_eur` (per km), and `lease_includes`: what the rate covers as the ad says it, a comma list of `insurance`, `tax`, `maintenance`, `repairs`, `tyres`, `gap`. "Keine Angabe" (not stated) is NULL, never 0: ask the dealer and record it when known; 0 only when the ad says 0 € or "inklusive".
+- **One listing, both offers:** a used ad can show a purchase price and a lease rate (mobile.de price box: "Finanzierung" / "Leasing" tabs). Keep both on the one listing (`price_eur` and the lease fields); a lease-only ad has `price_eur` NULL.
+- **Insurance:** a private lease rate normally does **not** include insurance, and lessors require fully comprehensive cover (Vollkasko), often with GAP cover. An Auto-Abo usually includes insurance, tax, maintenance and HU (`lease_includes`). Unless `insurance` is included, a lease needs a **Vollkasko** quote (`docs/browser-tasks.md`, CHECK24 "geleast").
+- **Residual-value leasing** is recorded but not costed (consumer advice warns against it); the to-do says so.
+- **Return:** damage beyond normal wear at the end of the lease is not predicted; the dossier says so.
+- **What the cost counts** (`docs/ranking.md`): lease payments (down payment + rate × term) instead of depreciation, lease fees and extra km instead of purchase costs, running costs over the lease term; components the rate includes are 0, never counted twice. Compared with the account's period only when the term equals it.
+
 ## Steps for one car
 **New account:** run `shared_sources()` once first; it registers the shared reference sources (registration and plate fees, pre-purchase check, depreciation rule of thumb, HU/AU fee, tyre test) that `purchase_sale_defaults`, `hu`, `tyres` and `resale_rule_of_thumb` cite, and does nothing when they exist.
 

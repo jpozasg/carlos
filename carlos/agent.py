@@ -10,7 +10,9 @@ CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_eve
                 ('engines', 'status'): r'[A-Z][A-Z /-]*',
                 ('reliability_items', 'severity'): r'[A-Z][A-Z /-]*', ('reliability_items', 'frequency_status'): r'[A-Z][A-Z /-]*',
                 ('insurance_data', 'premium_status'): r'[A-Z][A-Z /-]*', ('repair_risks', 'status'): r'[A-Z][A-Z /-]*',
-                ('tyre_data', 'status'): r'[A-Z][A-Z /-]*', ('tyre_data', 'tyre_type'): r'[A-Z][A-Z /-]*'}
+                ('tyre_data', 'status'): r'[A-Z][A-Z /-]*', ('tyre_data', 'tyre_type'): r'[A-Z][A-Z /-]*',
+                # what a lease rate includes (#127): a comma list without spaces, e.g. 'insurance,tax,gap'
+                ('listings', 'lease_includes'): '({0})(,({0}))*'.format('|'.join(config.LEASE_INCLUDES))}
 FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.category': config.UNIT_COST_CATEGORIES,
                'inspection_items.status': ['PENDING', 'OK', 'PROBLEM', 'N/A'],
                'engines.aspiration': ['NATURALLY ASPIRATED', 'TURBO', 'SUPERCHARGED'],
@@ -18,7 +20,8 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'engines.timing_drive': ['CHAIN', 'BELT', 'WET BELT', 'GEAR'], 'engines.fuel_type': config.FUEL_TYPES,
                'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED'],
                'reliability_items.part': config.RELIABILITY_PARTS,
-               'maintenance_items.job': config.JOBS, 'repair_risks.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A']}
+               'maintenance_items.job': config.JOBS, 'repair_risks.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A'],
+               'listings.lease_kind': config.LEASE_KINDS}
 # Tables the agent may write. Those in the second set require source_id on insert.
 AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
                 'maintenance_items', 'reliability_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',

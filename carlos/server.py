@@ -21,14 +21,15 @@ PARAM_NUM = {'annual_km': (int, True), 'ownership_years': (int, True), 'fuel_pri
              'budget_ideal_eur': (float, False), 'budget_max_eur': (float, False),
              # electric cars (#121): € per kWh at home and in public, the share charged at home (0–100), a planned wallbox
              'electricity_home_eur_kwh': (float, False), 'electricity_public_eur_kwh': (float, False),
-             'home_charging_pct': (int, False), 'wallbox_cost_eur': (float, False)}
+             'home_charging_pct': (int, False), 'wallbox_cost_eur': (float, False),
+             'lease_rate_max_eur': (float, False)}  # leasing (#127): the highest monthly rate
 PARAM_TEXT = {'fuel_price_date', 'diesel_price_date', 'postal_code', 'sf_class', 'insurance_cover', 'purchase_mode',
-              'home_charging', 'electricity_home_date', 'electricity_public_date'}
-PARAM_CODES = {'home_charging': config.HOME_CHARGING}
+              'home_charging', 'electricity_home_date', 'electricity_public_date', 'acquisition_mode'}
+PARAM_CODES = {'home_charging': config.HOME_CHARGING, 'acquisition_mode': config.ACQUISITION_MODES}
 DATE_PARAMS = ('fuel_price_date', 'diesel_price_date', 'electricity_home_date', 'electricity_public_date')
 # Parameters that change the calculation; GET /api/tco?<key>=<value> previews them without saving.
 CALC_PARAMS = ('annual_km', 'ownership_years', 'fuel_price_eur_l', 'diesel_price_eur_l', 'budget_ideal_eur', 'budget_max_eur',
-               'electricity_home_eur_kwh', 'electricity_public_eur_kwh', 'home_charging_pct', 'wallbox_cost_eur')
+               'electricity_home_eur_kwh', 'electricity_public_eur_kwh', 'home_charging_pct', 'wallbox_cost_eur', 'lease_rate_max_eur')
 STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
                 '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
                 '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2'}
