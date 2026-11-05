@@ -349,6 +349,23 @@ class AppTest(unittest.TestCase):
         e2, v2, l2 = self.ev_listing('Plug-in hybrid', listing_id='PH1')
         self.assertIsNone(self.units()[l2['id']]['components']['fuel'])  # plug-in hybrids: not supported yet
 
+    def test_electric_research_contract_125(self):
+        e, v, l = self.ev_listing()
+        todo = lambda: next(m for m in self.agent('GET', 'todo')[1]['models'] if m['vehicle_id'] == v['id'])['todo']
+        ids = lambda: {x.split()[1] for x in todo() if ' missing: ' in x}
+        self.assertTrue({'eng.identity_ev', 'eng.hv_battery', 'eng.drive_coolant', 'eng.reduction_gear_oil', 'var.consumption'} <= ids())
+        self.assertFalse({'eng.identity', 'eng.oil', 'eng.air_filter', 'eng.spark_plugs', 'eng.timing_belt', 'eng.coolant'} & ids())
+        self.agent('PATCH', f"engines/{e['id']}", {'ac_charge_kw': 22})
+        self.agent('POST', 'observations', {'vehicle_id': v['id'], 'category': 'consumption', 'metric': config.PRIMARY_CONSUMPTION_EV,
+                                            'value_num': 16.5, 'unit': 'kWh/100 km', 'sample_count': 40, 'min_value': 12.1, 'max_value': 22.0,
+                                            'status': 'PRIMARY', 'source_id': SRC_GUIDE})
+        self.agent('POST', 'research_checks', {'engine_id': e['id'], 'task': 'eng.drive_coolant', 'result': 'NONE FOUND', 'source_id': SRC_GUIDE})
+        self.assertFalse({'eng.identity_ev', 'var.consumption', 'eng.drive_coolant'} & ids())
+        import capture_listing
+        cap = {'url': 'https://x', 'platform': 'p', 'captured_at': '2026-11-05', 'vehicle_id': v['id'], 'listing': {'battery_soh_claim': 140}}
+        with self.assertRaises(ValueError):
+            capture_listing.validate(cap)
+
     def test_one_consumption_source_for_all_cars(self):
         self.sql_write('DELETE FROM observations WHERE vehicle_id=? AND metric=?', (V_REF, config.PRIMARY_CONSUMPTION))
         self.assertIsNone(self.units()[REF]['consumption'])                   # the owner's figure is a cross-check only

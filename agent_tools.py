@@ -20,6 +20,7 @@ API_BASE = os.environ.get('CAR_API', 'http://127.0.0.1:8000')
 api = Api(API_BASE, load_token())
 DAY = datetime.date.today().isoformat()
 PRIMARY_CONSUMPTION = 'Autokostencheck average'
+PRIMARY_CONSUMPTION_EV = 'Spritmonitor average'  # electric cars, kWh/100 km (config.PRIMARY_CONSUMPTION_EV)
 
 # Shared conventions (the same for every car so totals stay comparable). Regional figures: adjust them to the
 # account's region from an official fee table and register that table as a shared source with the title prefix used here.
@@ -146,10 +147,11 @@ def generation(**row):
 
 
 # ---------------------------------------------------------------- model data
-def consumption(v, value, n, lo, hi, source_id, notes='', level='variant'):
-    """Primary real-world consumption (autokostencheck.de average of the exact HSN/TSN variant)."""
-    return post('observations', {**scope(v, level), 'category': 'consumption', 'metric': PRIMARY_CONSUMPTION, 'value_num': value,
-                                 'unit': 'l/100 km', 'sample_count': n, 'min_value': lo, 'max_value': hi, 'status': 'PRIMARY',
+def consumption(v, value, n, lo, hi, source_id, notes='', level='variant', electric=False):
+    """Primary real-world consumption: autokostencheck.de average of the exact HSN/TSN variant in l/100 km; for an
+    electric car the Spritmonitor average in kWh/100 km (one source per drivetrain, owner decision 2026-11-05)."""
+    return post('observations', {**scope(v, level), 'category': 'consumption', 'metric': PRIMARY_CONSUMPTION_EV if electric else PRIMARY_CONSUMPTION,
+                                 'value_num': value, 'unit': 'kWh/100 km' if electric else 'l/100 km', 'sample_count': n, 'min_value': lo, 'max_value': hi, 'status': 'PRIMARY',
                                  'evidence_quality': 'C', 'observed_date': DAY, 'source_id': source_id,
                                  'notes': ('Primary consumption figure (same source for all cars, user decision 2026-11-03). ' + notes).strip()})
 
@@ -250,19 +252,21 @@ def purchase_sale_defaults(listing_id):
                                 'labor_eur': None, 'status': 'ESTIMATED', 'source_id': shared_source(prefix), 'notes': note})
 
 
-def resale_rule_of_thumb(listing_id, years=None):
+def resale_rule_of_thumb(listing_id, years=None, electric=False):
     """resale_end from the asking price: expected 6 %/year + 10 % private-sale discount; low 10 %/year + 20 %;
-    high 3 %/year + 5 %. Replace with a comparable-listings valuation when one exists."""
+    high 3 %/year + 5 %. Replace with a comparable-listings valuation when one exists. An electric car without
+    comparables takes the low case as expected (owner decision 2026-11-05; DAT: 3-year-old BEVs keep 51.5 % vs 62.7 %)."""
     u = listing(listing_id)
     price = u['price_eur']
     years = years or get('/api/listings')['parameters']['ownership_years']
     r = lambda rate, disc: round(price * (1 - rate) ** years * (1 - disc), -1)
     return post('valuations', {'listing_id': listing_id, 'kind': 'resale_end', 'horizon_years': years,
-                               'low_eur': r(0.10, 0.20), 'expected_eur': r(0.06, 0.10), 'high_eur': r(0.03, 0.05),
+                               'low_eur': r(0.10, 0.20), 'expected_eur': r(0.10, 0.20) if electric else r(0.06, 0.10), 'high_eur': r(0.03, 0.05),
                                'status': 'ESTIMATED', 'valued_date': DAY, 'source_id': shared_source('Allianz'),
                                'notes': f'Rule-of-thumb estimate from the asking price {price:.0f} €: expected 6%/year and 10% '
                                         'private-sale discount; low 10%/year and 20%; high 3%/year and 5%. Not model-specific; '
-                                        'refine with comparable listings.'})
+                                        'refine with comparable listings.' + (' Electric car: the low case is the expected value '
+                                        '(owner decision 2026-11-05).' if electric else '')})
 
 
 def todo(listing_id=None, vehicle_id=None):

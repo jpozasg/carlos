@@ -27,11 +27,24 @@ Before writing, read `variant(V)`: rows already inherited must not be written ag
 - **Tyres:** one set of all-season tyres; standard size of the variant; price = median of 4–5 mid-range all-season tyres in that size; tread life and fitting from `agent_tools` defaults (ADAC tests, tyre shops), cited.
 - **Purchase/sale:** the same items for every car for sale (`purchase_sale_defaults`): re-registration, plates, pre-purchase check, with the regional fees from an official fee table cited as a shared source. Deregistration for the reference car.
 - **Resale at the end:** `resale_rule_of_thumb` from the asking price unless comparable listings give a better figure (then record those as the source).
-- **Fuel:** the primary consumption is the autokostencheck.de real-world average of the exact HSN/TSN variant (`consumption()`), the same source for every car including the reference. Use the **reported average with its number of reports** ("Ø … aus N Angaben", with min and max), never the site's stored catalogue or cost-calculator figure shown elsewhere on the page; note the site's report filter (e.g. 60–125 % of the NEDC figure). Other databases are cross-checks only.
+- **Fuel:** one real-world source **per drivetrain**, the same for every car of that drivetrain including the reference: for petrol, diesel and hybrid cars the autokostencheck.de real-world average of the exact HSN/TSN variant (`consumption()`); for electric cars the Spritmonitor average in kWh/100 km (`consumption(..., electric=True)`, owner decision 2026-11-05: autokostencheck often has 1–2 reports per electric variant). Use the **reported average with its number of reports** ("Ø … aus N Angaben", with min and max), never the site's stored catalogue or cost-calculator figure shown elsewhere on the page; note the site's report filter (e.g. 60–125 % of the NEDC figure). Other databases are cross-checks only.
 - **Listing contradictions:** mileage → the higher figure (PATCH `listings.mileage_km`, log a `correction`); CO2 → the catalogue value of the assumed HSN/TSN until the registration document is seen (the listing value for the tax if the registration period uses CO2); anything else → the less favourable value, the alternative in `notes`; always a `warning` log entry.
 - **Seller claims** ("timing belt new", "service done") are trusted at no cost, get a `restart(..., 'SELLER CLAIM')` and a checklist item asking for the invoice; if none is shown at the viewing, the cost is added then.
 - **Tyres that come with the car:** a new set is a certain cost only when the existing tyres are unusable (age ≥ 8–10 years or worn). Usable summer-only tyres add nothing.
 - **Statuses:** `ESTIMATED` for anything derived (say how in `notes`), `VERIFIED` only for official/primary figures for this engine or variant, `PENDING` while unknown (never with a number).
+
+## Electric cars
+The same steps, with these differences (owner decisions 2026-11-05; sources in the EV design of #121):
+- **Identify:** `fuel_type='Electric'`; the engine is the motor (code from the manufacturer or the type approval) with `power_ps`, `battery_usable_kwh`, `ac_charge_kw`, `dc_charge_kw`; displacement, aspiration, injection and timing drive stay NULL. Plug-in hybrids: `fuel_type='Plug-in hybrid'` and the combustion engine's fields; their energy cost is not supported yet (fuel stays unknown). Full hybrids: `fuel_type='Hybrid'`, costed as petrol.
+- **Consumption:** the Spritmonitor year-round average of the model and battery (`consumption(v, value, n, lo, hi, source_id, electric=True)`, kWh/100 km), with the number of vehicles or reports, min and max. Winter is inside the year-round average; no adjustment. Say in `notes` whether the figure is measured at the wallbox or in the car.
+- **Maintenance:** no oil, air filter, spark plugs or timing drive. Keep brake fluid, cabin filter, brakes, 12 V battery and wipers (generation), and the electric jobs on the engine: `DRIVE_COOLANT` (battery/motor coolant loop: interval and workshop price, or a check `NONE FOUND` for a lifetime fill) and `REDUCTION_GEAR_OIL` (or a check `NONE FOUND`). HU without AU (no emissions test) at the regional fee.
+- **Battery (`eng.hv_battery`):** record the battery warranty (years / km / minimum % health, e.g. 8 years / 160,000 km / 70 %) with a check `FOUND` citing it (quality A/B), and price the high-voltage battery as one `risk()` on the engine with a generic window and a probability with its reason (replacement typically €6,400–16,500). Never a second battery row per listing.
+- **Reliability parts:** `ENGINE` = motor, inverter, high-voltage battery and its management, on-board charger and charge port, thermal management/heat pump; `GEARBOX` = reduction gear and driveshafts.
+- **Listing:** the seller's battery health figure goes in `battery_soh_claim` (%); `capture_listing.py` adds the checklist item asking for a SoH certificate (method, date, km; ADAC guide ≥ 88 % at 100,000 km) to every electric listing.
+- **Tax:** the BMF calculator with the permitted total weight, recording the annual amount **after** the exemption; the calculation applies the exemption itself (first registered by 2030-12-31: 10 years, until 2035-12-31 at the latest), so a car exempt for the whole period needs no tax row.
+- **Resale:** comparable listings first; without them `resale_rule_of_thumb(L, electric=True)` takes the low case as the expected value (DAT: 3-year-old electric cars keep 51.5 % of the list price vs 62.7 % for petrol).
+- **THG-Quote:** information only (volatile, broker-dependent); never deducted from the cost.
+- **Charging:** the account's answers (setup step Charging) set the electricity price; nothing to research per car.
 
 ## Steps for one car
 **New account:** run `shared_sources()` once first; it registers the shared reference sources (registration and plate fees, pre-purchase check, depreciation rule of thumb, HU/AU fee, tyre test) that `purchase_sale_defaults`, `hu`, `tyres` and `resale_rule_of_thumb` cite, and does nothing when they exist.
@@ -78,21 +91,24 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `gen.brakes`, `gen.battery`, `gen.wipers`, `gen.cabin_filter` | generation | the job (by `job` code) with an interval, the DIY parts and the workshop price | – |
 | `gen.recalls` | generation | check: recall search (KBA or manufacturer), FOUND or NONE FOUND | B |
 | `gen.risks` | generation | body/chassis risks, every one priced, or a check `NONE FOUND` | – |
-| `eng.identity` | engine | code (not "unknown…"), fuel, displacement, power, aspiration, injection, timing drive | – |
-| `eng.oil`, `eng.air_filter` | engine | the job (by `job` code) with an interval, the DIY parts and the workshop price | – |
-| `eng.spark_plugs` (petrol), `eng.fuel_filter` (diesel) | engine | the job with an interval, the DIY parts and the workshop price | – |
+| `eng.identity` | engine (combustion) | code (not "unknown…"), fuel, displacement, power, aspiration, injection, timing drive | – |
+| `eng.identity_ev` | engine (electric) | code (not "unknown…"), fuel, power, usable battery kWh, AC charging kW | – |
+| `eng.hv_battery` | engine (electric) | check: battery warranty (years / km / % health) and the priced battery risk, FOUND or NONE FOUND | B |
+| `eng.drive_coolant`, `eng.reduction_gear_oil` | engine (electric) | the `DRIVE_COOLANT` / `REDUCTION_GEAR_OIL` job with an interval and the workshop price, or a check `NONE FOUND` | – |
+| `eng.oil`, `eng.air_filter` | engine (combustion) | the job (by `job` code) with an interval, the DIY parts and the workshop price | – |
+| `eng.spark_plugs` (petrol, hybrid, plug-in hybrid), `eng.fuel_filter` (diesel) | engine | the job with an interval, the DIY parts and the workshop price | – |
 | `eng.timing_belt` | engine (belt or unknown) | the `TIMING_DRIVE` job with an interval, the DIY parts and the workshop price | – |
 | `eng.timing_chain` | engine (chain or gear) | a job, or a check `NONE FOUND` (no scheduled replacement) | – |
-| `eng.coolant` | engine | the job, or a check `NONE FOUND` citing the lifetime fill | – |
+| `eng.coolant` | engine (combustion) | the job, or a check `NONE FOUND` citing the lifetime fill | – |
 | `eng.risks` | engine | engine risks, every one priced, or a check `NONE FOUND` | – |
 | `var.identity` | variant | HSN, TSN, gearbox, body, emissions class, CO2 (`technical_status` VERIFIED to verify) | – |
-| `var.consumption` | variant | `Autokostencheck average` with sample size, min and max | C |
+| `var.consumption` | variant | `Autokostencheck average` (electric: `Spritmonitor average`, kWh/100 km) with sample size, min and max | C |
 | `var.tyres` | variant (or its generation) | size, price per tyre, tread life | – |
 | `var.tax` | variant | a tax row from the BMF Kfz-Steuer-Rechner (`tax_official_calculator`) | A |
 | `var.gearbox` | variant (automatics) | check: weak points of this automatic gearbox | C |
 | `rel.<PART>.<source>` | engine (ENGINE) or generation (GEARBOX, CHASSIS, ELECTRICS) | check per part and source: `adac`, `tuev` (B), `guide` (C) and, for ENGINE, `engine_specific` (C). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
 | `lst.insurance` | listing | a quote younger than 60 days (the reference car: the premium the owner pays) | – |
-| `lst.tax_covered` | listing | a tax row whose registration window covers the car's first registration | – |
+| `lst.tax_covered` | listing | a tax row whose registration window covers the car's first registration (an electric car exempt for the whole period needs none) | – |
 | `lst.valuation` | listing | a `resale_end` valuation | – |
 | `lst.purchase_sale`, `lst.checklist`, `lst.capture`, `lst.photos` | listing (for sale) | purchase costs; a checklist item for every weak point; a capture; archived photos | – |
 
@@ -101,6 +117,6 @@ Changing the contract: add the item to `research.py` and this table in the same 
 ## Definition of done
 - `todo(vehicle_id=V)` and `todo(listing_id=L)` are empty except owner decisions (verdict) and items that need the user (TSN confirmation); the variant's `state` is `researched` or `verified`.
 - `GET /api/listings/L` shows every TCO component not NULL and `tco_complete` true.
-- Every risk has a price (estimated when necessary); every engine has aspiration, injection and timing drive.
+- Every risk has a price (estimated when necessary); every combustion engine has aspiration, injection and timing drive; every electric engine its usable battery kWh and AC charging power.
 - The agent's report lists: what was written (rows per table and level), every assumption (TSN, sizes, intervals), risks priced only by estimate, questions for the user.
 - Main agent: `python -m unittest`, integrity check, commit of the data repository, push.

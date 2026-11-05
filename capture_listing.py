@@ -18,7 +18,10 @@ IMAGE_TYPES = {b'\xff\xd8\xff': 'image/jpeg', b'\x89PNG': 'image/png', b'RIFF': 
 USER_AGENT = 'carlos/capture_listing.py (personal archive)'
 # Optional listings columns copied as-is from the capture (seller claims stay in the *_claim columns).
 LISTING_FIELDS = ('first_registration', 'seller', 'location', 'seller_address', 'accident_free_claim', 'owners_claim',
-                  'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes')
+                  'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes', 'battery_soh_claim')
+# electric cars (#125): the battery is the costliest part; every electric listing gets this checklist item
+SOH_CHECK = ('Battery state of health: ask for a SoH certificate (method, date, km) no older than 3 months; ADAC guide '
+             '>= 88 % at 100,000 km; check the remaining battery warranty (usually 8 years / 160,000 km / 70 %)')
 CAPTURE_FORMAT = '''Capture JSON (null = unknown, never 0):
 {
   "url": "https://suchen.mobile.de/fahrzeuge/details.html?id=...",   required
@@ -30,7 +33,8 @@ CAPTURE_FORMAT = '''Capture JSON (null = unknown, never 0):
   "title": "...", "price_eur": 6990, "mileage_km": 85000,            listing facts
   "listing": {"first_registration": "2014-05", "seller": "...", "location": "...",
               "accident_free_claim": 1, "owners_claim": 2, "hu_claim": "05/2027",
-              "service_history_claim": "...", "equipment": "...", "listing_date": "..."},
+              "service_history_claim": "...", "equipment": "...", "listing_date": "...",
+              "battery_soh_claim": 94},                               electric: battery health % as claimed
   "description": "verbatim seller text, original language",
   "attributes": {"Kilometerstand": "85.000 km", "...": "every feature exactly as shown"},
   "photos": [{"url": "https://img.../1024.jpg"}, {"file": "photos/1.jpg", "url": "original url"}],
@@ -92,6 +96,9 @@ def validate(cap):
         raise ValueError('attributes must be an object with every feature exactly as shown')
     if not isinstance(cap.get('listing', {}), dict):
         raise ValueError('listing must be an object of listings columns')
+    soh = cap.get('listing', {}).get('battery_soh_claim')
+    if soh is not None and (isinstance(soh, bool) or not isinstance(soh, (int, float)) or not 0 < soh <= 100):
+        raise ValueError('battery_soh_claim must be a percentage (0–100] or null (unknown)')
     extra = set(cap.get('listing', {})) - set(LISTING_FIELDS)
     if extra:
         raise ValueError(f'listing fields not allowed: {sorted(extra)} (allowed: {LISTING_FIELDS})')
@@ -208,8 +215,8 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
 
     # checklist from the model's reliability items (new listings only; re-captures keep the user's ticks)
     if existing is None:
-        rel = [] if dry_run else api.call('GET', f'/api/listings/{lid}')['reliability']
-        for item, rel_id in checklist_items(rel, []):
+        d = {} if dry_run else api.call('GET', f'/api/listings/{lid}')
+        for item, rel_id in checklist_items(d.get('reliability', []), []) + ([(SOH_CHECK, None)] if d.get('fuel_type') == 'Electric' else []):
             write('POST', '/api/agent/inspection_items', {'listing_id': lid, 'item': item, 'status': 'PENDING',
                                                           'reliability_item_id': rel_id}, 'checklist item')
         if dry_run:
