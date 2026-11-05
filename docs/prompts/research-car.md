@@ -1,6 +1,6 @@
 # Prompt: research and cost one car
 
-Reusable prompt for a research agent (an agent with web access and shell access to this repository). Replace the `{…}` placeholders. One agent per car; several can run in parallel because each writes only its own variant, engine, generation and listing. The main agent captures the listing first and runs the browser steps (tax, insurance) afterwards.
+Reusable prompt for a research agent (an agent with web access and shell access to this repository). Research requests from the accounts are run by the shared worker with `docs/prompts/research-request.md`, which uses this prompt for the research step. Replace the `{…}` placeholders. One agent per car; several can run in parallel because each writes only its own variant, engine, generation and listing. The main agent captures the listing first and runs the browser steps (tax, insurance) afterwards.
 
 ---
 

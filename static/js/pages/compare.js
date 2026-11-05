@@ -3,6 +3,7 @@ import { S, refreshTco, go } from '../app.js';
 import { t, tv, comp } from '../i18n.js';
 import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media, scoreTxt } from '../ui.js';
 import { costStack, beChart, beTable, beHover, beColors } from '../charts.js';
+import { loadRequests, requestsPanel, bindRequests } from '../requests.js';
 
 const RUNNING = ['fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres'];
 const VIEWS = ['ruler', 'overview', 'costs', 'breakeven', 'details', 'photos'];
@@ -179,7 +180,7 @@ function draw() {
     photos: () => `<div class="section"><div class="grid">${all.map(unitCard).join('') || `<p class="empty">${t('no_units')}</p>`}</div></div>` }[view]();
   // the one authored motion: markers leave your car's line and settle where they belong (not under reduced motion)
   if (view === 'ruler') requestAnimationFrame(() => root.querySelectorAll('.rmark[data-x]').forEach(m => { m.style.left = m.dataset.x + '%'; }));
-  root.innerHTML = `${S.preview ? `<div class="banner">⚠ ${t('preview_banner')} <a class="btn sm" href="#/settings">${t('save_params')}</a></div>` : ''}${versus()}
+  root.innerHTML = `${S.preview ? `<div class="banner">⚠ ${t('preview_banner')} <a class="btn sm" href="#/settings">${t('save_params')}</a></div>` : ''}${requestsPanel()}${versus()}
     <div class="cbar">${selBar(all)}${toolbar()}<nav class="views" aria-label="${t('cv_nav')}">${VIEWS.map(k => `<button type="button" data-view="${k}" aria-pressed="${k === view}">${t('cv_' + k)}</button>`).join('')}</nav></div>${body}`;
 }
 function bind() {
@@ -210,6 +211,6 @@ function bind() {
 export async function render(main, r) {
   view = VIEWS.includes(r.q.view) ? r.q.view : store.get('cview', 'ruler');
   if (!VIEWS.includes(view)) view = 'ruler';
-  if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="compare"></div>'; root = main.firstElementChild; bind(); }
-  draw();
+  if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="compare"></div>'; root = main.firstElementChild; bind(); bindRequests(root, draw); }
+  draw(); loadRequests().then(draw);
 }

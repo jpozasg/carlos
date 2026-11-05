@@ -512,7 +512,12 @@
   "CHAIN": "timing chain",
   "BELT": "timing belt",
   "WET BELT": "wet belt",
-  "GEAR": "gear drive"
+  "GEAR": "gear drive",
+  "QUEUED": "Queued",
+  "RUNNING": "Being researched",
+  "DONE": "Done",
+  "FAILED": "Failed",
+  "CANCELLED": "Cancelled"
  },
  "cv_ruler": "At a glance",
  "versus_title": "Keep or switch?",
@@ -789,5 +794,17 @@
  "decide_reject_confirm": "Reject this car",
  "decision_saved": "Decision saved",
  "sel_shortlist": "Shortlisted",
- "from_drivers_step": "Set from the people in the setup's Drivers step"
+ "from_drivers_step": "Set from the people in the setup's Drivers step",
+ "req_title": "Add a car",
+ "req_lead": "Paste the link of a listing. The shared research worker reads it, researches the car and adds it to your cars; follow it here.",
+ "req_url": "Listing link",
+ "req_note": "Note (optional)",
+ "req_send": "Request research",
+ "req_sent": "Request queued",
+ "req_cancel": "Cancel",
+ "req_open_car": "Open the car",
+ "req_queue": "Research queue",
+ "req_queue_lead": "Every request of every account: who asked, when, and what came of it.",
+ "req_requested": "Requested",
+ "req_result": "Result"
 }

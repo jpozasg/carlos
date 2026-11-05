@@ -45,11 +45,13 @@ class ApiError(Exception):
 class Api:
     def __init__(self, base, token):
         self.base, self.token = base.rstrip('/'), token
+        self.account = os.environ.get('CARLOS_ACCOUNT')  # the shared worker writes into the requester's account (issue #113)
 
     def call(self, method, path, body=None, raw=None, ctype='application/json'):
         data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
         req = urllib.request.Request(self.base + path, data, method=method,
-                                     headers={'Authorization': f'Bearer {self.token}', 'Content-Type': ctype})
+                                     headers={'Authorization': f'Bearer {self.token}', 'Content-Type': ctype,
+                                              **({'X-Carlos-Account': self.account} if self.account else {})})
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.load(resp)
@@ -241,7 +243,7 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('capture', type=Path)
     ap.add_argument('--dry-run', action='store_true', help='show the planned writes without writing')
-    ap.add_argument('--api', default='http://127.0.0.1:8000')
+    ap.add_argument('--api', default=os.environ.get('CAR_API', 'http://127.0.0.1:8000'))
     a = ap.parse_args(argv)
     cap = json.loads(a.capture.read_text(encoding='utf-8'))
     try:

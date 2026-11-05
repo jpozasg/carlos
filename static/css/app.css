@@ -20,6 +20,8 @@ h3{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(290px,1fr))}
 .span2{grid-column:1/-1}
 .card{background:var(--surface);border:var(--border-w) solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);min-width:0}
+.reqs{margin-bottom:16px}.reqs summary{cursor:pointer}.reqs form{margin-top:8px}.reqs .field{flex:1;min-width:200px}
+.reqlist{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px;font-size:13px}.reqlist a{overflow-wrap:anywhere}
 .card.err{border-color:var(--bad);background:var(--bad-soft);color:var(--bad-ink)}
 .empty{color:var(--text-3);font-size:13px;margin:0}
 .pending{display:inline-block;font-style:italic;font-size:12px;color:var(--text-3);background:var(--surface-2);border-radius:var(--radius-s);padding:1px 7px}

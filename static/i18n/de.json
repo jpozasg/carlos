@@ -512,7 +512,12 @@
   "CHAIN": "Steuerkette",
   "BELT": "Zahnriemen",
   "WET BELT": "nasser Zahnriemen",
-  "GEAR": "Zahnradantrieb"
+  "GEAR": "Zahnradantrieb",
+  "QUEUED": "In der Warteschlange",
+  "RUNNING": "Wird recherchiert",
+  "DONE": "Erledigt",
+  "FAILED": "Fehlgeschlagen",
+  "CANCELLED": "Abgebrochen"
  },
  "cv_ruler": "Auf einen Blick",
  "versus_title": "Behalten oder wechseln?",
@@ -789,5 +794,17 @@
  "decide_reject_confirm": "Dieses Auto aussortieren",
  "decision_saved": "Entscheidung gespeichert",
  "sel_shortlist": "Vorgemerkte",
- "from_drivers_step": "Ergibt sich aus den Personen im Schritt Fahrer der Einrichtung"
+ "from_drivers_step": "Ergibt sich aus den Personen im Schritt Fahrer der Einrichtung",
+ "req_title": "Ein Auto hinzufügen",
+ "req_lead": "Füge den Link einer Anzeige ein. Der gemeinsame Recherche-Agent liest sie, recherchiert das Auto und fügt es deinen Autos hinzu; hier siehst du den Stand.",
+ "req_url": "Link zur Anzeige",
+ "req_note": "Notiz (optional)",
+ "req_send": "Recherche anfordern",
+ "req_sent": "Anfrage eingereiht",
+ "req_cancel": "Abbrechen",
+ "req_open_car": "Auto öffnen",
+ "req_queue": "Recherche-Warteschlange",
+ "req_queue_lead": "Alle Anfragen aller Konten: wer was wann angefragt hat und mit welchem Ergebnis.",
+ "req_requested": "Angefragt",
+ "req_result": "Ergebnis"
 }

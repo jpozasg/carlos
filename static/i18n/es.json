@@ -512,7 +512,12 @@
   "CHAIN": "cadena de distribución",
   "BELT": "correa de distribución",
   "WET BELT": "correa húmeda",
-  "GEAR": "engranajes"
+  "GEAR": "engranajes",
+  "QUEUED": "En cola",
+  "RUNNING": "Investigándose",
+  "DONE": "Hecho",
+  "FAILED": "Fallido",
+  "CANCELLED": "Cancelado"
  },
  "cv_ruler": "De un vistazo",
  "versus_title": "¿Quedarte o cambiar?",
@@ -789,5 +794,17 @@
  "decide_reject_confirm": "Descartar este coche",
  "decision_saved": "Decisión guardada",
  "sel_shortlist": "Preseleccionados",
- "from_drivers_step": "Se calcula a partir de las personas del paso Conductores"
+ "from_drivers_step": "Se calcula a partir de las personas del paso Conductores",
+ "req_title": "Añadir un coche",
+ "req_lead": "Pega el enlace de un anuncio. El investigador compartido lo lee, investiga el coche y lo añade a tus coches; síguelo aquí.",
+ "req_url": "Enlace del anuncio",
+ "req_note": "Nota (opcional)",
+ "req_send": "Pedir investigación",
+ "req_sent": "Petición en cola",
+ "req_cancel": "Cancelar",
+ "req_open_car": "Abrir el coche",
+ "req_queue": "Cola de investigación",
+ "req_queue_lead": "Todas las peticiones de todas las cuentas: quién pidió qué, cuándo y con qué resultado.",
+ "req_requested": "Pedido",
+ "req_result": "Resultado"
 }

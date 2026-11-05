@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
-from . import auth, config
+from . import auth, config, research_requests as rq
 from .agent import (AGENT_TABLES, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, save_media,
                     storage_usage, table_columns)
@@ -303,6 +303,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(d if d else {'error': 'Listing not found'}, 200 if d else 404)
             elif path == '/api/sources':
                 self.send_json(rows(c, 'SELECT * FROM sources ORDER BY vehicle_id, engine_id, generation_id, id'))
+            elif path == '/api/requests':
+                self.send_json(rq.mine(c, uid))
             elif path == '/api/health':
                 st = storage_usage()
                 self.send_json({'integrity': c.execute('PRAGMA quick_check').fetchone()[0],
@@ -323,7 +325,25 @@ class Handler(BaseHTTPRequestHandler):
         # writes
         agent = re.fullmatch(r'/api/agent/([\w-]+)(?:/(\d+))?', path)
         ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|media|decision)(?:/(\d+))?', path)
-        if path == '/api/parameters' and method == 'POST':
+        req = re.fullmatch(r'/api/(?:requests|worker/requests)/(\d+)', path)
+        if path == '/api/requests' and method == 'POST':
+            rid = rq.create(c, uid, self.read_json())
+            self.send_json(next(r for r in rq.mine(c, uid) if r['id'] == rid), 201)
+        elif req and path.startswith('/api/requests/') and method == 'PATCH':
+            if self.read_json() != {'status': 'CANCELLED'}:
+                raise ValueError('An account can only cancel a request: {"status": "CANCELLED"}')
+            rq.cancel(c, uid, int(req[1]))
+            self.send_json({'id': int(req[1]), 'status': 'CANCELLED'})
+        elif path.startswith('/api/worker/'):  # the shared research worker (issue #113): admin tokens only
+            if not self.admin:
+                raise NotAllowed('The research queue is worked by the shared worker (an admin token)')
+            if path == '/api/worker/claim' and method == 'POST':
+                self.send_json({'request': rq.claim(c, self.read_json().get('worker'))})
+            elif req and method == 'POST':
+                self.send_json(rq.finish(c, int(req[1]), self.read_json()))
+            else:
+                self.send_json({'error': 'POST /api/worker/claim or POST /api/worker/requests/<id>'}, 404)
+        elif path == '/api/parameters' and method == 'POST':
             data = clean_params(self.read_json())
             check_budget({**p, **data})
             if data:
@@ -460,7 +480,9 @@ class Handler(BaseHTTPRequestHandler):
     def admin_api(self, c, method, path):
         admin = self.require(c, admin=True)
         m = re.fullmatch(r'/api/admin/users/(\d+)(/invite)?', path)
-        if path == '/api/admin/users' and method == 'GET':
+        if path == '/api/admin/requests' and method == 'GET':
+            self.send_json(rq.everything(c))
+        elif path == '/api/admin/users' and method == 'GET':
             self.send_json([auth.public(u) for u in c.execute('SELECT * FROM main.users ORDER BY id')])
         elif path == '/api/admin/users' and method == 'POST':
             d = self.read_json()

@@ -6,3 +6,4 @@ venv/
 .DS_Store
 # the data directory is a separate private repository (README: Getting started)
 data/
+worker-logs/

@@ -299,6 +299,85 @@ class AppTest(unittest.TestCase):
     def sql_write(self, q, args=()):
         c = sqlite3.connect(config.DB); c.execute(q, args); c.commit(); c.close()
 
+    def second_account(self):
+        """A second, ordinary account (id 2) with its own token."""
+        from carlos import db
+        c = db.connect()
+        try:
+            uid = auth.create_user(c, 'maria', 'user'); tok = auth.new_token(c, uid)
+        finally:
+            c.close()
+        return uid, tok
+
+    def test_research_requests_113(self):
+        uid2, t2 = self.second_account()
+        st, r = self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1', 'note': 'blue one'}, token=t2)
+        self.assertEqual((st, r['status'], r['owner_id']), (201, 'QUEUED', uid2))
+        for bad in ('ftp://example.com/x', 'not a link', 'https://' + 'a' * 500 + '.com', 'javascript:alert(1)'):
+            self.assertEqual(self.req('POST', '/api/requests', {'url': bad}, token=t2)[0], 400, bad)
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1'}, token=t2)[0], 400)  # already open
+        for i in range(2, 6):
+            self.assertEqual(self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{i}'}, token=t2)[0], 201)
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/9'}, token=t2)[0], 400)  # limit of open requests
+        # each account sees only its own; the admin sees the whole queue with who asked
+        self.assertEqual(self.req('GET', '/api/requests')[1], [])
+        self.assertEqual(len(self.req('GET', '/api/requests', token=t2)[1]), 5)
+        self.assertEqual({x['username'] for x in self.req('GET', '/api/admin/requests')[1]}, {'maria'})
+        self.assertEqual(self.req('GET', '/api/admin/requests', token=t2)[0], 401)
+        # cancel: own QUEUED only
+        mine = self.req('GET', '/api/requests', token=t2)[1]
+        self.assertEqual(self.req('PATCH', f'/api/requests/{mine[0]["id"]}', {'status': 'CANCELLED'})[0], 400)       # not the admin's
+        self.assertEqual(self.req('PATCH', f'/api/requests/{mine[0]["id"]}', {'status': 'DONE'}, token=t2)[0], 400)
+        self.assertEqual(self.req('PATCH', f'/api/requests/{mine[0]["id"]}', {'status': 'CANCELLED'}, token=t2)[0], 200)
+        self.assertEqual(self.req('PATCH', f'/api/requests/{mine[0]["id"]}', {'status': 'CANCELLED'}, token=t2)[0], 400)  # no longer queued
+        # the worker side is for admin tokens only
+        self.assertEqual(self.req('POST', '/api/worker/claim', {'worker': 'x'}, token=t2)[0], 403)
+        # claims hand out the oldest first, each request once, then nothing
+        got = [self.req('POST', '/api/worker/claim', {'worker': 'desk'})[1]['request'] for _ in range(5)]
+        self.assertEqual([g['url'][-1] for g in got[:4]], ['1', '2', '3', '4'])
+        self.assertIsNone(got[4])
+        self.assertEqual({g['status'] for g in got[:4]}, {'RUNNING'})
+        self.assertEqual(self.req('POST', f'/api/worker/requests/{got[0]["id"]}', {'status': 'DONE'}, token=t2)[0], 403)
+        # DONE needs a listing of the requester; the admin's car is refused
+        self.assertEqual(self.req('POST', f'/api/worker/requests/{got[0]["id"]}', {'status': 'DONE', 'listing_id': CAR_A})[0], 400)
+        H = {'X-Carlos-Account': str(uid2)}
+        st, src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, headers=H)
+        st, l = self.agent('POST', 'listings', {'vehicle_id': V_B, 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'R1', 'price_eur': 4000}, headers=H)
+        st, done = self.req('POST', f'/api/worker/requests/{got[0]["id"]}', {'status': 'DONE', 'listing_id': l['id'], 'result': 'ok'})
+        self.assertEqual((st, done['status'], done['listing_id']), (200, 'DONE', l['id']))
+        self.assertEqual(self.req('POST', f'/api/worker/requests/{got[0]["id"]}', {'status': 'FAILED'})[0], 400)  # already finished
+        self.assertEqual(self.req('POST', f'/api/worker/requests/{got[1]["id"]}', {'status': 'FAILED', 'result': 'blocked'})[1]['status'], 'FAILED')
+        # a RUNNING request abandoned past the timeout is handed out again
+        self.sql_write("UPDATE research_requests SET claimed_at=datetime('now', '-4 hours') WHERE id=?", (got[2]['id'],))
+        self.assertEqual(self.req('POST', '/api/worker/claim', {'worker': 'desk2'})[1]['request']['id'], got[2]['id'])
+
+    def test_parallel_claims_never_share_a_request_113(self):
+        for i in range(3):
+            self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{i}'})
+        out = []
+        threads = [threading.Thread(target=lambda: out.append(self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request'])) for _ in range(8)]
+        [t.start() for t in threads]; [t.join() for t in threads]
+        ids = [r['id'] for r in out if r]
+        self.assertEqual((len(out), len(ids), len(set(ids))), (8, 3, 3))
+
+    def test_worker_once_with_fake_claude_113(self):
+        import worker
+        from capture_listing import Api
+        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/7'})
+        logs = Path(self.tmp.name) / 'logs'
+        # the fake agent proves it got the requester's account in its environment, then reports the admin's car
+        cmd = f"sh -c 'echo account=$CARLOS_ACCOUNT; echo CARLOS_RESULT listing_id={CAR_A}'"
+        self.assertTrue(worker.work_one(Api(self.base, TOKEN), 'test', cmd, logs, 30))
+        r = self.req('GET', '/api/requests')[1][0]
+        self.assertEqual((r['status'], r['listing_id'], r['worker']), ('DONE', CAR_A, 'test'))
+        self.assertIn('account=1', (logs / f'request-{r["id"]}.log').read_text())
+        self.assertFalse(worker.work_one(Api(self.base, TOKEN), 'test', cmd, logs, 30))   # queue empty
+        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/8'})
+        worker.work_one(Api(self.base, TOKEN), 'test', "sh -c 'echo CARLOS_RESULT failed: page blocked'", logs, 30)
+        self.assertEqual([x['result'] for x in self.req('GET', '/api/requests')[1]][0], 'page blocked')
+        self.assertEqual(worker.outcome('noise\nCARLOS_RESULT listing_id=12\n')['listing_id'], 12)
+        self.assertEqual(worker.outcome('crashed')['status'], 'FAILED')
+
     def test_insurance_quotes(self):
         quote = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 850, 'premium_min_eur': 700,
                  'insurer': 'Test Insurer', 'tariff': 'Basic', 'quote_date': fx.TODAY, 'source_id': SRC_QUOTE,
