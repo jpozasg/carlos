@@ -73,27 +73,31 @@ function rankCard(d) {
     <p class="small muted" style="margin:8px 0 0"><a href="#/ranking">${t('ranking_edit')}</a></p></div>`;
 }
 const srcLink = (d, id) => { const x = d.sources.find(s => s.id === id); return x ? qTag(x.quality, x.title + (x.limitations ? ' — ' + x.limitations : '')) : ''; };
+// one row per certain one-off cost of this car (unit_costs of a category), named, so a total never hides what it includes
+const certainOf = (d, cat) => d.unit_costs.filter(x => x.category === cat).map(x => ({ ...x, eur: (x.parts_eur || 0) + (x.labor_eur || 0) }));
+const certainRows = (d, rows) => rows.map(x => `<tr><td colspan="6">${esc(x.item)} <span class="tag">${t('certain_tag')}</span>${x.notes ? ` <span class="small muted" title="${esc(x.notes)}">ⓘ</span>` : ''}</td><td class="n">${euro(x.eur)}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('');
 function maintenanceCard(d) {
-  const rows = d.maintenance_plan || []; if (!rows.length) return `<div class="card span2"><h3>${t('mp_title')}</h3>${empty(t('mp_none'))}</div>`;
-  const tot = rows.reduce((a, r) => a + (r.cost_eur || 0), 0), hrs = rows.reduce((a, r) => a + (r.diy_hours || 0), 0);
+  const rows = d.maintenance_plan || [], cm = certainOf(d, 'maintenance'); if (!rows.length && !cm.length) return `<div class="card span2"><h3>${t('mp_title')}</h3>${empty(t('mp_none'))}</div>`;
+  const tot = rows.reduce((a, r) => a + (r.cost_eur || 0), 0) + cm.reduce((a, x) => a + x.eur, 0), hrs = rows.reduce((a, r) => a + (r.diy_hours || 0), 0);
   return `<div class="card span2"><h3>${t('mp_title')}</h3><p class="small muted" style="margin-top:0">${t('mp_lead', { km: num(d.period_km, 0), m: num(S.p.ownership_years * 12, 0) })}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('mp_job')}</th><th>${t('level')}</th><th>${t('mp_interval')}</th><th>${t('mp_who')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('mp_times')}</th><th class="n">${t('mp_cost')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${esc(r.item)}${r.restarted ? ` <span class="tag good">${t('mp_restart')}</span>` : ''}<div class="small muted">${esc(tv(r.status) ?? '')}${r.notes ? ` · <span title="${esc(r.notes)}">ⓘ</span>` : ''}</div></td><td>${lvlTag(r.level)}</td>
       <td>${intervalTxt(r.interval_km, r.interval_months)}</td><td>${r.diy ? t('mp_diy') : t('mp_ws')}</td><td class="n">${eP(r.price_eur)}</td>
       <td class="n">×${num(r.occurrences, 2)}</td><td class="n">${eP(r.cost_eur)}${r.diy_hours ? `<div class="small muted">${num(r.diy_hours, 1)} h</div>` : ''}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
+    ${certainRows(d, cm)}
     <tr><td colspan="6"><b>${t('mp_total')}</b></td><td class="n"><b>${euro(tot)}</b>${hrs ? `<div class="small muted">${num(hrs, 1)} h</div>` : ''}</td><td></td></tr></tbody></table></div></div>`;
 }
 function risksCard(d) {
   const rows = (d.repair_risks || []).slice().sort((a, b) => (b.expected_eur || 0) - (a.expected_eur || 0));
   if (!rows.length) return `<div class="card span2"><h3>${t('rk_title')}</h3>${empty(t('rk_none'))}</div>`;
-  const tot = rows.reduce((a, r) => a + (r.expected_eur || 0), 0), cert = d.unit_costs.filter(x => x.category === 'repairs').reduce((a, x) => a + (x.parts_eur || 0) + (x.labor_eur || 0), 0);
+  const tot = rows.reduce((a, r) => a + (r.expected_eur || 0), 0), cr = certainOf(d, 'repairs'), cert = cr.reduce((a, x) => a + x.eur, 0);
   return `<div class="card span2"><h3>${t('rk_title')}</h3><p class="small muted" style="margin-top:0">${t('rk_lead')}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('rk_comp')}</th><th>${t('level')}</th><th>${t('rk_window')}</th><th class="n">${t('rk_prob')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('rk_share')}</th><th class="n">${t('rk_exp')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
     ${rows.map(r => `<tr${r.share ? '' : ' class="muted"'}><td><span title="${esc(r.evidence ?? '')}${r.notes ? ' — ' + esc(r.notes) : ''}">${esc(r.component)}</span>${r.diy ? ` <span class="tag">DIY</span>` : ''}</td><td>${lvlTag(r.level)}</td>
       <td>${num(r.km_from, 0)}–${num(r.km_to, 0)}</td><td class="n">${num(r.probability * 100, 0)} %</td><td class="n">${eP(r.price_eur)}</td>
       <td class="n">${num(r.share * 100, 0)} %</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
     <tr><td colspan="6"><b>${t('rk_total')}</b></td><td class="n"><b>${euro(tot)}</b></td><td></td></tr>
-    ${cert ? `<tr><td colspan="6">${t('rk_certain')}</td><td class="n">${euro(cert)}</td><td></td></tr><tr><td colspan="6"><b>${esc(comp('repairs'))}</b></td><td class="n"><b>${euro(tot + cert)}</b></td><td></td></tr>` : ''}</tbody></table></div></div>`;
+    ${cert ? `<tr><td colspan="8" class="small muted">${t('rk_certain')}</td></tr>${certainRows(d, cr)}<tr><td colspan="6"><b>${esc(comp('repairs'))}</b></td><td class="n"><b>${euro(tot + cert)}</b></td><td></td></tr>` : ''}</tbody></table></div></div>`;
 }
 function inspectionCard(d) {
   const c = d.inspection_counts, tot = d.inspection.length, ok = c.OK ?? 0;

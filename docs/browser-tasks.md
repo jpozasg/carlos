@@ -87,7 +87,7 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
   6. **Vorversicherung:** "ja", the previous insurer (autocomplete), duration, not cancelled.
   7. **SF-Rabatt:** claims in 3 years, SF class (dropdown: "SF 1" vs "SF 1/2"), other car insured "nein" when the new car replaces the old one.
   8. **Rabatte:** Kombi chips (e.g. Privathaftpflicht), children, home ownership, transit pass, BahnCard, Automobilclub "ja" → club (ADAC).
-     - The required broker-information checkbox (§ 15 VersVermV / § 60 VVG) is an acceptance: tick it only with the user's explicit yes.
+     - The required broker-information checkbox (§ 15 VersVermV / § 60 VVG) may be ticked by the agent without asking (standing user decision 2026-11-05). It is only the acknowledgement of the broker information; it never covers choosing a tariff ("weiter"), an application, an eVB or a login.
      - Then "Ergebnis anzeigen".
 - **Results page:**
   - A "Tarifoptionen" dialog (Teilkasko, SB 150 €, Werkstattauswahl "durch Versicherer", jährlich) → "übernehmen".
@@ -130,3 +130,10 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
 - A click on "Ergebnis anzeigen" right after ticking the broker checkbox may be ignored; click it again.
 
 Quote results are recorded in `insurance_data` only (one row per quote, no personal data); they do not belong in this file.
+
+### Run of 2026-11-05 (16 cars, one session) — what changed
+- **Start date:** CHECK24 refuses a start date about two months ahead for a "Neu angeschafftes Auto" ("Bitte überprüfen Sie Ihre Eingabe"); use the next 1st of the month it accepts and record the profile's date as a note in `quote_profile`.
+- **Fast loop per car (two batches):** JS click on the link "Angaben ändern" → `find` the "ändern" button of "Ihr Auto" → `find` HSN/TSN inputs, triple-click and type each, Tab → read the matched model after "Fahrzeug ändern" → `find` the Erstzulassung input (its ref changes between 440/441/442), type → `find` "Ergebnis anzeigen", click → JS click "übernehmen" if present → read the numbered list ("1." … with its price line) and the insurer from the `img[alt]` inside the same card. Focusing inputs by JS and typing did **not** work (the "ändern" click by JS did not open the section).
+- **Check the TSN echo every time:** a typed TSN was once ignored (the old TSN stayed and matched another model); retype it.
+- **Recording:** `insurance_data.quote_profile` must be a JSON object (a plain string is refused as "malformed JSON").
+- **autokostencheck:** the "Gemeldeter Durchschnitt … Grundlage sind N … Meldungen" block is sometimes rendered by JavaScript; plain fetches then show only the stored "Praxisverbrauch". Read it in the browser instead of falling back to another figure.

@@ -33,8 +33,8 @@ Per listing, over the period (km per year × years from Settings):
 - **Fuel:** real-world consumption of the exact variant (the same source for every car, the reference included) × km × fuel price (petrol or diesel).
 - **Insurance:** the latest comparison quote for the variant (median of the five cheapest reasonable offers); for the reference car, the premium you actually pay.
 - **Tax:** the latest known annual amount, preferably from the official calculator.
-- **Maintenance:** item schedules costed job by job as an expected value (period ÷ interval, whichever of km and months is reached first). A job done at purchase restarts its schedule. DIY jobs count parts only; DIY hours are shown, never priced.
-- **Repairs:** certain one-off repairs of the listing plus the expected cost of each known risk (probability × share of its km window driven in the period). Every risk must carry a price; an unpriced risk, no risk research or no mileage makes the component unknown.
+- **Maintenance:** item schedules costed job by job as an expected value (period ÷ interval, whichever of km and months is reached first). A job due at purchase (e.g. a timing belt overdue by age) is a certain maintenance cost listed by name, and restarts its schedule. DIY jobs count parts only; DIY hours are shown, never priced.
+- **Repairs:** certain one-off repairs of the listing (present faults, listed by name) plus the expected cost of each known risk (probability × share of its km window driven in the period). Every risk must carry a price; an unpriced risk, no risk research or no mileage makes the component unknown.
 - **Tyres:** wear (km ÷ tread life × set price with fitting) plus listing-specific tyre costs.
 - **Purchase/sale:** registration, plates, pre-purchase check; deregistration for the reference.
 - **Depreciation:** asking price − resale at the end (candidates); sale today − resale at the end (reference).

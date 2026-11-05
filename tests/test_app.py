@@ -261,6 +261,17 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(sum(x['cost_eur'] for x in d['maintenance_plan']), d['components']['maintenance'])
         self.assertAlmostEqual(sum(x['expected_eur'] for x in d['repair_risks']) + 0, d['cost_detail']['repairs_expected'])
 
+    def test_certain_maintenance(self):
+        """A scheduled job due at purchase is a certain maintenance cost: it adds to maintenance, never to repairs."""
+        before = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        st, _ = self.agent('POST', 'unit_costs', {'listing_id': CAR_B, 'category': 'maintenance', 'item': 'Timing belt kit (due by age)',
+                                                  'parts_eur': 200, 'labor_eur': 400, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})
+        self.assertEqual(st, 201)
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        self.assertAlmostEqual(d['components']['maintenance'], before['components']['maintenance'] + 600)
+        self.assertEqual(d['components']['repairs'], before['components']['repairs'])
+        self.assertEqual(d['cost_detail']['maintenance_certain'], 600)
+
     def test_diesel_price(self):
         st, e = self.agent('POST', 'engines', {'code': 'D15', 'fuel_type': 'Diesel', 'displacement_cc': 1500, 'power_ps': 105})
         st, v = self.agent('POST', 'vehicles', {'generation_id': G2, 'engine_id': e['id'], 'trim': 'City 1.5 D'})

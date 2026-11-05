@@ -39,7 +39,7 @@ SQLite, one file (`cars.sqlite` in the data directory). `schema.sql` is the exec
 | `listing_snapshots` | captures of the listing as published: `captured_at`, `title`, `price_eur`, `mileage_km`, `description` (verbatim, original language), `attributes_json` (every feature as shown), `source_id`. Never overwritten; a new capture per visit. The price history comes from here. |
 | `listing_media` | archived photos in `media/<listing id>/<sha256>.<ext>` (max 1.5 MB each, deduplicated by hash). |
 | `valuations` | `kind` `sale_today` (reference only) or `resale_end`, `horizon_years`, `low_eur`, `expected_eur`, `high_eur`, `status`, `valued_date`, `source_id`. |
-| `unit_costs` | certain one-off costs of this car: `category` repairs / tyres / purchase_sale, `item`, `parts_eur`, `labor_eur`, `diy_hours`, `status`, `source_id`. |
+| `unit_costs` | certain one-off costs of this car: `category` maintenance (a scheduled job due at purchase, with a CERTAIN REPAIR reset) / repairs (a present fault) / tyres / purchase_sale; `item` names the job, `item`, `parts_eur`, `labor_eur`, `diy_hours`, `status`, `source_id`. |
 | `maintenance_resets` | a scheduled job done at the start of ownership (`basis` CERTAIN REPAIR / SELLER CLAIM / DOCUMENTED): the schedule restarts for this listing. |
 | `inspection_items` | the checklist: `item`, `status` PENDING / OK / PROBLEM / N/A, `checked_date`, `notes`. |
 | `listing_events` | the log, the agent's memory: `event_date`, `kind` (found, verification, correction, price, decision, user_data, warning, archive, photos, viewing), `text` (English), `source_id`. |
