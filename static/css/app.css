@@ -171,6 +171,8 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 /* the Carlos score instrument (issue #92): a half-dial with the other cars as ticks and this car as the needle; theme
    tokens only (good/warn/bad ink every theme defines); the needle sweeps once when the dossier opens */
 .scorecard{padding:14px 16px 12px;border-radius:var(--radius);background:var(--surface);border:var(--border-w) solid var(--border)}
+/* dossier tiles take the spec plate's colours; what sits on --surface-2 inside them swaps to --surface (issue #100) */
+.dossier-top~.grid>.card,.dossier-side>.scorecard{background:var(--plate);border-color:var(--border-strong);--surface-2:var(--surface)}
 .sc-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .sc-title{display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:700;color:var(--text)}
 .sc-rank{font-size:13px;color:var(--text-2)}
