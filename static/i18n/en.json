@@ -236,6 +236,11 @@
  "open_model": "Model data",
  "registration": "First registration",
  "seller": "Seller",
+ "seller_rating": "Seller rating",
+ "reviews_n": {
+  "one": "{n} review",
+  "other": "{n} reviews"
+ },
  "accident_free": "Accident-free",
  "owners": "Owners",
  "hu": "HU",

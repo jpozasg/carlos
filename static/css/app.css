@@ -476,3 +476,4 @@ fieldset.person>.btn{justify-self:start}
 abbr.prov{text-decoration:none;color:var(--text-3);font-size:.75em;margin-left:1px;cursor:help}
 .decide{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}.decide-why{display:inline-flex;gap:6px;flex:1 1 260px}.decide-why input{flex:1;min-width:0;padding:5px 9px;border:var(--border-w) solid var(--border-strong);border-radius:var(--radius-s);background:var(--surface)}
 .field input[readonly]{background:var(--surface-2);color:var(--text-2);cursor:default}
+.stars{color:var(--warn-ink)}
