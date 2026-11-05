@@ -1,8 +1,12 @@
 # Carlos
 
-**The real cost of a used car, compared with the one you already own.**
+**The real cost of a car, compared with the one you already own (if you have one).**
 
-Carlos is a small self-hosted web app for people choosing a used car on the German market. You register the car you own as the *reference*, an agent (or you) researches the cars for sale you are interested in, and Carlos shows what each one would really cost over the years you plan to keep it: fuel, insurance, road tax, maintenance, expected repairs, tyres, purchase and sale costs and depreciation. A questionnaire turns what matters to you into ranking weights, and every number can be traced back to its source.
+Carlos is a small self-hosted web app for people choosing a car, new or used. If you already own one, you register it as the *reference*; an agent (or you) researches the cars you are interested in, and Carlos shows what each one would really cost over the years you plan to keep it: fuel, insurance, road tax, maintenance, expected repairs, tyres, purchase and sale costs and depreciation. A questionnaire turns what matters to you into ranking weights, and every number can be traced back to its source.
+
+It was built and tested with German data (the official BMF road-tax calculator, CHECK24 insurance quotes, HSN/TSN type codes, Bavarian registration and inspection fees), but nothing in the method is German: anywhere else, swap those regional sources for the local ones (`docs/cost-research-protocol.md`, `agent_tools.py` shared sources) and the same calculation works.
+
+**Why "Carlos"?** It is a typical Spanish name, and read with a bit of German, *Car-los* means *car-less* (*-los* = without). It was written by a Spaniard who does not have a car, to find the right one.
 
 - Python standard library only (runs on a Raspberry Pi 2B), SQLite, no build step.
 - Accounts: every person has their own private cars, models, parameters and dossiers.
