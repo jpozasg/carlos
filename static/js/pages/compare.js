@@ -39,7 +39,7 @@ function versus() {
   if (!best || ref.known_cost_per_month == null) mid = `<p class="empty-v">${t('versus_none')}</p>`;
   else { const d = ref.known_cost_per_month - best.known_cost_per_month;
     mid = `<div class="n ${d > 0 ? 'down' : d < 0 ? 'up' : ''}">${d === 0 ? '=' : (d > 0 ? '−' : '+') + euro(Math.abs(d))}</div><div class="l">${d > 0 ? t('versus_saves', { v: euro(Math.abs(d)) }) : d < 0 ? t('versus_costs_more', { v: euro(Math.abs(d)) }) : t('versus_even')}</div>
-      ${best.delta_vs_reference != null ? `<div class="s">${t('versus_over', { y: S.p.ownership_years, v: euro(-best.delta_vs_reference) })}</div>` : ''}<div class="s">${t('versus_hint')}</div>`; }
+      ${best.delta_vs_reference != null ? `<div class="s">${t('versus_over', { y: S.p.ownership_years, v: (best.delta_vs_reference > 0 ? '+' : best.delta_vs_reference < 0 ? '−' : '') + euro(Math.abs(best.delta_vs_reference)) })}</div>` : ''}<div class="s">${t('versus_hint')}</div>`; }
   return `<section class="versus" aria-label="${esc(t('versus_title'))}">${side(ref, t('versus_keep'), 'left')}<div class="mid">${mid}</div>${best ? side(best, t('versus_best'), 'right') : '<div></div>'}</section>`;
 }
 function ruler(all) {

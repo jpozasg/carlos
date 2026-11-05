@@ -219,7 +219,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(ref['components']['depreciation'], 2500 - 1500)       # sale today − resale
         self.assertEqual(ref['consumption'], 8.2)                              # the same source for every car
         self.assertEqual(b['components']['repairs'], 0)                        # turbo window not reached: 0, not unknown
-        self.assertAlmostEqual(a['delta_vs_reference'], a['known_cost_subtotal'] - ref['known_cost_subtotal'])
+        self.assertAlmostEqual(a['delta_vs_reference'], a['known_cost_subtotal'] + (ref['components']['purchase_sale'] or 0) - ref['known_cost_subtotal'])
         self.assertEqual(a['initial_outlay'], 6000 - 2500)
         self.assertEqual(a['metrics']['reliability'], 2.5)                     # MEDIUM engine item 2 + LOW generation item 0.5
         self.assertEqual(b['metrics']['reliability'], 3)                       # HIGH engine item
@@ -342,6 +342,8 @@ class AppTest(unittest.TestCase):
         keep_end = be['ref_monthly'] * 48 + 7.5 - 1500
         switch_end = be['upfront'] + be['monthly'] * 48 - 4000
         self.assertAlmostEqual(be['end_advantage'], keep_end - switch_end, delta=0.5)   # rounded parts
+        if a['delta_vs_reference'] is not None:                       # the two views tell the same story
+            self.assertAlmostEqual(be['end_advantage'], -a['delta_vs_reference'], delta=1)
         self.assertTrue(ref['breakeven']['ready'])
         st, l = self.agent('POST', 'listings', {'vehicle_id': V_B2, 'source_id': SRC_LISTING, 'listing_id': 'BE1', 'price_eur': 5000})
         be = self.units()[l['id']]['breakeven']
