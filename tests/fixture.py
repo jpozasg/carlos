@@ -1,5 +1,6 @@
 """Synthetic test database: built from schema.sql with invented cars, so the tests never touch real data and carry no
-personal data. Ids below are stable and used by the tests."""
+personal data. Ids below are stable and used by the tests. The models are shared catalogue rows (owner_id NULL, issue
+#109); listings, listing sources, quotes and the owner's figures belong to the admin."""
 import datetime, json, sqlite3
 import migrate
 from carlos import auth
@@ -37,11 +38,11 @@ ROWS = {
              displacement_cc=1600, cylinders=4, power_kw=85, power_ps=115, aspiration='NATURALLY ASPIRATED', injection=None, timing_drive='CHAIN', status='PARTIAL'),
     ],
     'sources': [
-        dict(id=SRC_LISTING, title='Test listing source', url='https://example.test/listing', source_type='listing', quality='A', accessed_date=TODAY),
-        dict(id=SRC_USER, title='User-provided data', source_type='user_reported', accessed_date=TODAY, supports='Facts about the own car', limitations='User statements'),
+        dict(id=SRC_LISTING, owner_id=ADMIN, title='Test listing source', url='https://example.test/listing', source_type='listing', quality='A', accessed_date=TODAY),
+        dict(id=SRC_USER, owner_id=ADMIN, title='User-provided data', source_type='user_reported', accessed_date=TODAY, supports='Facts about the own car', limitations='User statements'),
         dict(id=SRC_HU, title='HU/AU price 2026', url='https://example.test/hu', source_type='fees', quality='B', accessed_date=TODAY),
         dict(id=SRC_TAX_OFFICIAL, title='BMF Kfz-Steuer-Rechner', url='https://example.test/tax', source_type='tax_official_calculator', quality='A', accessed_date=TODAY),
-        dict(id=SRC_QUOTE, title='Comparison quote', url='https://example.test/quote', source_type='insurance_quote', quality='B', accessed_date=TODAY),
+        dict(id=SRC_QUOTE, owner_id=ADMIN, title='Comparison quote', url='https://example.test/quote', source_type='insurance_quote', quality='B', accessed_date=TODAY),
         dict(id=SRC_GUIDE, engine_id=E_A, title='Engine guide AM14', url='https://example.test/am14', source_type='buying_guide', quality='C', accessed_date=TODAY),
     ],
     'vehicles': [
@@ -64,14 +65,14 @@ ROWS = {
         dict(vehicle_id=V_A, category='consumption', metric='Autokostencheck average', value_num=7.0, unit='l/100 km', sample_count=120, min_value=5.5, max_value=9.0, status='PRIMARY', evidence_quality='C', observed_date=TODAY, source_id=SRC_GUIDE),
         dict(engine_id=E_B, category='consumption', metric='Autokostencheck average', value_num=5.8, unit='l/100 km', sample_count=80, min_value=4.6, max_value=7.4, status='PRIMARY', evidence_quality='C', observed_date=TODAY, source_id=SRC_GUIDE),
         dict(vehicle_id=V_REF, category='consumption', metric='Autokostencheck average', value_num=8.2, unit='l/100 km', sample_count=300, min_value=6.5, max_value=10.5, status='PRIMARY', evidence_quality='C', observed_date=TODAY, source_id=SRC_GUIDE),
-        dict(vehicle_id=V_REF, category='consumption', metric='Owner measured average', value_num=8.6, unit='l/100 km', status='USER DATA', observed_date=TODAY, source_id=SRC_USER),
+        dict(vehicle_id=V_REF, category='consumption', metric='Owner measured average', value_num=8.6, unit='l/100 km', status='USER DATA', observed_date=TODAY, source_id=SRC_USER, owner_id=ADMIN),
     ],
     'insurance_data': [
-        dict(vehicle_id=V_A, hsn='1111', tsn='AAA', annual_premium_eur=800, premium_min_eur=700, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE,
+        dict(vehicle_id=V_A, hsn='1111', tsn='AAA', annual_premium_eur=800, premium_min_eur=700, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE, owner_id=ADMIN,
              quote_profile=json.dumps({'cover': 'Teilkasko', 'deductible_eur': 150})),
-        dict(vehicle_id=V_B, hsn='2222', tsn='BBB', annual_premium_eur=700, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE),
-        dict(vehicle_id=V_REF, annual_premium_eur=900, premium_status='USER DATA', source_id=SRC_USER),
-        dict(vehicle_id=V_REF, annual_premium_eur=950, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE),
+        dict(vehicle_id=V_B, hsn='2222', tsn='BBB', annual_premium_eur=700, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE, owner_id=ADMIN),
+        dict(vehicle_id=V_REF, annual_premium_eur=900, premium_status='USER DATA', source_id=SRC_USER, owner_id=ADMIN),
+        dict(vehicle_id=V_REF, annual_premium_eur=950, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE, owner_id=ADMIN),
     ],
     'tax_data': [
         dict(vehicle_id=V_A, annual_tax_eur=94, status='VERIFIED', basis='1400 cc, 140 g/km', source_id=SRC_TAX_OFFICIAL),

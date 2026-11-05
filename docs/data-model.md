@@ -2,6 +2,8 @@
 
 SQLite, one file (`cars.sqlite` in the data directory). `schema.sql` is the executable reference and the baseline for new databases; changes go through `migrations/NNN_*.sql`. Every row of a top-level table belongs to one account (`owner_id`); child rows belong through their parent. The API shows and accepts only the rows of the account behind the session or token (per-owner views, `carlos/auth.py`).
 
+**Shared catalogue** (issue #109): `generations`, `engines`, `vehicles` and level-attached `sources` with `owner_id` NULL are shared by every account; with an owner they are private to it. An account sees a catalogue variant (with its engine, generation, knowledge rows and sources) only through `catalogue_links` (`owner_id` + exactly one of `vehicle_id`, `engine_id`, `generation_id`), which a listing creates for its variant; admins (the curator and the shared research worker) see the whole catalogue. Knowledge rows carry `owner_id` too: NULL follows its level (shared on a catalogue level), set = a private row of that account on a shared level — the server sets it for insurance premiums and `USER DATA` figures. Level-free sources with `owner_id` NULL are global (fee tables); listing and user sources keep their owner.
+
 ## Accounts
 | Table | Purpose |
 |---|---|

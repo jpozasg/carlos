@@ -1,6 +1,6 @@
 # API
 
-All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths). Authentication: a session cookie (`carlos_session`, set by the login) or `Authorization: Bearer <agent token>`. Every request sees only the rows of its account. Errors are JSON `{"error": "..."}` with 400 (validation, constraint), 401 (login required or wrong token), 404, 405, 415, 429 (login locked), 507 (storage quota).
+All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths). Authentication: a session cookie (`carlos_session`, set by the login) or `Authorization: Bearer <agent token>`. Every request sees only the rows of its account. Errors are JSON `{"error": "..."}` with 400 (validation, constraint), 401 (login required or wrong token), 403 (not allowed for this account), 404, 405, 415, 429 (login locked), 507 (storage quota).
 
 ## Pages
 `GET /` the app, `GET /login` and `GET /invite/<token>` the sign-in page, `GET /static/...` assets, `GET /media/<listing>/<sha256>.<ext>` an archived photo (owner only).
@@ -41,7 +41,7 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 |---|---|---|
 | `POST /api/preferences` | object `preference_key → value` (keys snake_case, at most 50 per call, values ≤ 1000 characters; `null` or empty removes the key) | upsert per account; returns all rows |
 | `POST /api/parameters` | any subset of the parameters; `ranking_answers` (object question → answer id), `ranking_weights` (object criterion → 0–5, or `null` to go back to the answers) | validated: `annual_km`, `ownership_years`, `fuel_price_eur_l` > 0; dates ISO; `budget_ideal_eur ≤ budget_max_eur` |
-| `POST /api/agent/<table>` | a row (JSON object) | inserts; `owner_id` is set by the server; referenced parent ids must belong to the account; knowledge tables need exactly one of `vehicle_id`, `engine_id`, `generation_id`; tables in `source_required_on_insert` need `source_id` |
+| `POST /api/agent/<table>` | a row (JSON object) | inserts; `owner_id` is set by the server; referenced parent ids must belong to the account; knowledge tables need exactly one of `vehicle_id`, `engine_id`, `generation_id`; tables in `source_required_on_insert` need `source_id`. Research (`generations`, `engines`, `vehicles`, knowledge tables, level-attached `sources`) and `listings` need an admin token (403 otherwise); admin inserts of models and level sources go to the shared catalogue. A `vehicles` POST with an `hsn`/`tsn` already in the catalogue returns `200 {id, existing: true}` and links it to the account instead of creating a duplicate |
 | `PATCH /api/agent/<table>/<id>` | the changed columns | updates; `source_id` cannot be removed; `{"archived": 1}` archives a row of the knowledge tables, `unit_costs`, `valuations`, `maintenance_resets` or `inspection_items` (ignored by every read and calculation), `{"archived": 0}` restores it |
 | `DELETE /api/agent/<table>/<id>` | | deletes the row and logs it in `change_log` (action `delete`); a listing goes with its own rows (captures, photos and their files, log, checklist, costs, valuations, resets); any other row is refused (400) while something references it. Agents use it only after the owner confirmed the exact deletion (AGENTS.md) |
 | `POST /api/agent/media/<listing id>?url=<original>&snapshot_id=<id>` | image bytes, `Content-Type: image/jpeg|png|webp`, max 1.5 MB | archives a photo; duplicates (same hash) return `created: false` |
@@ -49,4 +49,6 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 | `PATCH /api/ui/inspection_items/<id>`, `POST /api/ui/inspection_items`, `POST /api/ui/listing_events`, `POST /api/ui/media/<listing id>` | `{status, notes}`, `{listing_id, item}`, `{listing_id, text}` (kind `viewing`), image bytes | the viewing mode of the phone UI; same rules as the agent API |
 | `POST /api/ui/decision/<listing id>` | `{decision: shortlist|viewing|reject|reset, reason?}` | the owner's decision from the dossier: sets `verdict` ("Shortlisted by the owner", "Viewing planned by the owner", "Rejected by the owner: <reason>") and a `decision` log entry; `reject` archives the car (`WITHDRAWN`, out of the ranking), `reset` brings it back under review; not for the reference car |
 
-Every write is recorded in `change_log` and regenerates the account's dossiers in `data/dossiers/<account id>/`.
+Every write is recorded in `change_log` (with the writer's user id) and regenerates the account's dossiers in `data/dossiers/<account id>/`, and those of every account with a listing on a changed catalogue level.
+
+**Acting for an account** (the shared research worker): an admin agent token may send `X-Carlos-Account: <user id>`; reads and `/api/agent/` writes then use that account (its listings, its private rows; models still go to the catalogue), and `change_log` records the admin. Other writes with the header get 403.

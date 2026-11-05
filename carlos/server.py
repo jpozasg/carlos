@@ -5,8 +5,9 @@ from urllib.parse import parse_qs, urlsplit
 import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
 from . import auth, config
-from .agent import (AGENT_TABLES, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotFound, QuotaExceeded,
-                    UnsupportedMediaType, agent_delete, agent_write, save_media, storage_usage, table_columns)
+from .agent import (AGENT_TABLES, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
+                    UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, save_media,
+                    storage_usage, table_columns)
 from .costs import budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
 from .models import model_tree, variant_detail
@@ -141,11 +142,25 @@ class Handler(BaseHTTPRequestHandler):
         return self.user
 
     def require(self, c, admin=False):
+        """Logs the caller in and scopes the connection. An admin token may act for another account with the header
+        X-Carlos-Account: <user id> (the shared research worker writing into the requester's account, issue #109);
+        self.uid is then that account, self.user stays the admin (the change log records who wrote)."""
         if self.identify(c) is None:
             raise Forbidden('Login required')
         if admin and self.user['role'] != 'admin':
             raise Forbidden('Admin only')
-        auth.scope(c, self.user['id'])
+        self.admin, self.uid = self.user['role'] == 'admin', self.user['id']
+        acting = self.headers.get('X-Carlos-Account')
+        if acting:
+            if not self.admin or not self.headers.get('Authorization'):
+                raise NotAllowed('X-Carlos-Account needs an admin agent token')
+            if self.command != 'GET' and not urlsplit(self.path).path.startswith('/api/agent/'):
+                raise NotAllowed('X-Carlos-Account works for reads and /api/agent/ writes only (never passwords, tokens or settings)')
+            row = c.execute('SELECT id FROM main.users WHERE id=? AND is_active=1', (int(acting) if acting.isdigit() else -1,)).fetchone()
+            if row is None:
+                raise ValueError(f'X-Carlos-Account={acting}: no such active account')
+            self.uid = row[0]
+        auth.scope(c, self.uid, curator=self.admin)
         return self.user
 
     # ------------------------------------------------------------------ routing
@@ -188,6 +203,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'error': str(e)}, 401)
         except UnsupportedMediaType as e:
             self.send_json({'error': str(e)}, 415)
+        except NotAllowed as e:
+            self.send_json({'error': str(e)}, 403)
         except NotFound as e:
             self.send_json({'error': str(e)}, 404)
         except QuotaExceeded as e:
@@ -242,7 +259,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/api/admin/'):
             self.admin_api(c, method, path); return
         user = self.require(c)
-        uid = user['id']
+        uid = self.uid
         query = parse_qs(urlsplit(self.path).query)
         p = params(c)
         if method == 'GET':
@@ -358,18 +375,34 @@ class Handler(BaseHTTPRequestHandler):
         elif agent and agent[1] in AGENT_TABLES and method == 'DELETE':
             if not agent[2]:
                 self.send_json({'error': 'DELETE /api/agent/<table>/<id> deletes one row (ask the owner first)'}, 405); return
+            if not self.admin:
+                check_writable(c, agent[1], int(agent[2]), {})
+            others = linked_accounts(c, agent[1], int(agent[2]))
             removed = agent_delete(c, agent[1], int(agent[2]), uid)
-            export_markdown(c, uid)
+            self.export_all(c, uid, others)
             self.send_json({'table': agent[1], 'id': int(agent[2]), 'deleted': True, 'removed_children': removed})
         elif agent and agent[1] in AGENT_TABLES:
             data = self.read_json()
             if (method == 'PATCH') != bool(agent[2]):
                 self.send_json({'error': 'POST /api/agent/<table> inserts; PATCH /api/agent/<table>/<id> updates'}, 405); return
-            row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid)
-            export_markdown(c, uid)  # shortcut: regenerates every dossier of the account on each write; fine for dozens of listings
+            if not self.admin:
+                check_writable(c, agent[1], int(agent[2]) if agent[2] else None, data)
+            existing = resolve_variant(c, data, uid) if agent[1] == 'vehicles' and method == 'POST' else None
+            if existing:  # the shared catalogue already has this HSN/TSN: reuse it (issue #109)
+                export_markdown(c, uid)
+                self.send_json({'table': 'vehicles', 'id': existing, 'existing': True}); return
+            row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.admin, user['id'])
+            self.export_all(c, uid, linked_accounts(c, agent[1], row_id))
             self.send_json({'table': agent[1], 'id': row_id}, 201 if method == 'POST' else 200)
         else:
             self.send_json({'error': 'Endpoint not found'}, 404)
+
+    def export_all(self, c, uid, others=()):
+        """Dossiers of this account and of every other account that shows the changed catalogue row.
+        shortcut: regenerates every dossier of each account on each write; fine for dozens of listings."""
+        export_markdown(c, uid)
+        for o in set(others) - {uid}:
+            s = connect(); auth.scope(s, o); export_markdown(s, o); s.close()
 
     def user_source(self, c, uid, today):
         """The account's 'User-provided data' source (created on first use)."""
