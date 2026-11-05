@@ -19,7 +19,7 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 1. identification of generation, engine (aspiration, injection, timing drive) and variant (HSN/TSN);
 2. reliability items at the right level, each with its `part` (ENGINE / GEARBOX / CHASSIS / ELECTRICS: research all four) and every manufacturer recall as its own row with `recall=True`, then the checklist; record every source consulted with `check(level, id, task, source_id, result)` (`rel.<PART>.<source>`, `gen.recalls`, `gen.facelift`, …), `NONE FOUND` when it lists nothing;
 3. autokostencheck consumption of the exact variant;
-4. item maintenance schedule at the right level, with HU;
+4. item maintenance schedule at the right level, with HU: every job with its `job=` code and, for a job an owner may do (`config.DIYABLE_JOBS`), both the DIY parts and the workshop price (the research is shared; each account's DIY choice picks one);
 5. repair risks at the right level for the window {MILEAGE_KM} → {MILEAGE_KM} + {PERIOD_KM} km;
 6. certain one-off costs of this car: scheduled jobs due at purchase as `maintenance` (timing belt by age, overdue fluids: never `repairs`), present faults as `repairs`, each named in `item`;
 7. tyres;

@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=21). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=22). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -99,7 +99,7 @@ CREATE TABLE "tax_data" (
  vehicle_id INTEGER REFERENCES vehicles(id),
  engine_id INTEGER REFERENCES engines(id),
  generation_id INTEGER REFERENCES generations(id),
- annual_tax_eur REAL, status TEXT, basis TEXT, source_id INTEGER, notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id),
+ annual_tax_eur REAL, status TEXT, basis TEXT, source_id INTEGER, notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), registered_from TEXT, registered_to TEXT,
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "maintenance_items" (
@@ -113,7 +113,7 @@ CREATE TABLE "maintenance_items" (
  schedule TEXT NOT NULL DEFAULT 'PACKAGE' CHECK (schedule IN ('PACKAGE', 'ITEM')),
  diy INTEGER NOT NULL DEFAULT 0 CHECK (diy IN (0, 1)),
  diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
- active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id),
+ active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT,
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "reliability_items" (
@@ -140,7 +140,7 @@ CREATE TABLE "repair_risks" (
  diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
  status TEXT, evidence TEXT,
  source_id INTEGER REFERENCES sources(id),
- notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id),
+ notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT,
  CHECK (km_to > km_from),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );

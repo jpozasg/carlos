@@ -12,19 +12,19 @@ from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2  # 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
 LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id'}
 REL_SOURCES = {'adac': 'B', 'tuev': 'B', 'guide': 'C', 'engine_specific': 'C'}  # the same sources for every car, minimum quality
 
 
-def _job(pattern, workshop_only=False, exclude=None):
-    """Maintenance rows of one job: active, with an interval and a price (the workshop price for workshop-only jobs)."""
-    rx, ex = re.compile(pattern, re.I), re.compile(exclude, re.I) if exclude else None
-    return lambda ctx: [r for r in ctx['rows']('maintenance_items') if r['active'] and rx.search(r['item'] or '')
-                        and not (ex and ex.search(r['item'] or '')) and (r['interval_km'] or r['interval_months'])
-                        and (r['reference_cost_eur'] is not None or not workshop_only and r['diy_parts_cost_eur'] is not None)]
+def _job(*jobs):
+    """Maintenance rows of one job by its code (#106 part 4): active, with an interval, the workshop price and, for a
+    job any account may do itself (config.DIYABLE_JOBS), the DIY parts price too, since each account's choice picks one."""
+    return lambda ctx: [r for r in ctx['rows']('maintenance_items') if r['active'] and r.get('job') in jobs
+                        and (r['interval_km'] or r['interval_months']) and r['reference_cost_eur'] is not None
+                        and (r['diy_parts_cost_eur'] is not None or r['job'] not in config.DIYABLE_JOBS)]
 
 
 def _risks(ctx):
@@ -73,25 +73,25 @@ FOUND_OR_NONE, NOT_APPLICABLE = ('FOUND', 'NONE FOUND', 'N/A'), ('N/A',)
 ITEMS = [
     ('gen.identity', 'generation', 'make, model, name, start and end year of the whole production run', _fields('start_year', 'end_year'), (), None, always, 1),
     ('gen.facelift', 'generation', 'facelift year (check N/A when there was none)', _fields('facelift_year'), NOT_APPLICABLE, None, always, 1),
-    ('gen.hu', 'generation', 'HU/AU every 24 months with the official fee', _job(r'\bHU\b|hauptuntersuchung', True), (), None, always, 1),
-    ('gen.brake_fluid', 'generation', 'brake fluid interval and price', _job(r'brake fluid'), (), None, always, 1),
-    ('gen.brakes', 'generation', 'brake pads and discs: interval and price', _job(r'brake (pad|disc|shoe)'), (), None, always, 1),
-    ('gen.battery', 'generation', 'battery: life and price', _job(r'battery'), (), None, always, 1),
-    ('gen.wipers', 'generation', 'wiper blades: interval and price', _job(r'wiper'), (), None, always, 1),
-    ('gen.cabin_filter', 'generation', 'cabin (pollen) filter: interval and price', _job(r'cabin|pollen'), (), None, always, 1),
+    ('gen.hu', 'generation', 'HU/AU every 24 months with the official fee', _job('HU'), (), None, always, 2),
+    ('gen.brake_fluid', 'generation', 'brake fluid interval and workshop price', _job('BRAKE_FLUID'), (), None, always, 2),
+    ('gen.brakes', 'generation', 'brake pads and discs: interval, DIY parts and workshop price', _job('BRAKES_FRONT', 'BRAKES_REAR'), (), None, always, 2),
+    ('gen.battery', 'generation', 'battery: life, DIY parts and workshop price', _job('BATTERY'), (), None, always, 2),
+    ('gen.wipers', 'generation', 'wiper blades: interval, DIY parts and workshop price', _job('WIPERS'), (), None, always, 2),
+    ('gen.cabin_filter', 'generation', 'cabin (pollen) filter: interval, DIY parts and workshop price', _job('CABIN_FILTER'), (), None, always, 2),
     ('gen.recalls', 'generation', 'recall search (KBA / manufacturer)', None, FOUND_OR_NONE, 'B', always, 1),
     ('gen.risks', 'generation', 'body/chassis repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
     ('eng.identity', 'engine', 'code, fuel, displacement, power, aspiration, injection, timing drive', _fields(
         'code', 'fuel_type', 'displacement_cc', 'power_ps', 'aspiration', 'injection', 'timing_drive', code=True), (), None, always, 1),
-    ('eng.oil', 'engine', 'oil and filter service: interval and price', _job(r'\boil\b', exclude=r'gear|transmission|dsg|brake'), (), None, always, 1),
-    ('eng.air_filter', 'engine', 'air filter: interval and price', _job(r'air filter'), (), None, always, 1),
-    ('eng.spark_plugs', 'engine', 'spark plugs: interval and price', _job(r'spark plug'), (), None, petrol, 1),
-    ('eng.fuel_filter', 'engine', 'fuel filter: interval and price', _job(r'fuel filter'), (), None, diesel, 1),
-    ('eng.timing_belt', 'engine', 'timing belt: interval and workshop price', _job(r'timing|cam ?belt|zahnriemen', True), (), None,
-     lambda ctx: not _is('timing_drive', 'CHAIN', 'GEAR')(ctx), 1),
-    ('eng.timing_chain', 'engine', 'timing chain/gear: a job or a check that none is scheduled', _job(r'timing|chain'), ('NONE FOUND',), None,
-     _is('timing_drive', 'CHAIN', 'GEAR'), 1),
-    ('eng.coolant', 'engine', 'coolant: interval and price (or a check: lifetime fill)', _job(r'coolant'), ('NONE FOUND',), None, always, 1),
+    ('eng.oil', 'engine', 'oil and filter service: interval, DIY parts and workshop price', _job('OIL_SERVICE'), (), None, always, 2),
+    ('eng.air_filter', 'engine', 'air filter: interval, DIY parts and workshop price', _job('AIR_FILTER'), (), None, always, 2),
+    ('eng.spark_plugs', 'engine', 'spark plugs: interval, DIY parts and workshop price', _job('SPARK_PLUGS'), (), None, petrol, 2),
+    ('eng.fuel_filter', 'engine', 'fuel filter: interval, DIY parts and workshop price', _job('FUEL_FILTER'), (), None, diesel, 2),
+    ('eng.timing_belt', 'engine', 'timing belt: interval, DIY parts and workshop price', _job('TIMING_DRIVE'), (), None,
+     lambda ctx: not _is('timing_drive', 'CHAIN', 'GEAR')(ctx), 2),
+    ('eng.timing_chain', 'engine', 'timing chain/gear: a job or a check that none is scheduled', _job('TIMING_DRIVE'), ('NONE FOUND',), None,
+     _is('timing_drive', 'CHAIN', 'GEAR'), 2),
+    ('eng.coolant', 'engine', 'coolant: interval, DIY parts and workshop price (or a check: lifetime fill)', _job('COOLANT'), ('NONE FOUND',), None, always, 2),
     ('eng.risks', 'engine', 'engine repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
     ('var.identity', 'variant', 'HSN/TSN, gearbox, body, emissions class, CO2', _fields(
         'hsn', 'tsn', 'transmission', 'body_style', 'emissions_standard', 'co2_g_km', status='technical_status'), (), None, always, 1),
@@ -218,6 +218,7 @@ def listing_items(u, rows, today):
         fresh = [r for r in ins if r['premium_status'] == 'QUOTE' and _age(r['quote_date'], today) is not None
                  and _age(r['quote_date'], today) <= config.QUOTE_MAX_AGE_DAYS]
         add('lst.insurance', f'an insurance quote younger than {config.QUOTE_MAX_AGE_DAYS} days', bool(fresh))
+    add('lst.tax_covered', "a tax row whose registration window covers this car's first registration", rows['tax'] is not None)
     add('lst.valuation', 'resale value at the end of the period', 'resale_end' in rows['valuations'])
     if not u['is_reference']:
         add('lst.purchase_sale', 'purchase costs of this car', any(x['category'] == 'purchase_sale' for x in rows['unit_costs']))
