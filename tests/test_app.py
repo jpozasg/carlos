@@ -35,9 +35,9 @@ class AppTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def req(self, method, path, body=None, token=TOKEN, ctype='application/json', cookie=None, raw=None):
+    def req(self, method, path, body=None, token=TOKEN, ctype='application/json', cookie=None, raw=None, headers=None):
         """Requests carry the admin's agent token unless told otherwise (token=None: anonymous; cookie: a session)."""
-        headers = {'Content-Type': ctype}
+        headers = {'Content-Type': ctype, **(headers or {})}
         if token:
             headers['Authorization'] = f'Bearer {token}'
         if cookie:
@@ -50,8 +50,8 @@ class AppTest(unittest.TestCase):
             body = e.read()
             return e.code, json.loads(body) if body.startswith(b'{') else body
 
-    def agent(self, method, path, body=None, token=TOKEN):
-        return self.req(method, '/api/agent/' + path, body, token)
+    def agent(self, method, path, body=None, token=TOKEN, headers=None):
+        return self.req(method, '/api/agent/' + path, body, token, headers=headers)
 
     def ui(self, method, path, body=None, token=TOKEN, raw=None, ctype='application/json'):
         return self.req(method, '/api/ui/' + path, body, token, ctype, raw=raw)
@@ -760,29 +760,48 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', '/api/models', token=t2)[1]['makes'], [])
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}', token=t2)[0], 404)
         self.assertEqual(self.req('GET', f'/api/vehicles/{V_A}', token=t2)[0], 404)
-        self.assertEqual(self.agent('PATCH', f'listings/{CAR_A}', {'verdict': 'mine now'}, token=t2)[0], 404)
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_A}', {'verdict': 'mine now'}, token=t2)[0], 403)  # listings: the worker's
         self.assertEqual(self.agent('POST', 'listing_events', {'listing_id': CAR_A, 'event_date': '2026-11-04', 'kind': 'found', 'text': 'x'}, token=t2)[0], 400)
-        self.assertEqual(self.agent('POST', 'maintenance_items', {'engine_id': E_A, 'item': 'x', 'schedule': 'ITEM', 'source_id': SRC_GUIDE}, token=t2)[0], 400)
-        self.assertEqual(self.agent('POST', 'vehicles', {'generation_id': G1, 'engine_id': E_A}, token=t2)[0], 400)
-        self.assertEqual(self.agent('POST', 'listings', {'vehicle_id': V_A, 'source_id': SRC_LISTING, 'listing_id': 'steal'}, token=t2)[0], 400)
         self.assertEqual(self.agent('POST', 'sources', {'title': 's', 'owner_id': 1}, token=t2)[0], 400)
         st, m = self.upload(b'\xff\xd8\xff\xe0' + b'p' * 20)
         self.assertEqual(self.req('GET', '/media/' + self.req('GET', f'/api/listings/{CAR_A}')[1]['media'][0]['file_path'], token=t2)[0], 404)
-        # maria builds her own data; the admin does not see it, and both have their own parameters and dossiers
-        st, g = self.agent('POST', 'generations', {'make': 'Gamma', 'model': 'Van', 'name': 'I'}, token=t2)
-        st, e = self.agent('POST', 'engines', {'code': 'GV20'}, token=t2)
-        st, v = self.agent('POST', 'vehicles', {'generation_id': g['id'], 'engine_id': e['id']}, token=t2)
-        st, src = self.agent('POST', 'sources', {'title': 'Her listing'}, token=t2)
-        st, l = self.agent('POST', 'listings', {'vehicle_id': v['id'], 'source_id': src['id'], 'listing_id': 'M1', 'price_eur': 4000}, token=t2)
+        # research and listings are written by the shared worker only (issue #109): her own token gets 403
+        for table, row in (('generations', {'make': 'Gamma', 'model': 'Van', 'name': 'I'}), ('engines', {'code': 'GV20'}),
+                           ('vehicles', {'generation_id': G1, 'engine_id': E_A}), ('maintenance_items', {'engine_id': E_A, 'item': 'x', 'schedule': 'ITEM', 'source_id': SRC_GUIDE}),
+                           ('listings', {'vehicle_id': V_A, 'source_id': SRC_LISTING, 'listing_id': 'steal'}), ('sources', {'title': 's', 'engine_id': E_A})):
+            self.assertEqual(self.agent('POST', table, row, token=t2)[0], 403, table)
+        self.assertEqual(self.agent('POST', 'sources', {'title': 'Her own note'}, token=t2)[0], 201)   # a level-free source of her own
+        # acting for an account needs an admin token, and covers reads and agent writes only
+        H = {'X-Carlos-Account': '2'}
+        self.assertEqual(self.req('GET', '/api/tco', token=t2, headers={'X-Carlos-Account': '1'})[0], 403)
+        self.assertEqual(self.req('POST', '/api/parameters', {'annual_km': 1}, headers=H)[0], 403)
+        self.assertEqual(self.req('GET', '/api/tco', headers={'X-Carlos-Account': '99'})[0], 400)
+        # the worker (admin acting for maria) resolves a known HSN/TSN to the catalogue variant and links it to her
+        st, r = self.agent('POST', 'vehicles', {'generation_id': G1, 'engine_id': E_A, 'hsn': '1111', 'tsn': 'aaa'}, headers=H)
+        self.assertEqual((st, r), (200, {'table': 'vehicles', 'id': V_A, 'existing': True}))
+        st, va = self.req('GET', f'/api/vehicles/{V_A}', token=t2)
+        self.assertEqual(st, 200)
+        self.assertTrue(va['maintenance_items'] and va['reliability_items'])                         # shared research
+        self.assertEqual([r['premium_status'] for r in va['insurance_data']], [])                    # not the admin's quote
+        self.assertNotIn(SRC_LISTING, [x['id'] for x in va['sources']])
+        self.assertEqual([l['id'] for l in va['listings']], [])                                       # not the admin's car
+        # ... and writes her listing: it belongs to her, links its variant, and the change log names the worker
+        st, src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, headers=H)
+        st, l = self.agent('POST', 'listings', {'vehicle_id': V_B, 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'M1', 'price_eur': 4000}, headers=H)
         self.assertEqual(st, 201)
-        self.assertEqual([x['make'] for x in self.req('GET', '/api/tco', token=t2)[1]['listings']], ['Gamma'])
+        self.assertEqual(self.sql('SELECT owner_id FROM listings WHERE id=?', (l['id'],))[0][0], 2)
+        self.assertEqual(self.sql('SELECT user_id FROM change_log ORDER BY id DESC LIMIT 1')[0][0], 1)
+        self.assertEqual(self.sql('SELECT count(*) FROM catalogue_links WHERE owner_id=2 AND vehicle_id=?', (V_B,))[0][0], 1)
+        mine = self.req('GET', '/api/tco', token=t2)[1]['listings']
+        self.assertEqual([(x['make'], x['annual_insurance']) for x in mine], [('Beta', None)])        # the admin's quote stays his
         self.assertNotIn(l['id'], self.units())
         self.assertEqual(self.req('GET', f'/api/listings/{l["id"]}')[0], 404)
+        # a correction to the shared engine reaches her dossier too
+        self.assertEqual(self.agent('PATCH', f'engines/{E_B}', {'code': 'BC12X'})[0], 200)
+        self.assertIn('BC12X', ''.join(f.read_text() for f in (config.MD_DIR / '2').glob('*.md')))
         self.assertEqual(self.req('POST', '/api/parameters', {'annual_km': 9000}, token=t2)[1]['annual_km'], 9000)
         self.assertEqual(self.req('GET', '/api/parameters')[1]['annual_km'], 15000)
-        self.assertTrue((config.MD_DIR / '2' / 'Gamma-Van-X-M1.md').exists())
         self.assertTrue((config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').exists())
-        self.assertEqual(self.sql('SELECT user_id FROM change_log ORDER BY id DESC LIMIT 1')[0][0], 2)
         # deactivation ends the sessions and the token
         self.assertEqual(self.req('PATCH', '/api/admin/users/2', {'is_active': 0}, token=None, cookie=cookie)[1]['is_active'], 0)
         self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=c2)[0], 401)

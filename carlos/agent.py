@@ -2,7 +2,7 @@
 import hashlib, json, math, os, re, time
 from pathlib import Path
 from . import config
-from .auth import ARCHIVABLE, OWNED
+from .auth import _KNOW, ARCHIVABLE, MODEL, OWNED
 
 # Format of controlled codes written by the agent (English: upper-case statuses, snake_case kinds).
 CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_events', 'kind'): r'[a-z][a-z_]*',
@@ -35,6 +35,10 @@ class UnsupportedMediaType(Exception):
 
 
 class NotFound(Exception):
+    pass
+
+
+class NotAllowed(Exception):
     pass
 
 
@@ -108,13 +112,65 @@ def clean_row(c, table, data, insert):
     return out
 
 
-def agent_write(c, table, row_id, data, user_id):
-    """Inserts (row_id None) or updates a row of this account in one transaction and records it in change_log."""
+ADMIN_TABLES = set(MODEL) | set(_KNOW) | {'listings'}  # research and listings: the shared worker (admin) only (#109)
+
+
+def check_writable(c, table, row_id, data):
+    """A non-admin agent token writes only its own listing rows and level-free sources; research belongs to the shared
+    catalogue, written by admins (issue #109). The UI's own writes (viewing, checklist, decisions) do not pass here."""
+    level = any(data.get(k) is not None for k in config.SCOPE_COLUMNS) if isinstance(data, dict) else False
+    shared = row_id is not None and table == 'sources' and \
+        (c.execute('SELECT owner_id FROM sources WHERE id=?', (row_id,)).fetchone() or [0])[0] is None
+    if table in ADMIN_TABLES or (table == 'sources' and (level or shared)):
+        raise NotAllowed(f'{table}: research and listings are written by the shared research worker (an admin token); '
+                         'request the research instead (AGENTS.md)')
+
+
+def resolve_variant(c, data, owner_id):
+    """A catalogue variant with the same HSN/TSN is reused instead of duplicated; the account gets a link to it."""
+    if not isinstance(data, dict) or not data.get('hsn') or not data.get('tsn'):
+        return None
+    row = c.execute('SELECT min(id) FROM main.vehicles WHERE owner_id IS NULL AND upper(trim(hsn))=upper(trim(?)) '
+                    'AND upper(trim(tsn))=upper(trim(?))', (str(data['hsn']), str(data['tsn']))).fetchone()
+    if row[0] is not None:
+        with c:
+            link(c, owner_id, row[0])
+    return row[0]
+
+
+def link(c, owner_id, vehicle_id):
+    """The account sees this catalogue variant (with its engine and generation) from now on."""
+    c.execute('INSERT INTO main.catalogue_links (owner_id, vehicle_id) SELECT ?, id FROM main.vehicles WHERE id=? AND owner_id IS NULL '
+              'AND NOT EXISTS (SELECT 1 FROM main.catalogue_links WHERE owner_id=? AND vehicle_id=?)', (owner_id, vehicle_id, owner_id, vehicle_id))
+
+
+def linked_accounts(c, table, row_id):
+    """Accounts with a listing on the level this row belongs to (their dossiers show it)."""
+    if table in MODEL:
+        lv = {{'vehicles': 'vehicle_id', 'engines': 'engine_id', 'generations': 'generation_id'}[table]: row_id}
+    elif table in _KNOW or table == 'sources':
+        r = c.execute(f'SELECT vehicle_id, engine_id, generation_id FROM main.{table} WHERE id=?', (row_id,)).fetchone()
+        lv = dict(r) if r else {}
+    else:
+        return []
+    return [o for (o,) in c.execute('SELECT DISTINCT l.owner_id FROM main.listings l JOIN main.vehicles v ON v.id=l.vehicle_id '
+                                    'WHERE v.id=? OR v.engine_id=? OR v.generation_id=?',
+                                    (lv.get('vehicle_id'), lv.get('engine_id'), lv.get('generation_id')))]
+
+
+def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
+    """Inserts (row_id None) or updates a row of this account in one transaction and records it in change_log.
+    Admin inserts of generations, engines, variants and level sources go to the shared catalogue (owner_id NULL);
+    knowledge rows follow their level, except an account's own premium or USER DATA figure, which stays private.
+    `actor` is who wrote it (the admin acting for the account), for the change log."""
     data = clean_row(c, table, data, insert=row_id is None)
     check_parents(c, table, data)
     with c:
         if row_id is None:
             if table in OWNED:
+                catalogue = admin and (table in MODEL or table == 'sources' and any(data.get(k) is not None for k in config.SCOPE_COLUMNS))
+                data['owner_id'] = None if catalogue else user_id
+            elif table in _KNOW and ('USER DATA' in (data.get('status'), data.get('premium_status')) or data.get('annual_premium_eur') is not None):
                 data['owner_id'] = user_id
             cur = c.execute(f'INSERT INTO main.{table} ({",".join(data)}) VALUES ({",".join("?" * len(data))})', list(data.values()))
             row_id, old = cur.lastrowid, None
@@ -125,8 +181,10 @@ def agent_write(c, table, row_id, data, user_id):
                 raise NotFound(f'{table} id={row_id} does not exist')
             c.execute(f'UPDATE main.{table} SET {",".join(f"{k}=?" for k in data)} WHERE id=?', [*data.values(), row_id])
             old = json.dumps(dict(old), ensure_ascii=False)
+        if table == 'listings' and data.get('vehicle_id') is not None:
+            link(c, user_id, data['vehicle_id'])
         c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
-                  (table, row_id, 'update' if old else 'insert', old, json.dumps(data, ensure_ascii=False), user_id))
+                  (table, row_id, 'update' if old else 'insert', old, json.dumps(data, ensure_ascii=False), actor or user_id))
     return row_id
 
 
