@@ -752,5 +752,13 @@
  "disc_household": "Household contents insurance",
  "disc_legal": "Legal expenses insurance",
  "disc_accident": "Accident insurance",
- "disc_other_policy": "Other policies in your name"
+ "disc_other_policy": "Other policies in your name",
+ "decision_label": "Your decision",
+ "decide_shortlist": "Shortlist",
+ "decide_viewing": "Plan a viewing",
+ "decide_reject": "Reject",
+ "decide_reset": "Undo the decision",
+ "decide_reason_ph": "Why? (optional, e.g. too far away)",
+ "decide_reject_confirm": "Reject this car",
+ "decision_saved": "Decision saved"
 }

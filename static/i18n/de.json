@@ -752,5 +752,13 @@
  "disc_household": "Hausratversicherung",
  "disc_legal": "Rechtsschutzversicherung",
  "disc_accident": "Unfallversicherung",
- "disc_other_policy": "Weitere Verträge auf deinen Namen"
+ "disc_other_policy": "Weitere Verträge auf deinen Namen",
+ "decision_label": "Deine Entscheidung",
+ "decide_shortlist": "Vormerken",
+ "decide_viewing": "Besichtigung planen",
+ "decide_reject": "Aussortieren",
+ "decide_reset": "Entscheidung zurücknehmen",
+ "decide_reason_ph": "Warum? (optional, z. B. zu weit weg)",
+ "decide_reject_confirm": "Dieses Auto aussortieren",
+ "decision_saved": "Entscheidung gespeichert"
 }

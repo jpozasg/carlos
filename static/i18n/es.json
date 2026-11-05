@@ -752,5 +752,13 @@
  "disc_household": "Seguro de hogar",
  "disc_legal": "Seguro de defensa jurídica",
  "disc_accident": "Seguro de accidentes",
- "disc_other_policy": "Otras pólizas a tu nombre"
+ "disc_other_policy": "Otras pólizas a tu nombre",
+ "decision_label": "Tu decisión",
+ "decide_shortlist": "Preseleccionar",
+ "decide_viewing": "Planear una visita",
+ "decide_reject": "Descartar",
+ "decide_reset": "Deshacer la decisión",
+ "decide_reason_ph": "¿Por qué? (opcional, p. ej. demasiado lejos)",
+ "decide_reject_confirm": "Descartar este coche",
+ "decision_saved": "Decisión guardada"
 }
