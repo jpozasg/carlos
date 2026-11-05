@@ -236,6 +236,11 @@
  "open_model": "Modelldaten",
  "registration": "Erstzulassung",
  "seller": "Verkäufer",
+ "seller_rating": "Händlerbewertung",
+ "reviews_n": {
+  "one": "{n} Bewertung",
+  "other": "{n} Bewertungen"
+ },
  "accident_free": "Unfallfrei",
  "owners": "Vorbesitzer",
  "hu": "HU",

@@ -236,6 +236,11 @@
  "open_model": "Datos del modelo",
  "registration": "Primera matriculación",
  "seller": "Vendedor",
+ "seller_rating": "Valoración del vendedor",
+ "reviews_n": {
+  "one": "{n} valoración",
+  "other": "{n} valoraciones"
+ },
  "accident_free": "Sin accidentes",
  "owners": "Propietarios",
  "hu": "HU",

@@ -237,6 +237,12 @@
  "open_model": "Dane modelu",
  "registration": "Pierwsza rejestracja",
  "seller": "Sprzedawca",
+ "seller_rating": "Ocena sprzedawcy",
+ "reviews_n": {
+  "one": "{n} opinia",
+  "few": "{n} opinie",
+  "other": "{n} opinii"
+ },
  "accident_free": "Bezwypadkowe",
  "owners": "Właściciele",
  "hu": "HU",

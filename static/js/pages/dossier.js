@@ -95,6 +95,16 @@ function valuationRow(v) {
   const r = v.low_eur != null && v.high_eur != null && v.high_eur > v.low_eur ? `<div class="range" aria-hidden="true"><i style="left:${(v.expected_eur - v.low_eur) / (v.high_eur - v.low_eur) * 100}%"></i></div><div class="small muted" style="display:flex;justify-content:space-between"><span>${euro(v.low_eur)}</span><span>${euro(v.high_eur)}</span></div>` : '';
   return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px"><b class="small">${v.kind === 'sale_today' ? t('sale_today') : t('resale_end')}${v.horizon_years ? ` (${yrs(v.horizon_years)})` : ''}</b><b>${euro(v.expected_eur)}</b></div>${r}<div class="small muted">${esc(tv(v.status))} · ${t('source')} ${esc(v.source_id)}${v.notes ? ' · ' + esc(v.notes) : ''}</div></div>`;
 }
+// the seller's rating as the platform publishes it (issue #135): read from the newest capture that has one (mobile.de
+// "Händlerbewertung": "3.2 Sterne (28 Bewertungen)"); private sellers have none, so no row
+function sellerRating(d) {
+  for (const snap of d.snapshots.slice().reverse()) {
+    let a = {}; try { a = JSON.parse(snap.attributes_json || '{}'); } catch (e) { continue; }
+    const m = /([\d]+[.,]?\d*)\s*Sterne\s*\((\d+)/.exec(a['Händlerbewertung'] || '');
+    if (m) return `<span class="stars" aria-hidden="true">★</span> ${num(parseFloat(m[1].replace(',', '.')), 1)} / 5 · ${t('reviews_n', { n: +m[2] })}`;
+  }
+  return null;
+}
 function archive(d) {
   if (!d.snapshots.length && !d.media.length) return empty(t('no_archive'));
   const s = d.snapshots[d.snapshots.length - 1]; let attrs = {}; try { attrs = s && s.attributes_json ? JSON.parse(s.attributes_json) : {}; } catch (e) {}
@@ -222,7 +232,7 @@ async function draw(id, quiet = false) {
       ${gaps(S.todo.listings.find(x => x.listing_id === d.id)?.todo)}
       <div style="margin-top:12px">${facts([[t('asking_price'), d.is_reference ? t('owned') : eP(d.price_eur)], ...leaseFacts(d), [t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km'], [t('registration'), d.first_registration ? esc(d.first_registration) : PEND()],
         [t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a> · ${esc(d.engine_description ?? '')}`], [t('generation'), `<a href="${modelsHref({ make: d.make, model: d.model })}">${esc(d.generation)}</a> ${d.generation_start_year ?? '?'}–${d.generation_end_year ?? '?'}`],
-        ...(d.is_reference ? [] : [[t('seller'), d.seller ? esc(d.seller) + (d.location ? ', ' + esc(d.location) : '') : PEND()], [t('accident_free'), d.accident_free_claim == null ? PEND() : claim(d.accident_free_claim ? t('yes') : t('no'))], [t('owners'), claim(d.owners_claim)],
+        ...(d.is_reference ? [] : [[t('seller'), d.seller ? esc(d.seller) + (d.location ? ', ' + esc(d.location) : '') : PEND()], ...(sellerRating(d) ? [[t('seller_rating'), sellerRating(d)]] : []), [t('accident_free'), d.accident_free_claim == null ? PEND() : claim(d.accident_free_claim ? t('yes') : t('no'))], [t('owners'), claim(d.owners_claim)],
         [t('hu'), claim(d.hu_claim)], [t('history'), claim(d.service_history_claim)], [t('equipment'), d.equipment ? esc(d.equipment) : PEND()], [t('verdict'), d.verdict ? `<b>${esc(d.verdict)}</b>` : PEND()]]), [t('notes'), d.notes ? esc(d.notes) : PEND()]])}</div></div>
     ${rankCard(d)}${maintenanceCard(d)}${risksCard(d)}${inspectionCard(d)}
     <div class="card"><h3>${t('valuations')}</h3>${d.valuations.length ? d.valuations.map(valuationRow).join('') : empty(t('no_valuations'))}
