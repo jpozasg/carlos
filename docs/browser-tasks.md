@@ -121,4 +121,12 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
   - The second driver section asks no licence date or country.
   - No broker-information checkbox appeared before "Ergebnis anzeigen" in this run.
 
+### Run of 2026-11-05 (test account, 3 cars) — what changed
+- The "Fahrer" section also asks **Hauptnutzer** and **Halter** (`insurance_main_user`, `insurance_keeper`); each further driver also gets **Familienstand** and **Beruflicher Status**.
+- CHECK24 offers only männlich/weiblich; for `diverse` ask the user which to enter.
+- Occupation list: Angestellte/r, Arbeiter/in, Angestellte/r öffentlicher Dienst, Rentner/in, Selbstständige/r, z.Z. ohne Berufstätigkeit, Auszubildende/r, Hausfrau/-mann, Beamter/Beamtin, Student/in (the setup's codes map one to one). The Rabatte section also asks Beruf/Branche/Arbeitsweise/Arbeitgeber; "sonstige" is the default.
+- Nutzung: "nur privat (inkl. Arbeitsweg)" covers commuting. Kombi chips: Motorrad, Privathaftpflicht, Hausrat, Glas, Rechtsschutz, Unfall, Kranken, Leben, Rente. Children: "unter 17 Jahren".
+- After "Angaben ändern" → "ändern" and a new HSN/TSN, the Erstzulassung field is **cleared**: enter it again before "Ergebnis anzeigen".
+- A click on "Ergebnis anzeigen" right after ticking the broker checkbox may be ignored; click it again.
+
 Quote results are recorded in `insurance_data` only (one row per quote, no personal data); they do not belong in this file.
