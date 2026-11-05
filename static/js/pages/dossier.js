@@ -5,7 +5,7 @@ import { t, tv, comp } from '../i18n.js';
 import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
-let PHOTOS = [], cur = 0, VIEWING = false, root, D = null;
+let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true;  // SWEEP: the score needle animates on open, not on quiet refreshes
 const lb = $('lightbox');
 const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, mileage: v => num(v, 0) + ' km', age: yrs, reliability: v => num(v, 1), inspection: v => num(v, 0),
   power: v => num(v, 0) + ' PS', confidence: v => num(v, 0) + ' %' };
@@ -34,31 +34,27 @@ document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !docu
 // the Carlos score as its own element (issue #80): number, 0–100 meter and a rating word by band; the score is
 // relative to the compared cars (best ≈ 100), so the bands read: ≥70 good, 40–69 average, <40 poor
 const SCORE_BANDS = [[70, 'good'], [40, 'avg'], [0, 'poor']];
-// a speedometer-style dial (270° sweep, open at the bottom) with ticks at 0/25/50/75/100: the score as a car gauge
-function dial(pct) {
-  const cx = 40, cy = 42, r = 31, at = v => { const a = (135 + 270 * v / 100) * Math.PI / 180; return [cx + Math.cos(a), cy + Math.sin(a)]; };
-  const ticks = [0, 25, 50, 75, 100].map(v => { const [x, y] = at(v), dx = x - cx, dy = y - cy;
-    return `<line class="sc-tick" x1="${(cx + dx * (r - 9)).toFixed(1)}" y1="${(cy + dy * (r - 9)).toFixed(1)}" x2="${(cx + dx * (r - 5)).toFixed(1)}" y2="${(cy + dy * (r - 5)).toFixed(1)}"/>`; }).join('');
-  return `<circle class="sc-track" cx="${cx}" cy="${cy}" r="${r}" pathLength="100" stroke-dasharray="75 100" transform="rotate(135 ${cx} ${cy})"/>
-    <circle class="sc-arc" cx="${cx}" cy="${cy}" r="${r}" pathLength="100" stroke-dasharray="${(75 * pct / 100).toFixed(2)} 100" transform="rotate(135 ${cx} ${cy})"/>${ticks}`;
+// the Carlos score as one instrument (issue #92): a half-dial 0–100, the other compared cars as ticks around the scale,
+// this car as the needle, the arc filled to it in the rating colour
+const GX = 110, GY = 104, GR = 84;
+const gpt = (v, r) => { const a = Math.PI * (1 + Math.max(0, Math.min(100, v)) / 100); return [(GX + r * Math.cos(a)).toFixed(1), (GY + r * Math.sin(a)).toFixed(1)]; };
+function gauge(score, others) {
+  const ticks = others.map(v => { const [x1, y1] = gpt(v, GR + 8), [x2, y2] = gpt(v, GR + 15); return `<line class="sc-car" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; }).join('');
+  const arc = `M${GX - GR} ${GY} A${GR} ${GR} 0 0 1 ${GX + GR} ${GY}`;
+  return `<path class="sc-track" d="${arc}"/><path class="sc-arc" d="${arc}" pathLength="100" stroke-dasharray="${Math.max(0, Math.min(100, score)).toFixed(1)} 100"/>${ticks}
+    <g class="sc-needle" style="--a:${(180 * Math.max(0, Math.min(100, score)) / 100).toFixed(1)}deg"><line x1="${GX}" y1="${GY}" x2="${GX - GR + 16}" y2="${GY}"/><circle cx="${GX}" cy="${GY}" r="6"/></g>`;
 }
 function scoreBox(d) {
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_score_note'))}" data-tip="${esc(t('plate_score_note'))}">${INFO_SVG}</span>`;
-  const title = `<div class="sc-title">Carlos score ${tip}</div>`;
-  if (d.score == null) return `<div class="scorecard">${title}<div class="sc-none">${PEND()}</div></div>`;
-  const band = SCORE_BANDS.find(([min]) => d.score >= min)[1], pct = Math.max(0, Math.min(100, d.score));
-  const word = t('score_' + band);
-  // every compared car's score as a tick, this car as the marker (the reference is not a candidate)
+  if (d.score == null) return `<div class="scorecard"><div class="sc-top"><span class="sc-title">Carlos score ${tip}</span></div><div class="sc-none">${PEND()}</div></div>`;
+  const band = SCORE_BANDS.find(([min]) => d.score >= min)[1], word = t('score_' + band);
   const others = S.units.filter(u => !u.is_reference && u.listing_status !== 'WITHDRAWN' && u.score != null && u.id !== d.id).map(u => u.score);
   const n = others.length + (d.is_reference ? 0 : 1);
-  const ctx = d.rank ? t('sc_rank', { r: d.rank, n }) : t('ref_not_ranked');
-  return `<div class="scorecard sc-${band}">
-    <div class="sc-gauge" role="img" aria-label="Carlos score ${num(d.score, 0)} / 100, ${esc(word)}">
-      <svg viewBox="0 0 80 80" aria-hidden="true">${dial(pct)}</svg>
-      <b class="sc-num">${scoreTxt(d)}</b></div>
-    <div class="sc-body">${title}<div class="sc-line"><span class="sc-band">${word}</span><span class="sc-ctx">${ctx}</span><span class="sc-ctx">${t('coverage', { n: num(d.coverage * 100, 0) })}</span></div>
-      <div class="sc-dist" role="img" aria-label="${esc(t('sc_dist', { n }))}">${others.map(v => `<i style="left:${Math.max(0, Math.min(100, v))}%"></i>`).join('')}<b style="left:${pct}%"></b></div>
-      <div class="sc-scale"><span>0</span><span>${esc(t('sc_dist', { n }))}</span><span>100</span></div></div></div>`;
+  return `<div class="scorecard sc-${band}${SWEEP ? ' sc-sweep' : ''}">
+    <div class="sc-top"><span class="sc-title">Carlos score ${tip}</span><span class="sc-rank">${d.rank ? t('sc_rank', { r: d.rank, n }) : t('ref_not_ranked')}</span></div>
+    <svg class="sc-gauge" viewBox="0 0 220 112" role="img" aria-label="Carlos score ${num(d.score, 0)} / 100, ${esc(word)}; ${esc(t('sc_dist', { n }))}">${gauge(d.score, others)}</svg>
+    <div class="sc-read"><span class="sc-end">0</span><span class="sc-mid"><b class="sc-num">${scoreTxt(d)}</b><span class="sc-word">${word}</span></span><span class="sc-end">100</span></div>
+    <p class="sc-cov">${t('coverage', { n: num(d.coverage * 100, 0) })}</p></div>`;
 }
 // reliability as its own element (issue #80): total out of 36 and one meter per part out of 9 (3 worst points each);
 // lower is better: ≤3 green, ≤6 amber, above 6 red
@@ -194,6 +190,7 @@ const ui = (method, path, body, ctype) => send(method, '/api/ui/' + path, body, 
 async function refresh() { const y = window.scrollY; await draw(D.id, true); window.scrollTo(0, y); refreshTco().catch(() => {}); }
 
 async function draw(id, quiet = false) {
+  SWEEP = !quiet;
   const label = u => `${unitName(u)} ${u.is_reference ? '(' + t('reference').toLowerCase() + ')' : esc(u.listing_id ?? '')}`;
   const picker = `<div class="field unit-select"><label for="unitsel">${t('units_group')}</label><select id="unitsel" data-unitsel>${S.units.map(u => `<option value="${u.id}" ${u.id === id ? 'selected' : ''}>${label(u)}</option>`).join('')}</select></div>`;
   if (!quiet) root.innerHTML = picker + '<div class="grid"><div class="skel"></div><div class="skel"></div></div>';
