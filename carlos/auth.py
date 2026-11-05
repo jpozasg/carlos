@@ -10,10 +10,20 @@ FAILS = {}  # shortcut: per-client lock in memory; resets on restart (single pro
 OWNED = ('generations', 'engines', 'vehicles', 'sources', 'listings', 'project_parameters', 'project_preferences')
 _KNOW = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data')
 _LISTING_CHILDREN = ('valuations', 'unit_costs', 'inspection_items', 'listing_events', 'listing_snapshots', 'listing_media', 'maintenance_resets')
-VIEWS = {**{t: f'SELECT * FROM main.{t} WHERE owner_id={{o}}' for t in OWNED},
+# Archivable tables (issue #58): <table> shows only rows with archived=0 (every read and calculation), <table>_all
+# also the archived ones (to restore a row with PATCH archived=0). Both are filtered by account.
+ARCHIVABLE = _KNOW + ('valuations', 'unit_costs', 'inspection_items', 'maintenance_resets')
+_BASE = {**{t: f'SELECT * FROM main.{t} WHERE owner_id={{o}}' for t in OWNED},
          **{t: f'SELECT * FROM main.{t} WHERE vehicle_id IN (SELECT id FROM vehicles) OR engine_id IN (SELECT id FROM engines) '
                f'OR generation_id IN (SELECT id FROM generations)' for t in _KNOW},
          **{t: f'SELECT * FROM main.{t} WHERE listing_id IN (SELECT id FROM listings)' for t in _LISTING_CHILDREN}}
+VIEWS = {}
+for _t, _sql in _BASE.items():
+    if _t in ARCHIVABLE:
+        VIEWS[f'{_t}_all'] = _sql
+        VIEWS[_t] = f'SELECT * FROM {_t}_all WHERE archived=0'
+    else:
+        VIEWS[_t] = _sql
 
 
 def scope(c, user_id):
