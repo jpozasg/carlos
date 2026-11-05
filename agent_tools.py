@@ -204,7 +204,9 @@ def tyres(v, size, price_per_tyre, source_id, notes, life_km=TYRE_LIFE_KM, fitti
 
 # ---------------------------------------------------------------- listing data
 def certain(listing_id, category, name, parts, labor, hours, source_id, notes):
-    """One-off cost that will happen for this car (e.g. timing belt due by age): category repairs/tyres/purchase_sale."""
+    """One-off cost that will happen for this car, named in `name`. category: 'maintenance' for a scheduled job due at
+    purchase (timing belt by age, overdue coolant or brake fluid; follow with restart(..., 'CERTAIN REPAIR', unit_cost_id=...)),
+    'repairs' for a fault the car has now, 'tyres', 'purchase_sale'."""
     return post('unit_costs', {'listing_id': listing_id, 'category': category, 'item': name, 'parts_eur': parts,
                                'labor_eur': labor, 'diy_hours': hours, 'status': 'ESTIMATED', 'source_id': source_id, 'notes': notes})
 

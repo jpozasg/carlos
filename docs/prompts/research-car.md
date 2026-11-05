@@ -21,7 +21,7 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 3. autokostencheck consumption of the exact variant;
 4. item maintenance schedule at the right level, with HU;
 5. repair risks at the right level for the window {MILEAGE_KM} → {MILEAGE_KM} + {PERIOD_KM} km;
-6. certain one-off repairs of this car;
+6. certain one-off costs of this car: scheduled jobs due at purchase as `maintenance` (timing belt by age, overdue fluids: never `repairs`), present faults as `repairs`, each named in `item`;
 7. tyres;
 8. purchase/sale defaults and resale;
 9. listing checks, warnings and a final `verification` log entry.
@@ -41,5 +41,5 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 - HSN/TSN (confirmed or assumed) and the tax calculator inputs;
 - the consumption figure;
 - rows written per table and level;
-- certain repairs and the largest risks with prices; risks priced only by estimate;
+- certain costs by category (maintenance due at purchase, repairs) with their names and prices, and the largest risks with prices; risks priced only by estimate;
 - assumptions; questions for the user; what `todo` still lists.

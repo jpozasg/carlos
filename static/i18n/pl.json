@@ -279,6 +279,7 @@
  "rk_exp": "Oczekiwane",
  "rk_total": "Oczekiwane naprawy",
  "rk_certain": "Pewne naprawy tego auta",
+ "certain_tag": "pewne, przy zakupie",
  "inspection": "Oględziny",
  "no_checklist_short": "Brak listy kontrolnej.",
  "vb_OK": "✓ OK",

@@ -5,7 +5,7 @@ The ranking answers one question: *given what matters to this account, which car
 ## Criteria (no metric counts twice)
 | Key | Better | Value | Why it is separate |
 |---|---|---|---|
-| `cost_month` | lower | complete TCO ÷ months of the period: fuel, insurance, tax, maintenance, repairs (certain + expected), tyres, purchase/sale, depreciation | the one money figure; fuel, insurance and tax are **only** here |
+| `cost_month` | lower | complete TCO ÷ months of the period: fuel, insurance, tax, maintenance (scheduled + certain), repairs (certain + expected), tyres, purchase/sale, depreciation | the one money figure; fuel, insurance and tax are **only** here |
 | `cash_now` | lower | asking price + purchase costs of the car | liquidity: what leaves the bank account now (depreciation inside `cost_month` uses price − resale, a different thing) |
 | `mileage` | lower | km on the odometer | wear not captured by costs |
 | `age` | lower | years since first registration | wear and age-related risk not captured by costs |

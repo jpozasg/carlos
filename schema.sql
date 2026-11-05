@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=15). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=16). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -52,17 +52,6 @@ CREATE TABLE "valuations" (
  status TEXT NOT NULL, valued_date TEXT,
  source_id INTEGER NOT NULL REFERENCES sources(id),
  notes TEXT
-);
-CREATE TABLE "unit_costs" (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- listing_id INTEGER NOT NULL REFERENCES listings(id),
- category TEXT NOT NULL CHECK (category IN ('repairs', 'tyres', 'purchase_sale')),
- item TEXT NOT NULL,
- parts_eur REAL, labor_eur REAL, diy_hours REAL,
- status TEXT NOT NULL,
- source_id INTEGER REFERENCES sources(id),
- notes TEXT,
- CHECK (parts_eur IS NOT NULL OR labor_eur IS NOT NULL)
 );
 CREATE TABLE "inspection_items" (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -275,6 +264,17 @@ CREATE TABLE "project_preferences" (
  status TEXT,
  notes TEXT,
  PRIMARY KEY (owner_id, preference_key)
+);
+CREATE TABLE "unit_costs" (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ listing_id INTEGER NOT NULL REFERENCES listings(id),
+ category TEXT NOT NULL CHECK (category IN ('repairs', 'maintenance', 'tyres', 'purchase_sale')),
+ item TEXT NOT NULL,
+ parts_eur REAL, labor_eur REAL, diy_hours REAL,
+ status TEXT NOT NULL,
+ source_id INTEGER REFERENCES sources(id),
+ notes TEXT,
+ CHECK (parts_eur IS NOT NULL OR labor_eur IS NOT NULL)
 );
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_maintenance_scope ON maintenance_items (vehicle_id, engine_id, generation_id);

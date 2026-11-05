@@ -278,6 +278,7 @@
  "rk_exp": "Expected",
  "rk_total": "Expected repairs",
  "rk_certain": "Certain repairs of this car",
+ "certain_tag": "certain, due at purchase",
  "inspection": "Inspection",
  "no_checklist_short": "No checklist.",
  "vb_OK": "✓ OK",

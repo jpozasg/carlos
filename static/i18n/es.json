@@ -278,6 +278,7 @@
  "rk_exp": "Esperado",
  "rk_total": "Reparaciones esperadas",
  "rk_certain": "Reparaciones seguras de este coche",
+ "certain_tag": "segura, al comprar",
  "inspection": "Inspección",
  "no_checklist_short": "Sin lista de comprobación.",
  "vb_OK": "✓ OK",

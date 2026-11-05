@@ -262,7 +262,7 @@ def tco_rows(c, p):
             'fuel': u['consumption'] * km / 100 * price_l if u['consumption'] is not None and price_l else None,
             'insurance': u['annual_insurance'] * years if u['annual_insurance'] is not None else None,
             'tax': u['annual_tax'] * years if u['annual_tax'] is not None else None,
-            'maintenance': maint,
+            'maintenance': add(unit_cost['maintenance'], maint),
             'repairs': add(unit_cost['repairs'], risk),
             'tyres': add(unit_cost['tyres'], wear),
             'purchase_sale': unit_cost['purchase_sale'], 'depreciation': dep,
@@ -281,6 +281,7 @@ def tco_rows(c, p):
                  diy_hours=(sum(x['diy_hours'] or 0 for x in costs) + (maint_hours or 0) + (risk_hours or 0)
                             if any(x['diy_hours'] is not None for x in costs) or maint_hours or risk_hours else None),
                  cost_detail={'repairs_certain': unit_cost['repairs'], 'repairs_expected': risk, 'tyre_wear': wear,
+                              'maintenance_certain': unit_cost['maintenance'], 'maintenance_scheduled': maint,
                               'tyres_certain': unit_cost['tyres'], 'fuel_price_eur_l': price_l,
                               'maintenance_diy_hours': maint_hours, 'repairs_diy_hours': risk_hours},
                  initial_outlay=(u['price_eur'] - ref_sale['expected_eur'] if not u['is_reference'] and ref_sale
