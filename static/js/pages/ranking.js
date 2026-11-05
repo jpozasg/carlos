@@ -3,13 +3,12 @@
 import { S, refreshTco, go, current } from '../app.js';
 import { post } from '../api.js';
 import { t } from '../i18n.js';
-import { esc, num, thumb, carLabel, toast } from '../ui.js';
+import { esc, num, thumb, carLabel, toast, critColor as colorOf } from '../ui.js';
 import { quiz, profileHtml } from '../quiz.js';
 
 let root, timer;
 const CRIT = () => Object.keys(S.ranking.criteria);
-// eight validated series colours (docs/frontend.md); a ninth criterion gets a neutral colour instead of an undefined, invisible --s9
-const critColor = k => { const i = CRIT().indexOf(k); return i >= 0 && i < 8 ? `var(--s${i + 1})` : 'var(--text-3)'; };
+const critColor = k => colorOf(k, CRIT());
 async function save(body, msg) {
   try { await post('/api/parameters', body); await refreshTco(); toast(t(msg)); return true; } catch (e) { toast(t('not_saved', { m: e.message }), true); return false; }
 }

@@ -2,7 +2,7 @@
 import { S, refreshTco, go } from '../app.js';
 import { get, send } from '../api.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt, critColor } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
 let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true;  // SWEEP: the score needle animates on open, not on quiet refreshes
@@ -34,34 +34,31 @@ document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !docu
 // the Carlos score as its own element (issue #80): number, 0–100 meter and a rating word by band; the score is
 // relative to the compared cars (best ≈ 100), so the bands read: ≥70 good, 40–69 average, <40 poor
 const SCORE_BANDS = [[70, 'good'], [40, 'avg'], [0, 'poor']];
-// "Your Carlos score" as two field strips (issue #104): every compared car as a dot on a score line (0–100) and on a
-// cost-per-month line (most expensive left, cheapest right, so right is better on both); this car is the marker, the
-// owner's car a dashed tick. Only complete costs are placed (the ranking's cost_month), never a subtotal.
-const clamp = v => Math.max(0, Math.min(100, v));
-function strip(cls, label, value, ends, me, others, ref, aria) {
-  return `<div class="fs-row ${cls}"><div class="fs-head"><span class="fs-lbl">${label}</span>${value}</div>
-    <div class="fs-track" role="img" aria-label="${esc(aria)}">${others.map(x => `<i class="fs-dot" style="left:${x.toFixed(1)}%"></i>`).join('')}${ref == null ? '' : `<i class="fs-ref" style="left:${ref.toFixed(1)}%"></i>`}${me == null ? '' : `<b class="fs-me" style="--x:${me.toFixed(1)}%"></b>`}</div>
-    <div class="fs-ends"><span>${ends[0]}</span><span>${ends[1]}</span></div></div>`;
-}
+// "Your Carlos score" as a ring split by criteria (issue #110): the ring fills to the score, one arc per criterion as
+// long as the points it adds (the Ranking page's colours), a notch at the average score of the compared cars; the
+// number and word take the rating colour. No other cars as points: that stops reading once there are dozens.
+const RC = 2 * Math.PI * 50;  // ring circumference, r = 50 in a 120 × 120 box
+const ringAt = (v, r1, r2) => { const a = (v / 100) * 2 * Math.PI - Math.PI / 2; return `x1="${(60 + r1 * Math.cos(a)).toFixed(1)}" y1="${(60 + r1 * Math.sin(a)).toFixed(1)}" x2="${(60 + r2 * Math.cos(a)).toFixed(1)}" y2="${(60 + r2 * Math.sin(a)).toFixed(1)}"`; };
 function scoreBox(d) {
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_score_note'))}" data-tip="${esc(t('plate_score_note'))}">${INFO_SVG}</span>`;
   const title = `<span class="sc-title">${t('plate_score')} ${tip}</span>`;
   if (d.score == null) return `<div class="scorecard"><div class="sc-top">${title}</div><div class="sc-none">${PEND()}</div></div>`;
   const band = SCORE_BANDS.find(([min]) => d.score >= min)[1], word = t('score_' + band);
-  const field = S.units.filter(u => !u.is_reference && u.listing_status !== 'WITHDRAWN' && u.id !== d.id);
-  const ref = d.is_reference ? null : S.units.find(u => u.is_reference);
-  const n = field.filter(u => u.score != null).length + (d.is_reference ? 0 : 1);
-  const cm = u => (u?.metrics || {}).cost_month ?? null, mine = cm(d);
-  const costs = [...field.map(cm), cm(ref), mine].filter(v => v != null), hi = Math.max(...costs), lo = Math.min(...costs);
-  const cx = v => v == null ? null : hi === lo ? 50 : (hi - v) / (hi - lo) * 100;
-  const score = strip('fs-score', t('score'), `<span class="fs-val"><b class="sc-num">${scoreTxt(d)}</b><span class="sc-word">${word}</span></span>`, ['0', '100'], clamp(d.score),
-    field.filter(u => u.score != null).map(u => clamp(u.score)), ref?.score == null ? null : clamp(ref.score), `${t('score')} ${num(d.score, 0)} / 100, ${word}; ${t('sc_dist', { n })}`);
-  const cost = strip('fs-cost', t('c_cost_month'), `<span class="fs-val"><b class="sc-num sm">${mine == null ? PEND() : euro(mine)}</b>${mine == null ? '' : `<span class="sc-word">${t('per_month')}</span>`}</span>`,
-    costs.length ? [euro(hi), euro(lo)] : ['', ''], cx(mine), field.map(cm).filter(v => v != null).map(cx), cx(cm(ref)), `${t('c_cost_month')} ${mine == null ? '?' : euro(mine)}`);
+  const scored = S.units.filter(u => !u.is_reference && u.listing_status !== 'WITHDRAWN' && u.score != null);
+  const n = scored.length + (d.is_reference || scored.some(u => u.id === d.id) ? 0 : 1);
+  const avg = scored.length ? scored.reduce((a, u) => a + u.score, 0) / scored.length : null, gap = avg == null ? null : d.score - avg;
+  const keys = Object.keys(S.ranking.criteria);
+  const parts = (d.explain || []).filter(x => x.contribution > 0).sort((a, b) => b.contribution - a.contribution);
+  const legend = parts.length > 5 ? [...parts.slice(0, 4), { criterion: null, contribution: parts.slice(4).reduce((a, x) => a + x.contribution, 0) }] : parts;
+  let at = 0;
+  const arcs = parts.map(x => { const len = x.contribution / 100 * RC, arc = `<circle class="sr-arc" r="50" cx="60" cy="60" stroke="${critColor(x.criterion, keys)}" stroke-dasharray="${len.toFixed(2)} ${RC.toFixed(2)}" stroke-dashoffset="${(-at).toFixed(2)}"/>`; at += len; return arc; }).join('');
+  const aria = `${t('plate_score')} ${num(d.score, 0)} / 100, ${word}; ${parts.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}`).join(', ')}`;
   return `<div class="scorecard sc-${band}${SWEEP ? ' sc-sweep' : ''}">
     <div class="sc-top">${title}<span class="sc-rank">${d.rank ? t('sc_rank', { r: d.rank, n }) : t('ref_not_ranked')}</span></div>
-    ${score}${cost}
-    <p class="sc-cov"><span class="fs-key"><b class="fs-me"></b> ${t('sc_this')}</span>${ref ? ` <span class="fs-key"><i class="fs-ref"></i> ${t('your_car')}</span>` : ''} · ${t('coverage', { n: num(d.coverage * 100, 0) })}</p></div>`;
+    <div class="sr"><div class="sr-ring"><svg viewBox="0 0 120 120" role="img" aria-label="${esc(aria)}"><circle class="sr-track" r="50" cx="60" cy="60"/><g class="sr-arcs" transform="rotate(-90 60 60)">${arcs}</g>${avg == null ? '' : `<line class="sr-avg" ${ringAt(avg, 40, 60)}/>`}</svg>
+      <div class="sr-mid"><b class="sc-num">${scoreTxt(d)}</b><span class="sc-word">${word}</span></div></div>
+      <ul class="sr-legend">${legend.map(x => `<li><i style="background:${x.criterion ? critColor(x.criterion, keys) : 'var(--text-3)'}"></i><span>${x.criterion ? t('c_' + x.criterion) : t('sc_other')}</span><b class="num">${num(x.contribution, 0)}</b></li>`).join('')}</ul></div>
+    <p class="sc-cov">${gap == null ? '' : `<span class="sr-gap ${gap >= 0 ? 'up' : 'down'}">${gap >= 0 ? '▲' : '▼'} ${t('sc_vs_avg', { d: (gap >= 0 ? '+' : '−') + num(Math.abs(gap), 0), a: num(avg, 0) })}</span> · `}${t('coverage', { n: num(d.coverage * 100, 0) })}</p></div>`;
 }
 // reliability as its own element (issue #80): total out of 36 and one meter per part out of 9; each part starts at 9
 // and loses its 3 worst points, so higher is better: ≥6 green, ≥3 amber, below 3 red

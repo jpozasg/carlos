@@ -6,6 +6,8 @@ export const euro = n => n == null ? '—' : new Intl.NumberFormat(locale(), { s
 export const num = (n, d = 2) => n == null ? '—' : new Intl.NumberFormat(locale(), { maximumFractionDigits: d, useGrouping: 'always' }).format(n);
 // a score from less than half of the weighted data is provisional (Ranking page explains it)
 export const scoreTxt = u => `${num(u.score, 0)}${u.coverage != null && u.coverage < 0.5 ? `<abbr class="prov" title="${esc(t('provisional_hint'))}">?</abbr>` : ''}`;
+// eight validated series colours (docs/frontend.md) by the criterion's position; a ninth gets a neutral colour, never an undefined --s9
+export const critColor = (k, keys) => { const i = keys.indexOf(k); return i >= 0 && i < 8 ? `var(--s${i + 1})` : 'var(--text-3)'; };
 export const PEND = () => `<span class="pending">${t('pending')}</span>`;
 export const eP = n => n == null ? PEND() : euro(n);
 export const yrs = n => `${num(n, 1)} ${t('years', { n })}`;
