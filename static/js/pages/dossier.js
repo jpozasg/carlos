@@ -34,13 +34,31 @@ document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !docu
 // the Carlos score as its own element (issue #80): number, 0–100 meter and a rating word by band; the score is
 // relative to the compared cars (best ≈ 100), so the bands read: ≥70 good, 40–69 average, <40 poor
 const SCORE_BANDS = [[70, 'good'], [40, 'avg'], [0, 'poor']];
+// a speedometer-style dial (270° sweep, open at the bottom) with ticks at 0/25/50/75/100: the score as a car gauge
+function dial(pct) {
+  const cx = 40, cy = 42, r = 31, at = v => { const a = (135 + 270 * v / 100) * Math.PI / 180; return [cx + Math.cos(a), cy + Math.sin(a)]; };
+  const ticks = [0, 25, 50, 75, 100].map(v => { const [x, y] = at(v), dx = x - cx, dy = y - cy;
+    return `<line class="sc-tick" x1="${(cx + dx * (r - 9)).toFixed(1)}" y1="${(cy + dy * (r - 9)).toFixed(1)}" x2="${(cx + dx * (r - 5)).toFixed(1)}" y2="${(cy + dy * (r - 5)).toFixed(1)}"/>`; }).join('');
+  return `<circle class="sc-track" cx="${cx}" cy="${cy}" r="${r}" pathLength="100" stroke-dasharray="75 100" transform="rotate(135 ${cx} ${cy})"/>
+    <circle class="sc-arc" cx="${cx}" cy="${cy}" r="${r}" pathLength="100" stroke-dasharray="${(75 * pct / 100).toFixed(2)} 100" transform="rotate(135 ${cx} ${cy})"/>${ticks}`;
+}
 function scoreBox(d) {
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_score_note'))}" data-tip="${esc(t('plate_score_note'))}">${INFO_SVG}</span>`;
-  if (d.score == null) return `<div class="scorebox"><div class="sb-head">${t('plate_score')} ${tip}</div><div class="sb-main">${PEND()}</div></div>`;
-  const band = SCORE_BANDS.find(([min]) => d.score >= min)[1];
-  return `<div class="scorebox sb-${band}"><div class="sb-head">${t('plate_score')} ${tip}</div>
-    <div class="sb-main"><b class="sb-num">${scoreTxt(d)}</b><span class="sb-band">${t('score_' + band)}</span></div>
-    <div class="sb-meter" role="img" aria-label="${esc(t('plate_score'))} ${num(d.score, 0)} / 100, ${esc(t('score_' + band))}"><i style="width:${Math.max(2, Math.min(100, d.score))}%"></i></div></div>`;
+  const title = `<div class="sc-title">Carlos score ${tip}</div>`;
+  if (d.score == null) return `<div class="scorecard">${title}<div class="sc-none">${PEND()}</div></div>`;
+  const band = SCORE_BANDS.find(([min]) => d.score >= min)[1], pct = Math.max(0, Math.min(100, d.score));
+  const word = t('score_' + band);
+  // every compared car's score as a tick, this car as the marker (the reference is not a candidate)
+  const others = S.units.filter(u => !u.is_reference && u.listing_status !== 'WITHDRAWN' && u.score != null && u.id !== d.id).map(u => u.score);
+  const n = others.length + (d.is_reference ? 0 : 1);
+  const ctx = d.rank ? t('sc_rank', { r: d.rank, n }) : t('ref_not_ranked');
+  return `<div class="scorecard sc-${band}">
+    <div class="sc-gauge" role="img" aria-label="Carlos score ${num(d.score, 0)} / 100, ${esc(word)}">
+      <svg viewBox="0 0 80 80" aria-hidden="true">${dial(pct)}</svg>
+      <b class="sc-num">${scoreTxt(d)}</b></div>
+    <div class="sc-body">${title}<div class="sc-line"><span class="sc-band">${word}</span><span class="sc-ctx">${ctx}</span><span class="sc-ctx">${t('coverage', { n: num(d.coverage * 100, 0) })}</span></div>
+      <div class="sc-dist" role="img" aria-label="${esc(t('sc_dist', { n }))}">${others.map(v => `<i style="left:${Math.max(0, Math.min(100, v))}%"></i>`).join('')}<b style="left:${pct}%"></b></div>
+      <div class="sc-scale"><span>0</span><span>${esc(t('sc_dist', { n }))}</span><span>100</span></div></div></div>`;
 }
 // reliability as its own element (issue #80): total out of 36 and one meter per part out of 9 (3 worst points each);
 // lower is better: ≤3 green, ≤6 amber, above 6 red
@@ -48,16 +66,16 @@ const relBand = v => v <= 3 ? 'good' : v <= 6 ? 'avg' : 'poor';
 function relBox(d) {
   const total = (d.metrics || {}).reliability;
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_rel_note'))}" data-tip="${esc(t('plate_rel_note'))}">${INFO_SVG}</span>`;
-  const head = `<div class="sb-head">${t('plate_reliability')} ${tip}<span class="rb-total num">${total == null ? PEND() : t('plate_rel_total', { n: num(total, 1) })}</span></div>`;
+  const head = `<div class="rb-head">${t('plate_reliability')} ${tip}<span class="rb-total num">${total == null ? PEND() : t('plate_rel_total', { n: num(total, 1) })}</span></div>`;
   if (total == null) return `<div class="relbox">${head}</div>`;
   return `<div class="relbox">${head}<div class="rb-rows">${PARTS.map(k => { const v = (d.reliability_parts || {})[k] ?? 0;
     return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter rb-${relBand(v)}" role="img" aria-label="${esc(t('part_' + k))} ${num(v, 1)} / 9"><i style="width:${Math.max(2, v / 9 * 100)}%"></i></span><span class="rb-val num">${num(v, 1)}</span>`; }).join('')}</div></div>`;
 }
 // the cost per month, the other key figure, as a strip at the top of the plate (issue #80)
-const costStrip = d => `<div class="plate-cost"><span>${t('plate_cost')}</span><b>${d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month)}</b></div>`;  // the label says per month
+const costStrip = d => `<div class="plate-cost"><span>${t('plate_cost_short')}</span><b>${d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month) + t('per_month')}</b></div>`;  // total cost of ownership per month
 function plate(d) {
   const row = (k, v, cls = '') => `<dt class="${cls}">${k}</dt><dd class="${cls}">${v}</dd>`;
-  return `<aside class="plate"><span class="rv"></span><h3>${t('plate_title')}</h3>${costStrip(d)}<dl>
+  return `<aside class="plate" aria-label="${esc(t('plate_title'))}">${costStrip(d)}<dl>
     ${d.is_reference ? '' : row(t('asking_price'), eP(d.price_eur))}
     ${row(t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km')}
     ${row(t('registration'), d.first_registration ? esc(d.first_registration) : PEND())}

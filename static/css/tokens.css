@@ -149,7 +149,7 @@
   --ref-soft:#fff4f8;
   --font-display:"Varela Round","Nunito","Quicksand","Trebuchet MS",sans-serif;
   --radius:22px;--radius-s:14px;--radius-pill:999px;--border-w:2px;--shadow:0 4px 0 #f7c6da;
-  --good:#5fd6b4;--good-ink:#1a7c61;--good-soft:#dcf7ef;--warn:#ffc96b;--warn-ink:#9a6500;--warn-soft:#fff2d6;--bad:#ff8a8a;--bad-ink:#c23b3b;--bad-soft:#ffe3e3;
+  --good:#5fd6b4;--good-ink:#1a7c61;--good-soft:#dcf7ef;--warn:#ffc96b;--warn-ink:#9a6500;--warn-soft:#fff2d6;--bad:#ff8a8a;--bad-ink:#be3939;--bad-soft:#ffe3e3;
   --bg-decor:radial-gradient(circle at 10px 10px,rgb(255 111 165/.18) 3px,transparent 4px),radial-gradient(circle at 34px 34px,rgb(95 214 180/.2) 3px,transparent 4px);--bg-decor-size:48px 48px;
 }
 :root[data-theme="kawaii"][data-mode="dark"],:root[data-theme="kawaii"]:not([data-mode="light"]).os-dark{
