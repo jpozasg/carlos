@@ -81,7 +81,11 @@ def render(u, p):
              table(u['unit_costs'], [('Category', 'category'), ('Item', 'item'), ('Parts €', 'parts_eur'),
                                      ('Labour €', 'labor_eur'), ('DIY hours', 'diy_hours'), ('Status', 'status'),
                                      ('Source', 'source_id'), ('Notes', 'notes')]),
-             f"## 9. Period costs ({p['ownership_years']} years, {val(u['period_km'], 'km')}, petrol {val(p['fuel_price_eur_l'], '€/l')})", '',
+             f"## 9. Period costs ({u['period_months'] // 12 if u['period_months'] % 12 == 0 else u['period_months']} {'years' if u['period_months'] % 12 == 0 else 'months'}, "
+             f"{val(u['period_km'], 'km')}, petrol {val(p['fuel_price_eur_l'], '€/l')})", '',
+             *([f"**Costed as a lease** ({val(u['lease_monthly_eur'], '€')}/month, {val(u['lease_term_months'], 'months')}): purchase_sale = lease fees "
+                "and extra km, depreciation = lease payments (down payment + rate × term). Damage at the return is not predicted.", '']
+               if u.get('offer') == 'lease' else []),
              f"**{'Complete TCO' if u['tco_complete'] else 'Partial subtotal — NOT a complete TCO'}.** "
              f"Pending: {', '.join(u['missing_components']) or 'nothing'}.", '',
              table([{'c': k, 'v': val(v, '€')} for k, v in u['components'].items()] +

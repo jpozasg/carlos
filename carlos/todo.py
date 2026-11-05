@@ -37,6 +37,9 @@ def todo(c, p, ranked):
                 t.append('lease kind not recorded: km, residual or abo')
             elif u['lease_kind'] == 'residual':
                 t.append('residual-value leasing: recorded, not costed (owner decision 2026-11-05)')
+            # a lease rate rarely includes insurance; lessors require fully comprehensive cover (#129)
+            if u.get('offer') == 'lease' and u['components']['insurance'] is None:
+                t.append('lease without insurance in the rate: get a Vollkasko quote ("geleast", docs/browser-tasks.md)')
         for field in ('first_registration', 'mileage_km') + (() if u['is_reference'] else (() if lease else ('price_eur',)) + ('url',)):
             if u[field] is None:
                 t.append(f'listing field missing: {field}')

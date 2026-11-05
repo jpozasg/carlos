@@ -104,6 +104,16 @@ function archive(d) {
     ${Object.keys(attrs).length ? facts(Object.entries(attrs).map(([k, v]) => [esc(k), esc(typeof v === 'string' ? v : JSON.stringify(v))])) : ''}
     ${s && s.description ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer">${t('listing_description')}</summary><p class="desc">${esc(s.description)}</p></details>` : ''}`;
 }
+// a lease offer (#129): the offer as the ad states it, the cost per month of each way, and what is not predicted
+function leaseFacts(d) {
+  if (d.lease_monthly_eur == null) return [];
+  const o = d.offers || {}, pm = x => x && x.cost_month != null ? euro(x.cost_month) + t('per_month') + (x.complete ? '' : ' ' + t('partial_short')) : PEND();
+  const offer = [euro(d.lease_monthly_eur) + t('per_month'), d.lease_term_months ? t('lease_term_n', { n: d.lease_term_months }) : PEND(),
+    d.lease_km_per_year ? num(d.lease_km_per_year, 0) + ' km/' + t('year_short') : PEND(), `${t('lease_down')} ${eP(d.lease_down_payment_eur)}`,
+    `${t('lease_fees')} ${eP(d.lease_fees_eur)}`, `${t('lease_includes')}: ${d.lease_includes ? esc(d.lease_includes.split(',').map(k => t('li_' + k)).join(', ')) : t('lease_nothing')}`].join(' · ');
+  return [[t('lease_offer') + (d.lease_kind ? ` (${esc(t('lk_' + d.lease_kind))})` : ''), offer],
+    [t('lease_vs_buy'), `${t('am_buy')}: ${pm(o.purchase)} · ${t('am_lease')}: ${pm(o.lease)} · <b>${t(d.offer === 'lease' ? 'costed_lease' : 'costed_buy')}</b><div class="small muted">${t('lease_note')}</div>`]];
+}
 function rankCard(d) {  // the reference car is scored too (issue #72), only not ranked
   const R = S.ranking;
   const rows = (d.explain && d.explain.length ? d.explain : Object.keys(R.criteria).map(k => ({ criterion: k, weight: R.weights[k], value: d.metrics[k], score: null, contribution: null, why_missing: 'no value for this car' }))).map(x => {
@@ -210,7 +220,7 @@ async function draw(id, quiet = false) {
       <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')}</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
       ${d.is_reference ? '' : decisionBar(d)}
       ${gaps(S.todo.listings.find(x => x.listing_id === d.id)?.todo)}
-      <div style="margin-top:12px">${facts([[t('asking_price'), d.is_reference ? t('owned') : eP(d.price_eur)], [t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km'], [t('registration'), d.first_registration ? esc(d.first_registration) : PEND()],
+      <div style="margin-top:12px">${facts([[t('asking_price'), d.is_reference ? t('owned') : eP(d.price_eur)], ...leaseFacts(d), [t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km'], [t('registration'), d.first_registration ? esc(d.first_registration) : PEND()],
         [t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a> · ${esc(d.engine_description ?? '')}`], [t('generation'), `<a href="${modelsHref({ make: d.make, model: d.model })}">${esc(d.generation)}</a> ${d.generation_start_year ?? '?'}–${d.generation_end_year ?? '?'}`],
         ...(d.is_reference ? [] : [[t('seller'), d.seller ? esc(d.seller) + (d.location ? ', ' + esc(d.location) : '') : PEND()], [t('accident_free'), d.accident_free_claim == null ? PEND() : claim(d.accident_free_claim ? t('yes') : t('no'))], [t('owners'), claim(d.owners_claim)],
         [t('hu'), claim(d.hu_claim)], [t('history'), claim(d.service_history_claim)], [t('equipment'), d.equipment ? esc(d.equipment) : PEND()], [t('verdict'), d.verdict ? `<b>${esc(d.verdict)}</b>` : PEND()]]), [t('notes'), d.notes ? esc(d.notes) : PEND()]])}</div></div>
