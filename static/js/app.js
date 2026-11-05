@@ -88,6 +88,11 @@ document.addEventListener('click', async e => {
 const tip = $('tip');
 document.addEventListener('mousemove', e => { const s = e.target.closest('[data-tip]'); if (!s) { tip.style.opacity = 0; return; }
   tip.textContent = s.dataset.tip; tip.style.opacity = 1; const w = tip.offsetWidth; tip.style.left = Math.min(e.clientX + 12, innerWidth - w - 8) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; });
+// a tap (touch screens have no hover) or click on a [data-tip] element shows its tooltip under it
+document.addEventListener('click', e => { const s = e.target.closest('[data-tip]'); if (!s) return;
+  tip.textContent = s.dataset.tip; tip.style.opacity = 1; const r = s.getBoundingClientRect(), w = tip.offsetWidth;
+  tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px'; tip.style.top = (r.bottom + 6) + 'px'; });
+window.addEventListener('scroll', () => { tip.style.opacity = 0; }, { passive: true });
 window.addEventListener('hashchange', route);
 
 (async () => {

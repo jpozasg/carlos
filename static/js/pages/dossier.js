@@ -35,7 +35,7 @@ document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !docu
 function plate(d) {
   const row = (k, v, cls = '') => `<dt class="${cls}">${k}</dt><dd class="${cls}">${v}</dd>`;
   return `<aside class="plate"><span class="rv"></span><h3>${t('plate_title')}</h3><dl>
-    ${row(`${t('plate_score')}<span class="muted" style="display:block;font-size:.8em">(${t('plate_score_note')})</span>`, d.score == null ? PEND() : scoreTxt(d), 'hi')}
+    ${row(`${t('plate_score')} <span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_score_note'))}" data-tip="${esc(t('plate_score_note'))}">${INFO_SVG}</span>`, d.score == null ? PEND() : scoreTxt(d), 'hi')}
     ${row(t('plate_cost'), d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month) + t('per_month'), 'hi')}
     ${d.is_reference ? '' : row(t('asking_price'), eP(d.price_eur))}
     ${row(t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km')}
