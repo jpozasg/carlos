@@ -760,5 +760,7 @@
  "decide_reset": "Undo the decision",
  "decide_reason_ph": "Why? (optional, e.g. too far away)",
  "decide_reject_confirm": "Reject this car",
- "decision_saved": "Decision saved"
+ "decision_saved": "Decision saved",
+ "sel_shortlist": "Shortlisted",
+ "from_drivers_step": "Set from the people in the setup's Drivers step"
 }

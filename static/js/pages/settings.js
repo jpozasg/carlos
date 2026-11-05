@@ -34,7 +34,7 @@ function form() {
     </div><p class="small" id="derived" style="margin:10px 0 0"></p></fieldset>
     <fieldset><legend>${t('insurance_purchase')}</legend><p class="small muted" style="margin:0 0 10px">${t('profile_hint')}</p><div class="fields">
       ${f('insurance_cover', t('p_cover'), sel('insurance_cover'))}${f('sf_class', 'SF-Klasse', sel('sf_class'))}${f('insurance_deductible_eur', t('p_deductible'), sel('insurance_deductible_eur'))}
-      ${f('drivers_count', t('p_drivers'), inp('drivers_count', 'number', 'min="1" max="9"'))}${f('driver_age', t('p_age'), inp('driver_age', 'number', 'min="17" max="99"'))}
+      ${f('drivers_count', t('p_drivers'), inp('drivers_count', 'number', 'min="1" max="9" readonly'))}${f('driver_age', t('p_age'), inp('driver_age', 'number', 'min="17" max="99" readonly') + `<p class="hint"><a href="#/start?step=3">${t('from_drivers_step')}</a></p>`)}
       ${f('postal_code', t('p_postal'), inp('postal_code', 'text', 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5"'))}${f('purchase_mode', t('p_purchase'), sel('purchase_mode'))}
     </div></fieldset>
     <div class="row"><button class="btn" type="submit" id="saveParams">${t('save_params')}</button><button class="btn ghost" type="button" id="discardParams">${t('discard')}</button><span class="small" id="previewNote" role="status"></span></div></form>`;

@@ -760,5 +760,7 @@
  "decide_reset": "Entscheidung zurücknehmen",
  "decide_reason_ph": "Warum? (optional, z. B. zu weit weg)",
  "decide_reject_confirm": "Dieses Auto aussortieren",
- "decision_saved": "Entscheidung gespeichert"
+ "decision_saved": "Entscheidung gespeichert",
+ "sel_shortlist": "Vorgemerkte",
+ "from_drivers_step": "Ergibt sich aus den Personen im Schritt Fahrer der Einrichtung"
 }
