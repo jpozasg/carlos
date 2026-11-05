@@ -533,6 +533,7 @@
  "plate_cost": "Koszt miesięczny",
  "plate_position": "Miejsce w rankingu",
  "plate_score": "Wynik Carlos",
+ "plate_score_note": "na podstawie twoich odpowiedzi w formularzu preferencji",
  "ref_not_ranked": "twoje obecne auto, poza rankingiem",
  "plate_rel": "{n} pkt",
  "plate_reliability": "Niezawodność",
