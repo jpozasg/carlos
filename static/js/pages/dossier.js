@@ -44,7 +44,8 @@ function plate(d) {
     ${row(t('power'), d.power_ps == null ? PEND() : num(d.power_ps, 0) + ' PS')}
     ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' l/100 km')}
     ${row(`${t('plate_reliability')}<span class="muted" style="display:block;font-size:.8em">(${t('plate_lower_better')})</span>`, (d.metrics || {}).reliability == null ? PEND() : `${t('plate_rel', { n: num(d.metrics.reliability, 1) })}<span class="small muted" style="display:block;font-family:inherit">${partsLine(d)}</span>`)}
-    ${d.is_reference ? '' : row(t('plate_rank'), d.rank ? `#${d.rank} · ${scoreTxt(d)}` : `<span class="pending">${t('not_ranked')}</span>`)}
+    ${row(t('plate_position'), d.rank ? `#${d.rank}` : `<span class="pending">${t(d.is_reference ? 'ref_not_ranked' : 'not_ranked')}</span>`)}
+    ${row(t('plate_score'), d.score == null ? PEND() : scoreTxt(d))}
     ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>
     ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;
 }
@@ -61,14 +62,13 @@ function archive(d) {
     ${Object.keys(attrs).length ? facts(Object.entries(attrs).map(([k, v]) => [esc(k), esc(typeof v === 'string' ? v : JSON.stringify(v))])) : ''}
     ${s && s.description ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer">${t('listing_description')}</summary><p class="desc">${esc(s.description)}</p></details>` : ''}`;
 }
-function rankCard(d) {
-  if (d.is_reference) return '';
+function rankCard(d) {  // the reference car is scored too (issue #72), only not ranked
   const R = S.ranking;
   const rows = (d.explain && d.explain.length ? d.explain : Object.keys(R.criteria).map(k => ({ criterion: k, weight: R.weights[k], value: d.metrics[k], score: null, contribution: null, why_missing: 'no value for this car' }))).map(x => {
     const k = x.criterion;
     return `<tr><td><b>${t('c_' + k)}</b><div class="small muted">${esc(t('cb_' + k))}</div></td><td class="n">${x.weight || '<span class="muted">0</span>'}</td><td class="n">${x.value == null ? PEND() : FMT[k](x.value)}${x.bounds ? `<div class="small muted">${FMT[k](x.bounds.min)} – ${FMT[k](x.bounds.max)}</div>` : ''}</td>
       <td style="min-width:120px">${x.score == null ? `<span class="muted small">${t('why_' + (x.why_missing || 'no value for this car').replace(/ /g, '_'))}</span>` : `<div class="scorebar" title="${x.score}"><i style="width:${x.score}%"></i></div><span class="small">${x.score} · ${t('contribution')} ${num(x.contribution, 0)}%</span>`}</td></tr>`; }).join('');
-  const head = d.score == null ? `<span class="pending">${t('not_ranked')}</span>` : `<b class="big" style="font-size:22px">${scoreTxt(d)}</b> <span class="muted small">${t('rank_n', { n: d.rank })} · ${t('coverage', { n: num(d.coverage * 100, 0) })}</span>`;
+  const head = d.score == null ? `<span class="pending">${t('not_ranked')}</span>` : `<b class="big" style="font-size:22px">${scoreTxt(d)}</b> <span class="muted small">${d.rank ? t('rank_n', { n: d.rank }) : t('ref_not_ranked')} · ${t('coverage', { n: num(d.coverage * 100, 0) })}</span>`;
   const ev = d.evidence || [], rel = d.reliability_detail || [];
   return `<div class="card span2"><h3>${t('ranking')}</h3><div style="margin-bottom:8px">${head} ${R.manual ? `<span class="tag warn">${t('weights_manual')}</span>` : ''}</div><div class="tags">${statusTags(d).join('')}</div>
     <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>${t('criterion')}</th><th class="n">${t('weight')}</th><th class="n">${t('value')}</th><th>${t('score')}</th></tr></thead><tbody>${rows}</tbody></table></div>
