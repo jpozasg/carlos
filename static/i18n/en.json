@@ -532,6 +532,7 @@
  "plate_cost": "Cost per month",
  "plate_position": "Ranking position",
  "plate_score": "Carlos score",
+ "plate_score_note": "from your answers to the preferences form",
  "ref_not_ranked": "your current car, not ranked",
  "plate_rel": "{n} pts",
  "plate_reliability": "Reliability",

@@ -170,6 +170,8 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 .plate dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:14px}
 .plate dt{color:var(--text-3)}.plate dd{margin:0;font-variant-numeric:tabular-nums;font-family:var(--readout);text-align:right;overflow-wrap:anywhere}
 .plate dd.hi{font-size:22px;font-weight:700;line-height:1.1}
+/* the key figures (Carlos score, cost per month) take the full width: label above, big value below, never broken mid-number */
+.plate dt.hi,.plate dd.hi{grid-column:1/-1}.plate dd.hi{overflow-wrap:normal;margin-bottom:4px}
 .stamp{display:inline-block;margin-top:12px;padding:4px 10px;border:2px solid var(--accent);color:var(--accent-ink);border-radius:4px;font-weight:700;font-size:13px;transform:rotate(-2deg);max-width:100%;overflow-wrap:anywhere}
 .dossier-top{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:16px;margin-bottom:16px}
 @media (max-width:860px){.dossier-top{grid-template-columns:1fr}}

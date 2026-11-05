@@ -33,8 +33,9 @@ document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !docu
   if (e.key === 'ArrowRight') { showPhoto(cur + 1); e.preventDefault(); } else if (e.key === 'ArrowLeft') { showPhoto(cur - 1); e.preventDefault(); } });
 
 function plate(d) {
-  const row = (k, v, cls = '') => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`;
+  const row = (k, v, cls = '') => `<dt class="${cls}">${k}</dt><dd class="${cls}">${v}</dd>`;
   return `<aside class="plate"><span class="rv"></span><h3>${t('plate_title')}</h3><dl>
+    ${row(`${t('plate_score')}<span class="muted" style="display:block;font-size:.8em">(${t('plate_score_note')})</span>`, d.score == null ? PEND() : scoreTxt(d), 'hi')}
     ${row(t('plate_cost'), d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month) + t('per_month'), 'hi')}
     ${d.is_reference ? '' : row(t('asking_price'), eP(d.price_eur))}
     ${row(t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km')}
@@ -45,7 +46,6 @@ function plate(d) {
     ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' l/100 km')}
     ${row(`${t('plate_reliability')}<span class="muted" style="display:block;font-size:.8em">(${t('plate_lower_better')})</span>`, (d.metrics || {}).reliability == null ? PEND() : `${t('plate_rel', { n: num(d.metrics.reliability, 1) })}<span class="small muted" style="display:block;font-family:inherit">${partsLine(d)}</span>`)}
     ${row(t('plate_position'), d.rank ? `#${d.rank}` : `<span class="pending">${t(d.is_reference ? 'ref_not_ranked' : 'not_ranked')}</span>`)}
-    ${row(t('plate_score'), d.score == null ? PEND() : scoreTxt(d))}
     ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>
     ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;
 }
