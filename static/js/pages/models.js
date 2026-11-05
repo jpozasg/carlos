@@ -7,14 +7,13 @@ import { esc, num, PEND, eP, euro, empty, facts, gaps, lvlTag, qTag, sevTag, int
 
 let root, filters = store.get('mfilters', { make: '', model: '', engine: '', transmission: '', fuel: '' });
 const vlist = tree => tree.makes.flatMap(mk => mk.models.flatMap(md => md.generations.flatMap(g => g.engines.flatMap(e => e.variants.map(v => ({ v, mk, md, g, e }))))));
-function filterTree(tree) {
-  const f = filters;
+function filterTree(tree, f = filters) {
   return { makes: tree.makes.filter(mk => !f.make || mk.make === f.make).map(mk => ({ ...mk, models: mk.models.filter(md => !f.model || md.model === f.model).map(md => ({ ...md,
     generations: md.generations.map(g => ({ ...g, engines: g.engines.filter(e => (!f.engine || e.code === f.engine) && (!f.fuel || e.fuel_type === f.fuel)).map(e => ({ ...e,
       variants: e.variants.filter(v => !f.transmission || v.transmission === f.transmission) })).filter(e => e.variants.length) })).filter(g => g.engines.length) })).filter(md => md.generations.length) })).filter(mk => mk.models.length) };
 }
 function listTree(tree) {
-  const all = vlist(S.models), opts = (key, fn) => [...new Set(all.map(fn).filter(Boolean))].sort().map(v => `<option value="${esc(v)}" ${filters[key] === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  const opts = (key, fn) => [...new Set(vlist(filterTree(S.models, above(key))).map(fn).filter(Boolean))].sort().map(v => `<option value="${esc(v)}" ${filters[key] === v ? 'selected' : ''}>${esc(v)}</option>`).join('');
   const sel = (key, label, fn) => `<div class="field"><label for="f-${key}">${label}</label><select class="inline" id="f-${key}" data-mf="${key}"><option value="">${t('all')}</option>${opts(key, fn)}</select></div>`;
   const ft = filterTree(tree), n = vlist(ft).length;
   const body = ft.makes.map(mk => mk.models.map(md => md.generations.map(g => `<section class="gen"><div class="gen-head"><b><a href="${modelsHref({ make: mk.make, model: md.model })}">${esc(mk.make)} ${esc(md.model)}</a> · ${esc(g.name)}</b><span class="small muted">${g.start_year ?? '?'}–${g.end_year ?? '?'}${g.facelift_year ? ' · ' + t('facelift') + ' ' + g.facelift_year : ''} · <span class="tag">${esc(tv(g.status) ?? '—')}</span></span></div>
@@ -27,6 +26,12 @@ function listTree(tree) {
     <p class="small muted">${t('variants_n', { n })} · <span class="lvl-variant"><i class="dot"></i> ${t('level_variant')}</span> <span class="lvl-engine"><i class="dot"></i> ${t('level_engine')}</span> <span class="lvl-generation"><i class="dot"></i> ${t('level_generation')}</span> · ${t('levels_hint')}</p>
     <div class="tree">${body || empty(t('no_match'))}</div></div>`;
 }
+// the filters cascade make → model → engine → fuel → gearbox (issue #102): a select offers only the values under the
+// choices to its left, and a choice that no longer exists there is cleared
+const KEYS = ['make', 'model', 'engine', 'fuel', 'transmission'];
+const FN = { make: x => x.mk.make, model: x => x.md.model, engine: x => x.e.code, fuel: x => x.e.fuel_type, transmission: x => x.v.transmission };
+const above = key => Object.fromEntries(KEYS.map((k, i) => [k, i < KEYS.indexOf(key) ? filters[k] : '']));
+function prune() { for (const k of KEYS) if (filters[k] && !vlist(filterTree(S.models, above(k))).some(x => FN[k](x) === filters[k])) filters[k] = ''; }
 const gapsShort = vid => { const n = (S.todo.models.find(m => m.vehicle_id === vid)?.todo || []).length; return n ? `<span class="tag warn" title="${t('gaps', { n })}">${n}</span>` : ''; };
 function rowsTable(title, rows, cols) {
   return `<div class="card span2"><h3>${title} <span class="muted small">${rows.length}</span></h3>${rows.length ? `<div class="tablewrap"><table><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${c[1](r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : empty(t('no_rows'))}</div>`;
@@ -58,9 +63,9 @@ async function variant(id) {
 }
 export async function render(main, r) {
   if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="models"></div>'; root = main.firstElementChild;
-    root.addEventListener('change', e => { const k = e.target.dataset.mf; if (!k) return; filters[k] = e.target.value; store.set('mfilters', filters); listTree(S.models); }); }
+    root.addEventListener('change', e => { const k = e.target.dataset.mf; if (!k) return; filters[k] = e.target.value; prune(); store.set('mfilters', filters); listTree(S.models); }); }
   if (r.id) { await variant(r.id); return; }
   if (['make', 'model', 'engine', 'fuel', 'transmission'].some(k => r.q[k])) { filters = { make: r.q.make || '', model: r.q.model || '', engine: r.q.engine || '', transmission: r.q.transmission || '', fuel: r.q.fuel || '' }; store.set('mfilters', filters); }
   if (!S.models) { root.innerHTML = '<div class="skel"></div>'; S.models = await get('/api/models'); }
-  listTree(S.models);
+  prune(); listTree(S.models);
 }
