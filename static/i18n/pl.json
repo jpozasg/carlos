@@ -176,7 +176,7 @@
  "preview_on": "Podgląd niezapisanych parametrów",
  "save_params": "Zapisz parametry",
  "ranking": "Ranking",
- "ranking_lead": "Samochody na sprzedaż uszeregowane według tego, co jest dla ciebie ważne. Każdy pasek pokazuje wkład poszczególnych kryteriów. Paliwo, ubezpieczenie i podatek są w koszcie całkowitym, więc nic nie liczy się podwójnie; brakujące dane obniżają pokrycie i nigdy nie liczą się jako 0. Twój własny samochód nie jest oceniany.",
+ "ranking_lead": "Samochody na sprzedaż uszeregowane według tego, co jest dla ciebie ważne. Każdy pasek pokazuje wkład poszczególnych kryteriów. Paliwo, ubezpieczenie i podatek są w koszcie całkowitym, więc nic nie liczy się podwójnie; brakujące dane obniżają pokrycie i nigdy nie liczą się jako 0. Twój własny samochód jest oceniany tak samo i pokazany dla porównania, bez miejsca.",
  "rank_result": "Wynik",
  "candidates_n": "Kandydaci: {n}",
  "need_two": "Ranking wymaga co najmniej dwóch aut na sprzedaż z danymi w ważonych kryteriach.",

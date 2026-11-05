@@ -175,7 +175,7 @@
  "preview_on": "Previewing unsaved parameters",
  "save_params": "Save the parameters",
  "ranking": "Ranking",
- "ranking_lead": "Cars for sale ranked by what matters to you. Each bar shows how much each criterion contributed. Fuel, insurance and tax live inside the total cost, so nothing counts twice; missing data lowers the coverage and never counts as 0. Your own car is not ranked.",
+ "ranking_lead": "Cars for sale ranked by what matters to you. Each bar shows how much each criterion contributed. Fuel, insurance and tax live inside the total cost, so nothing counts twice; missing data lowers the coverage and never counts as 0. Your own car is scored the same way and shown for comparison, without a rank.",
  "rank_result": "Result",
  "candidates_n": "{n} candidates",
  "need_two": "The ranking needs at least two cars for sale with data in the weighted criteria.",

@@ -384,7 +384,9 @@ class AppTest(unittest.TestCase):
         self.assertEqual(r[2]['score_parts'], {'cash_now': 100, 'mileage': 0, 'power': 0})
         self.assertEqual(r[2]['score'], 50.0)
         self.assertEqual(r[4]['coverage'], round(2 / 7, 2))        # missing data lowers coverage, it never scores 0
-        self.assertTrue(all(r[i]['score'] is None and r[i]['rank'] is None for i in (1, 5)))
+        self.assertTrue(r[5]['score'] is None and r[5]['rank'] is None)                        # withdrawn: not scored
+        self.assertEqual((r[1]['score'], r[1]['rank']), (0.0, None))   # reference (issue #72): scored with the candidates' bounds, clamped (200,000 km is worse than every candidate), never ranked
+        self.assertEqual(ranking.rank(rows, w), 3)                                             # and it does not change the candidates
         ex = {e['criterion']: e for e in r[4]['explain']}
         self.assertEqual((ex['cash_now']['score'], ex['cash_now']['contribution'], ex['cash_now']['bounds']), (50, 50.0, {'min': 5000, 'max': 7000, 'n': 3}))
         self.assertEqual(ex['confidence']['why_missing'], 'fewer than two cars with a value')

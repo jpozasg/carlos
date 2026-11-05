@@ -230,6 +230,8 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 .quiz .opts label{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer;padding:6px 8px;border-radius:var(--radius-s);border:var(--border-w) solid transparent}
 .quiz .opts label:has(input:checked){background:var(--accent-soft);border-color:var(--accent)}
 .quiz input[type=radio]{accent-color:var(--accent);margin-top:3px}
+/* the owner's car on the ranking list (issue #72): scored, not ranked */
+.rank-list li.is-ref,li.is-ref{background:var(--accent-soft);border-radius:var(--radius)}
 .contrib{display:flex;height:10px;border-radius:99px;overflow:hidden;background:var(--surface-2)}
 /* separators inside each segment (a flex gap would add pixels per segment and make the bar longer than the score) */
 .contrib i{display:block;height:100%;flex:none;box-sizing:border-box}.contrib i+i{border-left:2px solid var(--surface)}

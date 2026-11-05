@@ -98,7 +98,7 @@ def render(u, p):
                  ('Reliability (points, 3 worst per part, lower is better)', u['metrics']['reliability']),
                  ('Reliability by part', ', '.join(f"{k.lower()} {v:g}" for k, v in (u.get('reliability_parts') or {}).items()) or None),
                  ('Data confidence (%)', u['metrics']['confidence']),
-                 ('Ranking score (0–100)', 'not ranked (reference)' if u['is_reference'] else u.get('score')),
+                 ('Ranking score (0–100)', f"{u['score']:g} (reference, not ranked)" if u['is_reference'] and u.get('score') is not None else u.get('score')),
                  ('Price history', ' → '.join(f"{x['date']} {val(x['price_eur'], '€')}" for x in u['price_history']) or None),
                  ('Rank', u.get('rank')), ('Data coverage', None if u.get('coverage') is None else f"{u['coverage']:.0%}"),
                  ('Criterion scores', ', '.join(f'{k} {v}' for k, v in (u.get('score_parts') or {}).items()) or None)]],
