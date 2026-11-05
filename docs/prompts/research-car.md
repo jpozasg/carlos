@@ -40,6 +40,8 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 - **Risk windows:** follow the window rule in protocol step 5: this car's ownership window for variant rows, a generic window with the probability for that whole window for engine and generation rows that other listings inherit.
 - **Certain costs:** a scheduled job due at purchase is `certain(L, 'maintenance', ...)` plus `restart(..., 'CERTAIN REPAIR', unit_cost_id=...)`, never `repairs`; apply the service-book rule in protocol step 6 (a generic "Scheckheftgepflegt" does not cover the timing belt, coolant, brake fluid or spark plugs).
 - **Consumption:** only the reported average with its number of reports; if the page shows only the stored "Praxisverbrauch" (the average is rendered by JavaScript), write no consumption and report the URL.
+- **Recalls, wear and the checklist:** write only recalls that can apply to this car (engine, gearbox, build window); generic wear (clutch, pads, battery, bulbs) is a priced risk, not a weak point, unless a source flags it for this model; never set a checklist item's status (the owner does that at the viewing).
+- **Search budget:** web searches are limited for the whole session (about 200, shared by all agents running in parallel). Spend them on the four reliability sources, the recalls and the consumption page first; fetch known URLs directly (ADAC Autokatalog, autokostencheck, repareo) instead of searching for them; say in the report which figures you could not source because the budget ran out.
 - **Never delete.** Do not call `delete()`; if a row you wrote is wrong, PATCH it, or `archive()` it and write the right one. Deleting needs the owner's confirmation, which only the main agent can ask for.
 
 **Report back (short):**
