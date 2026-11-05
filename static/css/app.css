@@ -168,30 +168,31 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 .plate dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:14px}
 .plate dt{color:var(--text-3)}.plate dd{margin:0;font-variant-numeric:tabular-nums;font-family:var(--readout);text-align:right;overflow-wrap:anywhere}
 .plate dd.hi{font-size:22px;font-weight:700;line-height:1.1}
-/* the Carlos score instrument (issue #92): a half-dial with the other cars as ticks and this car as the needle; theme
-   tokens only (good/warn/bad ink every theme defines); the needle sweeps once when the dossier opens */
+/* "Your Carlos score" (issue #104): two field strips, score and cost per month; every compared car a dot, this car the
+   marker in the rating colour, the owner's car a dashed tick; theme tokens only; the marker slides in once on open */
 .scorecard{padding:14px 16px 12px;border-radius:var(--radius);background:var(--surface);border:var(--border-w) solid var(--border)}
 /* dossier tiles take the spec plate's colours; what sits on --surface-2 inside them swaps to --surface (issue #100) */
 .dossier-top~.grid>.card,.dossier-side>.scorecard{background:var(--plate);border-color:var(--border-strong);--surface-2:var(--surface)}
 .sc-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .sc-title{display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:700;color:var(--text)}
 .sc-rank{font-size:13px;color:var(--text-2)}
-.sc-gauge{display:block;width:100%;height:auto;margin:8px 0 0;overflow:visible}
-.sc-track,.sc-arc{fill:none;stroke-width:12;stroke-linecap:round}.sc-track{stroke:var(--surface-2)}.sc-arc{stroke:var(--text-2)}
-.sc-car{stroke:var(--text-2);stroke-width:2;stroke-linecap:round}
-.sc-needle{transform-origin:110px 104px;transform:rotate(var(--a))}.sc-needle line{stroke:var(--text);stroke-width:3;stroke-linecap:round}.sc-needle circle{fill:var(--text)}
-.sc-sweep .sc-needle{animation:sc-sweep .9s cubic-bezier(.25,.8,.3,1) both}
-@keyframes sc-sweep{from{transform:rotate(0deg)}to{transform:rotate(var(--a))}}
-@media (prefers-reduced-motion:reduce){.sc-sweep .sc-needle{animation:none}}
-.sc-read{display:grid;grid-template-columns:2.5em 1fr 2.5em;align-items:baseline;margin-top:4px}
-.sc-mid{display:flex;align-items:baseline;justify-content:center;gap:8px}
 .sc-num{font-family:var(--readout);font-size:40px;line-height:1;font-variant-numeric:tabular-nums;color:var(--text)}
 .sc-word{font-size:16px;font-weight:700}
-.sc-end{font-size:11px;color:var(--text-2)}.sc-read .sc-end:last-child{text-align:right}
+.fs-row{margin-top:12px}.fs-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.fs-lbl{font-size:13px;color:var(--text-2)}
+.fs-val{display:flex;align-items:baseline;gap:6px}.sc-num.sm{font-size:24px}.fs-val .sc-word{font-size:14px}
+.fs-track{position:relative;height:24px;margin:4px 9px 0}.fs-track::before{content:"";position:absolute;left:-9px;right:-9px;top:50%;height:4px;margin-top:-2px;border-radius:99px;background:var(--surface-2)}
+.fs-dot{position:absolute;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--text-3)}
+.fs-ref{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--text);margin-left:-1px}
+.fs-me{position:absolute;top:50%;left:var(--x);width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:var(--text);border:3px solid var(--plate,var(--surface));box-sizing:border-box}
+.sc-good .fs-score .fs-me,.sc-good .fs-key .fs-me{background:var(--good-ink)}.sc-avg .fs-score .fs-me,.sc-avg .fs-key .fs-me{background:var(--warn-ink)}.sc-poor .fs-score .fs-me,.sc-poor .fs-key .fs-me{background:var(--bad-ink)}
+.sc-sweep .fs-track .fs-me{animation:fs-in .8s cubic-bezier(.25,.8,.3,1) both}@keyframes fs-in{from{left:0}to{left:var(--x)}}
+@media (prefers-reduced-motion:reduce){.sc-sweep .fs-track .fs-me{animation:none}}
+.fs-ends{display:flex;justify-content:space-between;font-size:11px;color:var(--text-2);font-family:var(--readout)}
+.scorecard .fs-cost .sc-word{color:var(--text-2);font-weight:600}.fs-key{display:inline-flex;align-items:center;gap:5px;margin-right:8px}.fs-key .fs-me,.fs-key .fs-ref{position:static;margin:0;display:inline-block}.fs-key .fs-me{width:10px;height:10px;border:0}.fs-key .fs-ref{height:14px}
 .sc-cov{margin:6px 0 0;font-size:12px;color:var(--text-2)}.sc-none{margin-top:8px}
-.sc-good .sc-arc{stroke:var(--good-ink)}.sc-good .sc-word{color:var(--good-ink)}
-.sc-avg .sc-arc{stroke:var(--warn-ink)}.sc-avg .sc-word{color:var(--warn-ink)}
-.sc-poor .sc-arc{stroke:var(--bad-ink)}.sc-poor .sc-word{color:var(--bad-ink)}
+.sc-good .sc-word{color:var(--good-ink)}
+.sc-avg .sc-word{color:var(--warn-ink)}
+.sc-poor .sc-word{color:var(--bad-ink)}
 .relbox{margin:6px 0 0}.rb-head{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text-3)}.relbox .rb-total{color:var(--text)}.relbox .rb-rows{margin:6px 0 0 12px}
 .rb-total{margin-left:auto;font-family:var(--readout);font-size:14px}
 .rb-rows{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px 10px;margin-top:8px;font-size:12px}

@@ -34,27 +34,34 @@ document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !docu
 // the Carlos score as its own element (issue #80): number, 0–100 meter and a rating word by band; the score is
 // relative to the compared cars (best ≈ 100), so the bands read: ≥70 good, 40–69 average, <40 poor
 const SCORE_BANDS = [[70, 'good'], [40, 'avg'], [0, 'poor']];
-// the Carlos score as one instrument (issue #92): a half-dial 0–100, the other compared cars as ticks around the scale,
-// this car as the needle, the arc filled to it in the rating colour
-const GX = 110, GY = 104, GR = 84;
-const gpt = (v, r) => { const a = Math.PI * (1 + Math.max(0, Math.min(100, v)) / 100); return [(GX + r * Math.cos(a)).toFixed(1), (GY + r * Math.sin(a)).toFixed(1)]; };
-function gauge(score, others) {
-  const ticks = others.map(v => { const [x1, y1] = gpt(v, GR + 8), [x2, y2] = gpt(v, GR + 15); return `<line class="sc-car" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`; }).join('');
-  const arc = `M${GX - GR} ${GY} A${GR} ${GR} 0 0 1 ${GX + GR} ${GY}`;
-  return `<path class="sc-track" d="${arc}"/><path class="sc-arc" d="${arc}" pathLength="100" stroke-dasharray="${Math.max(0, Math.min(100, score)).toFixed(1)} 100"/>${ticks}
-    <g class="sc-needle" style="--a:${(180 * Math.max(0, Math.min(100, score)) / 100).toFixed(1)}deg"><line x1="${GX}" y1="${GY}" x2="${GX - GR + 16}" y2="${GY}"/><circle cx="${GX}" cy="${GY}" r="6"/></g>`;
+// "Your Carlos score" as two field strips (issue #104): every compared car as a dot on a score line (0–100) and on a
+// cost-per-month line (most expensive left, cheapest right, so right is better on both); this car is the marker, the
+// owner's car a dashed tick. Only complete costs are placed (the ranking's cost_month), never a subtotal.
+const clamp = v => Math.max(0, Math.min(100, v));
+function strip(cls, label, value, ends, me, others, ref, aria) {
+  return `<div class="fs-row ${cls}"><div class="fs-head"><span class="fs-lbl">${label}</span>${value}</div>
+    <div class="fs-track" role="img" aria-label="${esc(aria)}">${others.map(x => `<i class="fs-dot" style="left:${x.toFixed(1)}%"></i>`).join('')}${ref == null ? '' : `<i class="fs-ref" style="left:${ref.toFixed(1)}%"></i>`}${me == null ? '' : `<b class="fs-me" style="--x:${me.toFixed(1)}%"></b>`}</div>
+    <div class="fs-ends"><span>${ends[0]}</span><span>${ends[1]}</span></div></div>`;
 }
 function scoreBox(d) {
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_score_note'))}" data-tip="${esc(t('plate_score_note'))}">${INFO_SVG}</span>`;
-  if (d.score == null) return `<div class="scorecard"><div class="sc-top"><span class="sc-title">Carlos score ${tip}</span></div><div class="sc-none">${PEND()}</div></div>`;
+  const title = `<span class="sc-title">${t('plate_score')} ${tip}</span>`;
+  if (d.score == null) return `<div class="scorecard"><div class="sc-top">${title}</div><div class="sc-none">${PEND()}</div></div>`;
   const band = SCORE_BANDS.find(([min]) => d.score >= min)[1], word = t('score_' + band);
-  const others = S.units.filter(u => !u.is_reference && u.listing_status !== 'WITHDRAWN' && u.score != null && u.id !== d.id).map(u => u.score);
-  const n = others.length + (d.is_reference ? 0 : 1);
+  const field = S.units.filter(u => !u.is_reference && u.listing_status !== 'WITHDRAWN' && u.id !== d.id);
+  const ref = d.is_reference ? null : S.units.find(u => u.is_reference);
+  const n = field.filter(u => u.score != null).length + (d.is_reference ? 0 : 1);
+  const cm = u => (u?.metrics || {}).cost_month ?? null, mine = cm(d);
+  const costs = [...field.map(cm), cm(ref), mine].filter(v => v != null), hi = Math.max(...costs), lo = Math.min(...costs);
+  const cx = v => v == null ? null : hi === lo ? 50 : (hi - v) / (hi - lo) * 100;
+  const score = strip('fs-score', t('score'), `<span class="fs-val"><b class="sc-num">${scoreTxt(d)}</b><span class="sc-word">${word}</span></span>`, ['0', '100'], clamp(d.score),
+    field.filter(u => u.score != null).map(u => clamp(u.score)), ref?.score == null ? null : clamp(ref.score), `${t('score')} ${num(d.score, 0)} / 100, ${word}; ${t('sc_dist', { n })}`);
+  const cost = strip('fs-cost', t('c_cost_month'), `<span class="fs-val"><b class="sc-num sm">${mine == null ? PEND() : euro(mine)}</b>${mine == null ? '' : `<span class="sc-word">${t('per_month')}</span>`}</span>`,
+    costs.length ? [euro(hi), euro(lo)] : ['', ''], cx(mine), field.map(cm).filter(v => v != null).map(cx), cx(cm(ref)), `${t('c_cost_month')} ${mine == null ? '?' : euro(mine)}`);
   return `<div class="scorecard sc-${band}${SWEEP ? ' sc-sweep' : ''}">
-    <div class="sc-top"><span class="sc-title">Carlos score ${tip}</span><span class="sc-rank">${d.rank ? t('sc_rank', { r: d.rank, n }) : t('ref_not_ranked')}</span></div>
-    <svg class="sc-gauge" viewBox="0 0 220 112" role="img" aria-label="Carlos score ${num(d.score, 0)} / 100, ${esc(word)}; ${esc(t('sc_dist', { n }))}">${gauge(d.score, others)}</svg>
-    <div class="sc-read"><span class="sc-end">0</span><span class="sc-mid"><b class="sc-num">${scoreTxt(d)}</b><span class="sc-word">${word}</span></span><span class="sc-end">100</span></div>
-    <p class="sc-cov">${t('coverage', { n: num(d.coverage * 100, 0) })}</p></div>`;
+    <div class="sc-top">${title}<span class="sc-rank">${d.rank ? t('sc_rank', { r: d.rank, n }) : t('ref_not_ranked')}</span></div>
+    ${score}${cost}
+    <p class="sc-cov"><span class="fs-key"><b class="fs-me"></b> ${t('sc_this')}</span>${ref ? ` <span class="fs-key"><i class="fs-ref"></i> ${t('your_car')}</span>` : ''} · ${t('coverage', { n: num(d.coverage * 100, 0) })}</p></div>`;
 }
 // reliability as its own element (issue #80): total out of 36 and one meter per part out of 9; each part starts at 9
 // and loses its 3 worst points, so higher is better: ≥6 green, ≥3 amber, below 3 red
