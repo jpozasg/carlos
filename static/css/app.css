@@ -248,6 +248,10 @@ a.carlink,.gen-head a,.ehead a,.sources h3 a,[data-page=sources] h3 a{color:inhe
 .prof-why{margin:0;color:var(--text-2);line-height:1.45}
 .prof-why q{quotes:"“" "”";font-style:italic}
 details.tune,details.formula{margin-top:14px}
+/* inline notes and reset tags: open on click/tap, no hover-only tooltips */
+details.rownote{display:inline}details.rownote>summary{display:inline-flex;align-items:center;vertical-align:middle;cursor:pointer;list-style:none;color:var(--text-2)}
+details.rownote>summary::-webkit-details-marker{display:none}details.rownote>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+details.rownote[open]>p{display:block;margin:6px 0 2px;font-size:12px;line-height:1.45;color:var(--text-2);white-space:normal;max-width:46ch}
 details.tune summary,details.formula summary{cursor:pointer;font-weight:600;font-size:14px;padding:4px 0}
 details.formula{padding:14px 16px}
 /* questionnaire: one scenario per screen */

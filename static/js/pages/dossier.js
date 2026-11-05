@@ -75,13 +75,23 @@ function rankCard(d) {
 const srcLink = (d, id) => { const x = d.sources.find(s => s.id === id); return x ? qTag(x.quality, x.title + (x.limitations ? ' — ' + x.limitations : '')) : ''; };
 // one row per certain one-off cost of this car (unit_costs of a category), named, so a total never hides what it includes
 const certainOf = (d, cat) => d.unit_costs.filter(x => x.category === cat).map(x => ({ ...x, eur: (x.parts_eur || 0) + (x.labor_eur || 0) }));
-const certainRows = (d, rows) => rows.map(x => `<tr><td colspan="6">${esc(x.item)} <span class="tag">${t('certain_tag')}</span>${x.notes ? ` <span class="small muted" title="${esc(x.notes)}">ⓘ</span>` : ''}</td><td class="n">${euro(x.eur)}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('');
+// row notes open on click/tap (a title tooltip is hover-only and never shows on a phone); an SVG renders in every theme font
+const INFO_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.6v.1" stroke-linecap="round"/></svg>';
+const noteBox = text => text ? `<details class="rownote"><summary aria-label="${esc(t('notes'))}" title="${esc(t('notes'))}">${INFO_SVG}</summary><p>${esc(text)}</p></details>` : '';
+// why a scheduled job counts as done at the start of ownership (maintenance_resets.basis) and what that does to the cost
+const RESET = { 'CERTAIN REPAIR': ['rs_due', ''], 'SELLER CLAIM': ['rs_claim', 'warn'], DOCUMENTED: ['rs_documented', 'good'] };
+function resetTag(d, itemId) {
+  const r = (d.maintenance_resets || []).find(x => x.maintenance_item_id === itemId); if (!r) return '';
+  const [key, cls] = RESET[r.basis] || ['rs_documented', 'good'];
+  return `<details class="rownote reset"><summary><span class="tag ${cls}">${t(key)}</span></summary><p>${t(key + '_x')} ${t('rs_effect')}${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ''}</p></details>`;
+}
+const certainRows = (d, rows) => rows.map(x => `<tr><td colspan="6">${esc(x.item)} <span class="tag">${t('certain_tag')}</span> ${noteBox(x.notes)}</td><td class="n">${euro(x.eur)}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('');
 function maintenanceCard(d) {
   const rows = d.maintenance_plan || [], cm = certainOf(d, 'maintenance'); if (!rows.length && !cm.length) return `<div class="card span2"><h3>${t('mp_title')}</h3>${empty(t('mp_none'))}</div>`;
   const tot = rows.reduce((a, r) => a + (r.cost_eur || 0), 0) + cm.reduce((a, x) => a + x.eur, 0), hrs = rows.reduce((a, r) => a + (r.diy_hours || 0), 0);
   return `<div class="card span2"><h3>${t('mp_title')}</h3><p class="small muted" style="margin-top:0">${t('mp_lead', { km: num(d.period_km, 0), m: num(S.p.ownership_years * 12, 0) })}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('mp_job')}</th><th>${t('level')}</th><th>${t('mp_interval')}</th><th>${t('mp_who')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('mp_times')}</th><th class="n">${t('mp_cost')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
-    ${rows.map(r => `<tr><td>${esc(r.item)}${r.restarted ? ` <span class="tag good">${t('mp_restart')}</span>` : ''}<div class="small muted">${esc(tv(r.status) ?? '')}${r.notes ? ` · <span title="${esc(r.notes)}">ⓘ</span>` : ''}</div></td><td>${lvlTag(r.level)}</td>
+    ${rows.map(r => `<tr><td>${esc(r.item)}${r.restarted ? ` ${resetTag(d, r.id)}` : ''}<div class="small muted">${esc(tv(r.status) ?? '')} ${noteBox(r.notes)}</div></td><td>${lvlTag(r.level)}</td>
       <td>${intervalTxt(r.interval_km, r.interval_months)}</td><td>${r.diy ? t('mp_diy') : t('mp_ws')}</td><td class="n">${eP(r.price_eur)}</td>
       <td class="n">×${num(r.occurrences, 2)}</td><td class="n">${eP(r.cost_eur)}${r.diy_hours ? `<div class="small muted">${num(r.diy_hours, 1)} h</div>` : ''}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
     ${certainRows(d, cm)}
