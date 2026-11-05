@@ -51,7 +51,11 @@ function scoreBox(d) {
   const parts = (d.explain || []).filter(x => x.contribution > 0).sort((a, b) => b.contribution - a.contribution);
   const legend = parts.length > 5 ? [...parts.slice(0, 4), { criterion: null, contribution: parts.slice(4).reduce((a, x) => a + x.contribution, 0) }] : parts;
   let at = 0;
-  const arcs = parts.map(x => { const len = x.contribution / 100 * RC, arc = `<circle class="sr-arc" r="50" cx="60" cy="60" stroke="${critColor(x.criterion, keys)}" stroke-dasharray="${len.toFixed(2)} ${RC.toFixed(2)}" stroke-dashoffset="${(-at).toFixed(2)}"/>`; at += len; return arc; }).join('');
+  // round caps reach half the stroke (6.5) past each end: shorten every arc by a cap plus a 2.5 gap so neighbours never
+  // overlap; an arc shorter than that is drawn as a dot
+  const CUT = 13 + 2.5;
+  const arcs = parts.map(x => { const len = x.contribution / 100 * RC, draw = Math.max(0.01, len - CUT), off = at + (len - draw) / 2;
+    at += len; return `<circle class="sr-arc" r="50" cx="60" cy="60" stroke="${critColor(x.criterion, keys)}" stroke-dasharray="${draw.toFixed(2)} ${RC.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"/>`; }).join('');
   const aria = `${t('plate_score')} ${num(d.score, 0)} / 100, ${word}; ${parts.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}`).join(', ')}`;
   return `<div class="scorecard sc-${band}${SWEEP ? ' sc-sweep' : ''}">
     <div class="sc-top">${title}<span class="sc-rank">${d.rank ? t('sc_rank', { r: d.rank, n }) : t('ref_not_ranked')}</span></div>
