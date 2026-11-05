@@ -36,7 +36,9 @@ def work_one(api, name, cmd, logs, timeout_s):
     req = api.call('POST', '/api/worker/claim', {'worker': name})['request']
     if not req:
         return False
-    env = {**os.environ, 'CAR_API': api.base, 'AGENT_TOKEN': api.token, 'CARLOS_ACCOUNT': str(req['owner_id'])}
+    # print mode stops background tasks 10 min after the last turn, which left request 4 hanging (issue #137): wait for them
+    env = {**os.environ, 'CAR_API': api.base, 'AGENT_TOKEN': api.token, 'CARLOS_ACCOUNT': str(req['owner_id']),
+           'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS': '0'}
     log = Path(logs) / f'request-{req["id"]}.log'
     log.parent.mkdir(parents=True, exist_ok=True)
     try:
