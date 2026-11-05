@@ -86,7 +86,7 @@ function plate(d) {
     ${row(t('age'), (d.metrics || {}).age == null ? PEND() : yrs(d.metrics.age))}
     ${row(t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a>`)}
     ${row(t('power'), d.power_ps == null ? PEND() : num(d.power_ps, 0) + ' PS')}
-    ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' l/100 km')}
+    ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' ' + esc(d.consumption_unit || 'l/100 km'))}
     ${row(t('plate_position'), d.rank ? `#${d.rank}` : `<span class="pending">${t(d.is_reference ? 'ref_not_ranked' : 'not_ranked')}</span>`)}
     ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>${relBox(d)}
     ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;

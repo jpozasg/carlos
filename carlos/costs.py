@@ -176,6 +176,23 @@ def electricity_price(p):
     return home + ((1 - s) * p['electricity_public_eur_kwh'] if s < 1 else 0), []
 
 
+def ev_tax_months(first_registration, today, months):
+    """Months of the period (from today) in which an electric car pays Kfz-Steuer: first registered by 2030-12-31 it is
+    exempt for 10 years, until 2035-12-31 at the latest (§ 3d KraftStG, 8. KraftStÄndG); None without a first
+    registration. The exemption passes to the next owner."""
+    try:
+        y, m = (int(x) for x in str(first_registration)[:7].split('-'))
+    except (TypeError, ValueError):
+        return None
+    start = today.year * 12 + today.month - 1
+    if (y, m) > config.EV_TAX_EXEMPT_REGISTERED_BY:
+        free_until = start  # registered later: no exemption
+    else:
+        ey, em = config.EV_TAX_EXEMPT_UNTIL
+        free_until = min(y * 12 + m - 1 + 120, ey * 12 + em)  # first taxable month index
+    return max(0, start + months - max(start, free_until))
+
+
 def check_budget(p):
     """The ideal budget may not exceed the maximum."""
     if p.get('budget_ideal_eur') is not None and p.get('budget_max_eur') is not None and p['budget_ideal_eur'] > p['budget_max_eur']:
@@ -186,7 +203,7 @@ UNITS_SQL = '''SELECT l.*, v.generation_id, v.engine_id, v.trim, v.transmission,
   v.emissions_standard, v.co2_g_km, v.hsn, v.tsn, v.technical_status, v.notes vehicle_notes,
   g.make, g.model, g.name generation, g.start_year generation_start_year, g.end_year generation_end_year, g.facelift_year,
   e.code engine_code, e.family engine_family, e.description engine_description, e.fuel_type, e.displacement_cc, e.cylinders,
-  e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive
+  e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive, e.battery_usable_kwh, e.ac_charge_kw, e.dc_charge_kw
 FROM listings l JOIN vehicles v ON v.id=l.vehicle_id JOIN generations g ON g.id=v.generation_id JOIN engines e ON e.id=v.engine_id
 ORDER BY l.is_reference DESC, l.id'''
 
@@ -214,8 +231,10 @@ class Knowledge:
             return rs
         return [{**r, 'diy': int(r['job'] in self.jobs), 'diy_as_stored': r['diy']} if r.get('job') else r for r in rs]
 
-    def consumption(self, v):
-        prim = [o for o in self.of('observations', v) if o['metric'] == config.PRIMARY_CONSUMPTION and o['value_num'] is not None]
+    def consumption(self, v, fuel_type=None):
+        """The primary consumption row: one real-world source per drivetrain (l/100 km, or kWh/100 km for an electric car)."""
+        metric = config.PRIMARY_CONSUMPTION_EV if fuel_type == 'Electric' else config.PRIMARY_CONSUMPTION
+        prim = [o for o in self.of('observations', v) if o['metric'] == metric and o['value_num'] is not None]
         return max(prim, key=lambda o: o['id']) if prim else None
 
     def insurance(self, v, is_reference):
@@ -298,11 +317,17 @@ def tco_rows(c, p):
     out = []
     for u in units:
         v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
-        cons, ins_row, tax_row = know.consumption(v), know.insurance(v, u['is_reference']), know.tax(v, u['first_registration'])
-        u.update(consumption=cons['value_num'] if cons else None, consumption_sample=cons['sample_count'] if cons else None,
+        cons, ins_row, tax_row = know.consumption(v, u['fuel_type']), know.insurance(v, u['is_reference']), know.tax(v, u['first_registration'])
+        electric = u['fuel_type'] == 'Electric'
+        # an electric car's tax only for the months after its exemption: fully exempt = a known 0 by law, no row needed
+        taxable = ev_tax_months(u['first_registration'], today, years * 12) if electric else years * 12
+        annual_tax = (tax_row or {}).get('annual_tax_eur')
+        tax = None if taxable is None else 0.0 if taxable == 0 else annual_tax * taxable / 12 if annual_tax is not None else None
+        u.update(consumption=cons['value_num'] if cons else None, consumption_unit=cons['unit'] if cons else None,
+                 tax_exempt_months=years * 12 - taxable if electric and taxable is not None else None, consumption_sample=cons['sample_count'] if cons else None,
                  consumption_min=cons['min_value'] if cons else None, consumption_max=cons['max_value'] if cons else None,
                  consumption_metric=cons['metric'] if cons else None, consumption_source_id=cons['source_id'] if cons else None,
-                 annual_insurance=(ins_row or {}).get('annual_premium_eur'), annual_tax=(tax_row or {}).get('annual_tax_eur'))
+                 annual_insurance=(ins_row or {}).get('annual_premium_eur'), annual_tax=tax / years if tax is not None else annual_tax)
         costs = by_listing.get(u['id'], [])
         unit_cost = {cat: sum((x['parts_eur'] or 0) + (x['labor_eur'] or 0) for x in costs if x['category'] == cat)
                      if any(x['category'] == cat for x in costs) else None for cat in config.UNIT_COST_CATEGORIES}
@@ -315,18 +340,26 @@ def tco_rows(c, p):
         u['unpriced'] = ([need(x) for x in maintenance_plan(m_rows, km, years * 12, restarted) if x['cost_eur'] is None] if maint is None else []) + \
             ([need(x) for x in risk_plan(r_rows, u['mileage_km'], km) if x['expected_eur'] is None] if risk is None and u['mileage_km'] is not None else [])
         wear = tyre_cost(know.tyres(v), km)
-        price_l = p.get('diesel_price_eur_l') if (u['fuel_type'] or '').lower() == 'diesel' else p['fuel_price_eur_l']
+        # energy price: diesel, petrol (full hybrids too), electricity for an electric car; a plug-in hybrid's mix of both
+        # is not supported yet, so its fuel stays unknown (owner decision 2026-11-05)
+        price_l = None if u['fuel_type'] in ('Electric', 'Plug-in hybrid') else \
+            p.get('diesel_price_eur_l') if (u['fuel_type'] or '').lower() == 'diesel' else p['fuel_price_eur_l']
+        price_kwh = electricity_price(p)[0] if electric else None
+        energy = price_kwh if electric else price_l
+        # a planned wallbox is a cost of choosing an electric car (purchase side, paid now); unknown cost = unknown component
+        wallbox = (p.get('wallbox_cost_eur') if p.get('home_charging') == 'wallbox_planned' else 0) if electric and not u['is_reference'] else 0
         # certain one-off costs of the listing plus the model's expected costs; the expected part unknown (no risk or
         # tyre research, an unpriced risk, no mileage) makes the whole component unknown, never a smaller number
         add = lambda certain, expected: None if expected is None else (certain or 0) + expected
         parts = {
-            'fuel': u['consumption'] * km / 100 * price_l if u['consumption'] is not None and price_l else None,
+            'fuel': u['consumption'] * km / 100 * energy if u['consumption'] is not None and energy else None,
             'insurance': u['annual_insurance'] * years if u['annual_insurance'] is not None else None,
-            'tax': u['annual_tax'] * years if u['annual_tax'] is not None else None,
+            'tax': tax,
             'maintenance': add(unit_cost['maintenance'], maint),
             'repairs': add(unit_cost['repairs'], risk),
             'tyres': add(unit_cost['tyres'], wear),
-            'purchase_sale': unit_cost['purchase_sale'], 'depreciation': dep,
+            'purchase_sale': None if unit_cost['purchase_sale'] is None or wallbox is None else unit_cost['purchase_sale'] + wallbox,
+            'depreciation': dep,
         }
         known = [x for x in parts.values() if x is not None]
         subtotal = sum(known) if known else None  # unknown = NULL, never 0
@@ -343,7 +376,8 @@ def tco_rows(c, p):
                             if any(x['diy_hours'] is not None for x in costs) or maint_hours or risk_hours else None),
                  cost_detail={'repairs_certain': unit_cost['repairs'], 'repairs_expected': risk, 'tyre_wear': wear,
                               'maintenance_certain': unit_cost['maintenance'], 'maintenance_scheduled': maint,
-                              'tyres_certain': unit_cost['tyres'], 'fuel_price_eur_l': price_l,
+                              'tyres_certain': unit_cost['tyres'], 'fuel_price_eur_l': price_l, 'electricity_eur_kwh': price_kwh,
+                              'wallbox_eur': wallbox or None,
                               'maintenance_diy_hours': maint_hours, 'repairs_diy_hours': risk_hours},
                  initial_outlay=(u['price_eur'] - ref_sale['expected_eur'] if not u['is_reference'] and ref_sale
                                  and u['price_eur'] is not None else None))
@@ -351,7 +385,7 @@ def tco_rows(c, p):
         counts = u['inspection_counts']
         items = contract.resolved(v['id'])
         rel_rows = know.of('reliability_items', v)
-        items += research.listing_items(u, {'insurance': know.of('insurance_data', v), 'tax': tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
+        items += research.listing_items(u, {'insurance': know.of('insurance_data', v), 'tax': {'exempt': True} if electric and taxable == 0 else tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
                                             'weak_points': {r['id'] for r in rel_rows}, 'checked': set(checks.get(u['id'], {})),
                                             'captured': u['id'] in captured}, today)
         u['research'] = items
@@ -361,7 +395,7 @@ def tco_rows(c, p):
         insp_ok, insp_problem = counts.get('OK', 0) - rc.get('OK', 0), counts.get('PROBLEM', 0) - rc.get('PROBLEM', 0)
         u['metrics'] = {
             'cost_month': u['known_cost_per_month'] if complete else None,
-            'cash_now': None if u['is_reference'] or u['price_eur'] is None or unit_cost['purchase_sale'] is None else u['price_eur'] + unit_cost['purchase_sale'],
+            'cash_now': None if u['is_reference'] or u['price_eur'] is None or parts['purchase_sale'] is None else u['price_eur'] + parts['purchase_sale'],
             'mileage': u['mileage_km'], 'age': age,
             'reliability': rel_total,
             'inspection': insp_problem if insp_ok or insp_problem else None,

@@ -116,7 +116,7 @@ function details(us) {
       [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : num(u.metrics.reliability, 1)], ...['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'].map(k => [`· ${t('part_' + k)}`, u => (u.reliability_parts || {})[k] == null ? PEND() : num(u.reliability_parts[k], 1)]),
       [t('c_confidence'), u => u.metrics.confidence == null ? PEND() : num(u.metrics.confidence, 0) + ' %'],
       [t('score'), u => u.score == null ? `<span class="pending">${t('not_ranked')}</span>` : `<b>${scoreTxt(u)}</b> <span class="muted">${t('rank_n', { n: u.rank })} · ${num(u.coverage * 100, 0)}% ${t('coverage_short')}</span>`],
-      [t('consumption'), u => u.consumption == null ? PEND() : `${num(u.consumption)} l/100 km<br><span class="muted">${num(u.consumption_min)}–${num(u.consumption_max)} · n=${u.consumption_sample ?? '?'}</span>`]]],
+      [t('consumption'), u => u.consumption == null ? PEND() : `${num(u.consumption)} ${esc(u.consumption_unit || 'l/100 km')}<br><span class="muted">${num(u.consumption_min)}–${num(u.consumption_max)} · n=${u.consumption_sample ?? '?'}</span>`]]],
     [t('g_use'), ['fuel', 'insurance', 'tax', 'maintenance'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
     [t('g_own'), ['repairs', 'tyres', 'purchase_sale'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
     [t('g_dep'), [[`<abbr title="${esc(t('dep_help'))}">${esc(comp('depreciation'))}</abbr>`, u => eP(u.components.depreciation)]]],

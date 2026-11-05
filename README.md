@@ -34,13 +34,13 @@ It was built and tested with German data (the official BMF road-tax calculator, 
 
 ## How the numbers are built
 Per listing, over the period (km per year × years from Settings):
-- **Fuel:** real-world consumption of the exact variant (the same source for every car, the reference included) × km × fuel price (petrol or diesel).
+- **Fuel:** real-world consumption of the exact variant (the same source for every car, the reference included) × km × fuel price (petrol or diesel; a full hybrid as petrol). Electric cars: real-world kWh/100 km (Spritmonitor, the same source for every electric car) × km × the electricity price from the charging answers (home and public price weighted by the share charged at home, +10 % loss at a household socket). Plug-in hybrids: not costed yet, fuel stays unknown.
 - **Insurance:** the latest comparison quote for the variant (median of the five cheapest reasonable offers); for the reference car, the premium you actually pay.
-- **Tax:** the latest known annual amount, preferably from the official calculator.
+- **Tax:** the latest known annual amount, preferably from the official calculator. Electric cars first registered by 2030-12-31 pay nothing for 10 years (until 2035-12-31 at the latest): tax counts only the months of the period after that, and is a known 0 when the whole period is exempt.
 - **Maintenance:** item schedules costed job by job as an expected value (period ÷ interval, whichever of km and months is reached first). A job due at purchase (e.g. a timing belt overdue by age) is a certain maintenance cost listed by name, and restarts its schedule. DIY jobs count parts only; DIY hours are shown, never priced.
 - **Repairs:** certain one-off repairs of the listing (present faults, listed by name) plus the expected cost of each known risk (probability × share of its km window driven in the period). Every risk must carry a price; an unpriced risk, no risk research or no mileage makes the component unknown.
 - **Tyres:** wear (km ÷ tread life × set price with fitting) plus listing-specific tyre costs.
-- **Purchase/sale:** registration, plates, pre-purchase check; deregistration for the reference.
+- **Purchase/sale:** registration, plates, pre-purchase check; deregistration for the reference; for an electric car, the wallbox you said you would install (Charging setup).
 - **Depreciation:** asking price − resale at the end (candidates); sale today − resale at the end (reference).
 
 A total is only called a TCO when no component is missing; otherwise it is a partial subtotal and the missing parts are listed. Unknown is always NULL, never 0. The break-even view spreads running costs over the months and shows the payback month of switching. Details: `docs/data-model.md`, `docs/ranking.md`.

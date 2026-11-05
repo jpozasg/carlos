@@ -318,6 +318,37 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(electricity_price({'home_charging': 'wallbox', 'home_charging_pct': 50, 'electricity_home_eur_kwh': 0.4,
                                                   'electricity_public_eur_kwh': 0.6})[0], 0.5)
 
+    def test_electric_costs_121(self):
+        import datetime
+        from carlos.costs import ev_tax_months
+        self.req('POST', '/api/parameters', {'ownership_years': 4, 'annual_km': 10000, 'home_charging': 'wallbox_planned', 'home_charging_pct': 100,
+                                             'electricity_home_eur_kwh': 0.40, 'wallbox_cost_eur': 1500})
+        e, v, l = self.ev_listing()
+        self.agent('POST', 'observations', {'vehicle_id': v['id'], 'category': 'consumption', 'metric': config.PRIMARY_CONSUMPTION_EV,
+                                            'value_num': 16.0, 'unit': 'kWh/100 km', 'status': 'PRIMARY', 'source_id': SRC_GUIDE})
+        self.agent('POST', 'unit_costs', {'listing_id': l['id'], 'category': 'purchase_sale', 'item': 'registration', 'parts_eur': 0,
+                                          'labor_eur': 100, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})
+        u = self.units()[l['id']]
+        self.assertAlmostEqual(u['components']['fuel'], 16.0 * 40000 / 100 * 0.40)
+        self.assertEqual(u['consumption_unit'], 'kWh/100 km')
+        self.assertEqual(u['components']['tax'], 0)               # first registered 2020-11: exempt for the whole period, no row
+        self.assertEqual(u['components']['purchase_sale'], 1600)  # registration + the planned wallbox
+        self.assertEqual(u['metrics']['cash_now'], 12990 + 1600)
+        self.req('POST', '/api/parameters', {'wallbox_cost_eur': None})
+        self.assertIsNone(self.units()[l['id']]['components']['purchase_sale'])  # a needed cost unknown, never 0
+        self.agent('PATCH', f"listings/{l['id']}", {'first_registration': '2018-05'})
+        self.assertIsNone(self.units()[l['id']]['components']['tax'])  # taxable from 2028-05 and no tax row yet
+        self.agent('POST', 'tax_data', {'vehicle_id': v['id'], 'annual_tax_eur': 48, 'status': 'VERIFIED', 'source_id': SRC_GUIDE})
+        taxable = ev_tax_months('2018-05', datetime.date.today(), 48)
+        self.assertAlmostEqual(self.units()[l['id']]['components']['tax'], 48 * taxable / 12)
+        # the exemption: 10 years, never past 2035-12; later registrations not at all
+        self.assertEqual(ev_tax_months('2030-06', datetime.date(2033, 1, 1), 60), 24)
+        self.assertEqual(ev_tax_months('2031-01', datetime.date(2031, 1, 1), 12), 12)
+        self.assertEqual(ev_tax_months('2020-11', datetime.date(2026, 11, 5), 48), 0)
+        self.assertIsNone(ev_tax_months(None, datetime.date(2026, 11, 5), 48))
+        e2, v2, l2 = self.ev_listing('Plug-in hybrid', listing_id='PH1')
+        self.assertIsNone(self.units()[l2['id']]['components']['fuel'])  # plug-in hybrids: not supported yet
+
     def test_one_consumption_source_for_all_cars(self):
         self.sql_write('DELETE FROM observations WHERE vehicle_id=? AND metric=?', (V_REF, config.PRIMARY_CONSUMPTION))
         self.assertIsNone(self.units()[REF]['consumption'])                   # the owner's figure is a cross-check only
