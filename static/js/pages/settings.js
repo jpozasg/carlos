@@ -78,8 +78,8 @@ function account() {
     <form id="pwForm" class="stack"><div class="fields"><div class="field"><label for="pw_old">${t('pw_old')}</label><input id="pw_old" type="password" autocomplete="current-password" required></div>
       <div class="field"><label for="pw_new">${t('pw_new')}</label><input id="pw_new" type="password" autocomplete="new-password" minlength="8" required></div></div>
       <div><button class="btn ghost sm" type="submit">${t('pw_change')}</button></div></form>
-    <h3 style="margin-top:16px">${t('agent_token')}</h3><p class="small muted" style="margin-top:0">${t('agent_token_hint')}</p>
-    <div class="row"><button class="btn ghost sm" type="button" data-token>${S.me.has_token ? t('token_renew') : t('token_create')}</button></div><div id="tokenOut"></div></div>`;
+    ${S.me.role === 'admin' ? `<h3 style="margin-top:16px">${t('agent_token')}</h3><p class="small muted" style="margin-top:0">${t('agent_token_hint')}</p>
+    <div class="row"><button class="btn ghost sm" type="button" data-token>${S.me.has_token ? t('token_renew') : t('token_create')}</button></div><div id="tokenOut"></div>` : ''}</div>`;  // agent tokens: admins only (issue #130)
 }
 function draw() {
   root.innerHTML = `<div class="section"><h2>${t('tab_settings')}</h2><p class="lead">${t('settings_lead')}</p>
