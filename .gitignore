@@ -7,3 +7,5 @@ venv/
 # the data directory is a separate private repository (README: Getting started)
 data/
 worker-logs/
+/cars.sqlite
+.claude/
