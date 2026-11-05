@@ -760,5 +760,7 @@
  "decide_reset": "Deshacer la decisión",
  "decide_reason_ph": "¿Por qué? (opcional, p. ej. demasiado lejos)",
  "decide_reject_confirm": "Descartar este coche",
- "decision_saved": "Decisión guardada"
+ "decision_saved": "Decisión guardada",
+ "sel_shortlist": "Preseleccionados",
+ "from_drivers_step": "Se calcula a partir de las personas del paso Conductores"
 }

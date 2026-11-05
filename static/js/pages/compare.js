@@ -138,7 +138,7 @@ function breakeven(us) {
 }
 function selBar(all) {
   const cands = all.filter(u => !u.is_reference), n = cands.filter(u => selected.has(u.id)).length;
-  return `<div class="selbar"><b>${t('sel_count', { n, m: cands.length })}</b><span class="muted">${t('sel_pick')}:</span>${['all', 'none', 'best5', 'budget'].map(k => `<button type="button" class="linkbtn" data-selset="${k}">${t('sel_' + k)}</button>`).join('')}</div>`;
+  return `<div class="selbar"><b>${t('sel_count', { n, m: cands.length })}</b><span class="muted">${t('sel_pick')}:</span>${['all', 'none', 'best5', 'budget', ...(S.units.some(u => /^Shortlisted|^Viewing planned/.test(u.verdict || '')) ? ['shortlist'] : [])].map(k => `<button type="button" class="linkbtn" data-selset="${k}">${t('sel_' + k)}</button>`).join('')}</div>`;
 }
 function toolbar() {
   return `<div class="toolbar"><label>${t('sort_by')} <select class="inline" data-sort>${Object.keys(SORTS).map(k => `<option value="${k}" ${k === sortState.key ? 'selected' : ''}>${t('s_' + k)}</option>`).join('')}</select></label>
@@ -193,7 +193,7 @@ function bind() {
     if (e.target.closest('[data-csv]')) { exportCsv(); return; }
     const vw = e.target.closest('[data-view]'); if (vw) { view = vw.dataset.view; store.set('cview', view); go('compare?view=' + view + '&keep=1'); return; }
     const ss = e.target.closest('[data-selset]'); if (ss) { const c = S.units.filter(u => !u.is_reference), k = ss.dataset.selset;
-      const ids = k === 'all' ? c : k === 'none' ? [] : k === 'best5' ? c.filter(u => u.rank).sort((a, b) => a.rank - b.rank).slice(0, 5) : c.filter(u => u.budget_status === 'within');
+      const ids = k === 'all' ? c : k === 'none' ? [] : k === 'best5' ? c.filter(u => u.rank).sort((a, b) => a.rank - b.rank).slice(0, 5) : k === 'shortlist' ? c.filter(u => /^Shortlisted|^Viewing planned/.test(u.verdict || '')) : c.filter(u => u.budget_status === 'within');
       selected = new Set(ids.map(u => u.id)); const ref = S.units.find(u => u.is_reference); if (ref) selected.add(ref.id); store.set('selected', [...selected]); draw(); return; }
     const bh = e.target.closest('[data-behi]'); if (bh) { const ready = S.units.filter(u => selected.has(u.id) && !u.is_reference && u.breakeven.ready), colr = beColors(ready, beHi), id = +bh.dataset.behi;
       const cur = Object.keys(colr).filter(k => colr[k]).map(Number); beHi = colr[id] ? cur.filter(x => x !== id) : [...cur, id]; store.set('beHi', beHi); draw(); return; }

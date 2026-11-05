@@ -761,5 +761,7 @@
  "decide_reset": "Cofnij decyzję",
  "decide_reason_ph": "Dlaczego? (opcjonalnie, np. za daleko)",
  "decide_reject_confirm": "Odrzuć to auto",
- "decision_saved": "Decyzja zapisana"
+ "decision_saved": "Decyzja zapisana",
+ "sel_shortlist": "Na krótkiej liście",
+ "from_drivers_step": "Wynika z osób w kroku Kierowcy konfiguracji"
 }
