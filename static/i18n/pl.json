@@ -513,7 +513,12 @@
   "CHAIN": "łańcuch rozrządu",
   "BELT": "pasek rozrządu",
   "WET BELT": "mokry pasek",
-  "GEAR": "napęd zębatkowy"
+  "GEAR": "napęd zębatkowy",
+  "QUEUED": "W kolejce",
+  "RUNNING": "W trakcie",
+  "DONE": "Gotowe",
+  "FAILED": "Nieudane",
+  "CANCELLED": "Anulowane"
  },
  "cv_ruler": "Na pierwszy rzut oka",
  "versus_title": "Zostawić czy zmienić?",
@@ -790,5 +795,17 @@
  "decide_reject_confirm": "Odrzuć to auto",
  "decision_saved": "Decyzja zapisana",
  "sel_shortlist": "Na krótkiej liście",
- "from_drivers_step": "Wynika z osób w kroku Kierowcy konfiguracji"
+ "from_drivers_step": "Wynika z osób w kroku Kierowcy konfiguracji",
+ "req_title": "Dodaj auto",
+ "req_lead": "Wklej link do ogłoszenia. Wspólny agent badawczy je odczyta, zbada auto i doda je do twoich aut; postęp widzisz tutaj.",
+ "req_url": "Link do ogłoszenia",
+ "req_note": "Notatka (opcjonalnie)",
+ "req_send": "Zleć badanie",
+ "req_sent": "Zlecenie w kolejce",
+ "req_cancel": "Anuluj",
+ "req_open_car": "Otwórz auto",
+ "req_queue": "Kolejka badań",
+ "req_queue_lead": "Wszystkie zlecenia wszystkich kont: kto, co, kiedy i z jakim wynikiem.",
+ "req_requested": "Zlecono",
+ "req_result": "Wynik"
 }

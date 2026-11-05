@@ -52,3 +52,12 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 Every write is recorded in `change_log` (with the writer's user id) and regenerates the account's dossiers in `data/dossiers/<account id>/`, and those of every account with a listing on a changed catalogue level.
 
 **Acting for an account** (the shared research worker): an admin agent token may send `X-Carlos-Account: <user id>`; reads and `/api/agent/` writes then use that account (its listings, its private rows; models still go to the catalogue), and `change_log` records the admin. Other writes with the header get 403.
+
+## Research requests (issue #113)
+An account asks for a listing to be researched; the shared worker (`worker.py`, an admin token) does it and writes the car into that account.
+- `GET /api/requests`: the account's own requests, newest first (`id, url, note, status, requested_at, claimed_at, finished_at, worker, listing_id, result`). Never another account's.
+- `POST /api/requests {"url": "https://…", "note": "…"}` → 201 with the request (`QUEUED`). The URL must be http(s), at most 500 characters; the same URL cannot wait twice; at most 5 requests per account can be `QUEUED` or `RUNNING`.
+- `PATCH /api/requests/<id> {"status": "CANCELLED"}`: cancels one of the account's own `QUEUED` requests (400 otherwise).
+- `GET /api/admin/requests` (admin): the whole queue with `username`, newest first (last 500).
+- `POST /api/worker/claim {"worker": "<name>"}` (admin token; 403 otherwise) → `{"request": {...}}` with the oldest `QUEUED` request, now `RUNNING`, or `{"request": null}`. One transaction: two workers never get the same request. A request `RUNNING` for more than 3 hours counts as abandoned and is handed out again.
+- `POST /api/worker/requests/<id> {"status": "DONE", "listing_id": <id>, "result": "…"}` or `{"status": "FAILED", "result": "…"}` (admin token): finishes a `RUNNING` request; `DONE` needs a listing that belongs to the requester.
