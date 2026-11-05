@@ -369,6 +369,46 @@ class AppTest(unittest.TestCase):
         capture_listing.validate({**cap, 'listing': {'lease_kind': 'abo', 'lease_monthly_eur': 299, 'lease_down_payment_eur': 0,
                                                      'lease_includes': 'insurance,tax,maintenance'}})
 
+    def test_lease_costs_129(self):
+        from carlos.costs import lease_costs
+        running = lambda km, months: ({'fuel': 100.0, 'tax': 50.0, 'maintenance': 200.0, 'repairs': 300.0, 'tyres': 80.0},
+                                      {'taxable': months, 'maint': None, 'maint_hours': None, 'risk': None, 'risk_hours': None,
+                                       'wear': None, 'unpriced': [], 'km': km, 'months': months})
+        u = {'lease_term_months': 48, 'lease_includes': 'insurance,tax', 'lease_km_per_year': 8000, 'lease_extra_km_eur': 0.1,
+             'lease_fewer_km_eur': None, 'lease_fees_eur': 1000, 'lease_kind': 'km', 'lease_down_payment_eur': 0, 'lease_monthly_eur': 224}
+        p = {'annual_km': 10000, 'ownership_years': 4}
+        parts, det, ins = lease_costs(u, p, running, None, 0)
+        self.assertEqual((parts['insurance'], parts['tax'], parts['maintenance']), (0, 0, 200))  # inside the rate: 0, never twice
+        self.assertAlmostEqual(parts['purchase_sale'], 1000 + 8000 * 0.1)                      # fees + 8,000 extra km
+        self.assertEqual(parts['depreciation'], 224 * 48)                                      # down payment + rate × term
+        u2 = {**u, 'lease_includes': None}
+        self.assertIsNone(lease_costs(u2, p, running, None, 0)[0]['insurance'])               # needs a Vollkasko quote
+        self.assertEqual(lease_costs(u2, p, running, {'id': 1, 'annual_premium_eur': 600}, 0)[0]['insurance'], 2400)
+        self.assertIsNone(lease_costs({**u, 'lease_kind': 'residual'}, p, running, None, 0)[0]['depreciation'])
+        self.assertIsNone(lease_costs({**u, 'lease_extra_km_eur': None}, p, running, None, 0)[0]['purchase_sale'])
+        self.assertEqual(lease_costs({**u, 'lease_km_per_year': 15000}, p, running, None, 0)[0]['purchase_sale'], 1000)  # no refund stated
+        self.assertAlmostEqual(lease_costs({**u, 'lease_km_per_year': 15000, 'lease_fewer_km_eur': 0.05}, p, running, None, 0)[0]['purchase_sale'],
+                               1000 - 20000 * 0.05)
+        # through the API: a lease-only ad is costed as a lease; cash now, the rate cap and break-even by term
+        self.req('POST', '/api/parameters', {'ownership_years': 4, 'annual_km': 10000, 'lease_rate_max_eur': 200})
+        e, v, l = self.ev_listing('Petrol', listing_id='LS2', price_eur=None, lease_kind='km', lease_monthly_eur=224, lease_term_months=36,
+                                  lease_km_per_year=10000, lease_down_payment_eur=500, lease_fees_eur=900, lease_includes='insurance')
+        x = self.units()[l['id']]
+        self.assertEqual(x['offer'], 'lease')
+        self.assertEqual(x['components']['insurance'], 0)
+        self.assertEqual(x['components']['depreciation'], 500 + 224 * 36)
+        self.assertEqual(x['metrics']['cash_now'], 500 + 900)
+        self.assertEqual(x['budget_status'], 'over_max')  # the rate is above the highest lease rate
+        self.assertEqual(x['breakeven'], {'ready': False, 'missing': ['lease term differs from the ownership period']})
+        self.assertIsNone(x['delta_vs_reference'])
+        # an ad with both offers: bought unless the account leases or compares both
+        e, v, l3 = self.ev_listing('Petrol', listing_id='LS3', lease_kind='km', lease_monthly_eur=224, lease_term_months=48)
+        self.assertEqual(self.units()[l3['id']]['offer'], 'purchase')
+        self.req('POST', '/api/parameters', {'acquisition_mode': 'lease'})
+        x = self.units()[l3['id']]
+        self.assertEqual((x['offer'], x['period_months']), ('lease', 48))
+        self.assertIsNotNone(x['offers']['purchase'])
+
     def test_electric_research_contract_125(self):
         e, v, l = self.ev_listing()
         todo = lambda: next(m for m in self.agent('GET', 'todo')[1]['models'] if m['vehicle_id'] == v['id'])['todo']

@@ -31,7 +31,7 @@ export const modelsHref = f => '#/models?' + new URLSearchParams(Object.entries(
 export const carLink = (u, html = carLabel(u)) => `<a class="carlink" href="#/listing/${u.id}">${html}</a>`;
 // short, unambiguous car name: model, engine size and first-registration year
 export const carShort = u => `${esc(u.model)}${u.displacement_cc ? ' ' + (u.displacement_cc / 1000).toFixed(1) : ''}${u.first_registration ? ' · ' + esc(String(u.first_registration).slice(0, 4)) : ''}`;
-export const carLabel = u => `${esc(u.make)} ${carShort(u)}`;
+export const carLabel = u => `${esc(u.make)} ${carShort(u)}${u.offer === 'lease' ? ' · ' + esc(t('via_lease')) : ''}`;  // a lease is labelled (#129)
 export const unitSub = u => u.is_reference ? t('your_car') : `${esc(u.platform ?? '')}${u.listing_id ? ' ' + esc(u.listing_id) : ''}`;
 export const sevTag = s => !s ? PEND() : `<span class="tag ${/HIGH/.test(s) ? 'bad' : /MEDIUM/.test(s) ? 'warn' : 'good'}">${esc(tv(s))}</span>`;
 export const lvlTag = l => l ? `<span class="tag lvl lvl-${esc(l)}" title="${esc(t('level_hint'))}"><i class="dot"></i>${esc(tv(l))}</span>` : '';
