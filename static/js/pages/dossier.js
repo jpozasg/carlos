@@ -151,12 +151,14 @@ async function shrink(file) {  // phone photos are 3–5 MB: resize to 1280 px J
   return await new Promise(r => c.toBlob(r, 'image/jpeg', .82));
 }
 const ui = (method, path, body, ctype) => send(method, '/api/ui/' + path, body, ctype);
-async function refresh() { await draw(D.id); refreshTco().catch(() => {}); }
+// a refresh of the same car keeps the page (no loading skeleton) and the scroll position, so marking a checklist
+// item in viewing mode does not jump back to the top
+async function refresh() { const y = window.scrollY; await draw(D.id, true); window.scrollTo(0, y); refreshTco().catch(() => {}); }
 
-async function draw(id) {
+async function draw(id, quiet = false) {
   const label = u => `${unitName(u)} ${u.is_reference ? '(' + t('reference').toLowerCase() + ')' : esc(u.listing_id ?? '')}`;
   const picker = `<div class="field unit-select"><label for="unitsel">${t('units_group')}</label><select id="unitsel" data-unitsel>${S.units.map(u => `<option value="${u.id}" ${u.id === id ? 'selected' : ''}>${label(u)}</option>`).join('')}</select></div>`;
-  root.innerHTML = picker + '<div class="grid"><div class="skel"></div><div class="skel"></div></div>';
+  if (!quiet) root.innerHTML = picker + '<div class="grid"><div class="skel"></div><div class="skel"></div></div>';
   let d; try { d = await get('/api/listings/' + id); } catch (e) { root.innerHTML = picker + `<div class="card err">${t('dossier_failed', { m: esc(e.message) })}</div>`; return; }
   D = d;
   const claim = x => x == null ? PEND() : `${esc(x)} <span class="tag">${t('claimed')}</span>`;
