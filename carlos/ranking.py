@@ -1,4 +1,4 @@
-"""Ranking of the candidates (issue #46). Nine criteria that do not overlap: no metric appears in two of them.
+"""Ranking of the candidates (issues #46, #54). Eight criteria that do not overlap: no metric appears in two of them.
 Each criterion is min–max normalised among the candidates (best = 100) and combined with weights 0–5. The weights
 come from a fixed questionnaire (answers → points per criterion) or are set by hand. Missing data lowers the
 coverage of a car; it never scores 0. The formula and the objectivity rules are documented in docs/ranking.md."""
@@ -10,10 +10,9 @@ CRITERIA = {
     'cash_now': {'better': 'lower', 'unit': 'eur', 'basis': 'Asking price plus the purchase costs of this car (registration, plates, pre-purchase check).'},
     'mileage': {'better': 'lower', 'unit': 'km', 'basis': 'Odometer reading from the listing (the less favourable figure when the listing contradicts itself).'},
     'age': {'better': 'lower', 'unit': 'years', 'basis': 'Years since first registration.'},
-    'reliability': {'better': 'lower', 'unit': 'points', 'basis': 'Severity points of the documented watch points of the variant, its engine and its generation: HIGH 3, HIGH IF APPLICABLE 1.5, MEDIUM 2, LOW-MEDIUM 1, LOW 0.5. Research must follow the protocol (same sources for every car) or this is biased by research depth.'},
+    'reliability': {'better': 'lower', 'unit': 'points', 'basis': 'Known weak points of the variant, its engine and its generation in four parts (engine incl. intake, cooling, turbo and injection; gearbox and clutch; chassis, brakes and body; electrics). Severity points HIGH 3, MEDIUM 2, HIGH IF APPLICABLE 1.5, LOW-MEDIUM 1, LOW 0.5; each part counts only its 3 worst points (max 9), so more documentation never makes a car look worse. A recall counts until its checklist item for this car is OK or N/A. Unknown while a weak point has no part.'},
     'inspection': {'better': 'lower', 'unit': 'problems', 'basis': 'Checklist items marked PROBLEM at a viewing; unknown until at least one item was checked.'},
     'power': {'better': 'higher', 'unit': 'ps', 'basis': 'Engine power in PS.'},
-    'simplicity': {'better': 'higher', 'unit': 'points', 'basis': 'Mechanical simplicity from the engine and variant data: naturally aspirated +1, port injection +1, timing chain +1 (dry belt +0.5, wet belt 0), manual gearbox +1. Unknown while any of the four fields is unknown.'},
     'confidence': {'better': 'higher', 'unit': 'percent', 'basis': 'Average evidence quality of the rows behind the costs (consumption, insurance, tax, maintenance, risks, tyres, valuation): status VERIFIED/official/primary 1, ESTIMATED 0.5, else 0; source quality A 1, B 0.8, C 0.5, D 0.3, none 0.3.'},
 }
 SEVERITY_POINTS = {'HIGH': 3, 'HIGH IF APPLICABLE': 1.5, 'MEDIUM': 2, 'LOW-MEDIUM': 1, 'LOW': 0.5}
@@ -21,25 +20,16 @@ STATUS_POINTS = {'VERIFIED': 1, 'OFFICIAL FEE LEVEL': 1, 'PRIMARY': 1, 'USER DAT
 QUALITY_POINTS = {'A': 1, 'B': 0.8, 'C': 0.5, 'D': 0.3, None: 0.3}
 MAX_WEIGHT = 5
 
-# The questionnaire (issue #19): twelve best–worst tasks. Each shows three cars of the same model, equal in everything
-# except one advantage each; the person picks the car they would buy first and the one they would buy last.
-# The twelve sets are the four parallel classes of the 3×3 affine plane: every criterion appears in exactly four
-# tasks and every pair of criteria meets exactly once (a resolvable balanced incomplete block design). Score per
-# criterion: (times first − times last) ÷ times answered, −1…+1, mapped to 1–5; never answered = neutral. Reasoning and sources: docs/ranking.md.
-TASKS = [
-    {'id': 't1', 'criteria': ['cost_month', 'age', 'power']},
-    {'id': 't2', 'criteria': ['cash_now', 'reliability', 'simplicity']},
-    {'id': 't3', 'criteria': ['mileage', 'inspection', 'confidence']},
-    {'id': 't4', 'criteria': ['cost_month', 'reliability', 'confidence']},
-    {'id': 't5', 'criteria': ['cash_now', 'inspection', 'power']},
-    {'id': 't6', 'criteria': ['mileage', 'age', 'simplicity']},
-    {'id': 't7', 'criteria': ['cost_month', 'inspection', 'simplicity']},
-    {'id': 't8', 'criteria': ['cash_now', 'age', 'confidence']},
-    {'id': 't9', 'criteria': ['mileage', 'reliability', 'power']},
-    {'id': 't10', 'criteria': ['cost_month', 'cash_now', 'mileage']},
-    {'id': 't11', 'criteria': ['age', 'reliability', 'inspection']},
-    {'id': 't12', 'criteria': ['power', 'simplicity', 'confidence']},
-]
+# The questionnaire (issues #19, #54): fourteen best–worst tasks. Each shows four cars of the same model, equal in
+# everything except one advantage each; the person picks the car they would buy first and the one they would buy last.
+# With eight criteria the tasks are the fourteen planes of the affine space AG(3,2): criterion i is the point with the
+# binary digits of i, and each plane is {x : n·x = b} for a non-zero normal n and b ∈ {0, 1}. Every criterion appears in
+# exactly seven tasks and every pair of criteria meets exactly three times (a balanced incomplete block design,
+# v=8, k=4, λ=3). New task ids (q…) retire the answers of the nine-criterion questionnaire. Score per criterion:
+# (times first − times last) ÷ times answered, −1…+1, mapped to 1–5; never answered = neutral. Reasoning: docs/ranking.md.
+_KEYS = list(CRITERIA)
+TASKS = [{'id': f'q{2 * (n - 1) + b + 1}', 'criteria': [_KEYS[x] for x in range(8) if bin(n & x).count('1') % 2 == b]}
+         for n in range(1, 8) for b in (0, 1)]
 NEUTRAL_WEIGHT = 3  # a criterion never answered counts the same as any other
 MIN_DERIVED = 1  # answers never remove a criterion entirely (simulation: zeros came from noise); by hand 0 is allowed
 _T = {x['id']: x['criteria'] for x in TASKS}

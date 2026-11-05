@@ -16,7 +16,8 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'engines.aspiration': ['NATURALLY ASPIRATED', 'TURBO', 'SUPERCHARGED'],
                'engines.injection': ['PORT', 'DIRECT', 'DUAL', 'CARBURETTOR'],
                'engines.timing_drive': ['CHAIN', 'BELT', 'WET BELT', 'GEAR'],
-               'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED']}
+               'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED'],
+               'reliability_items.part': config.RELIABILITY_PARTS}
 # Tables the agent may write. Those in the second set require source_id on insert.
 AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
                 'maintenance_items', 'reliability_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',
@@ -94,6 +95,8 @@ def clean_row(c, table, data, insert):
         raise ValueError(f'{table} requires source_id (register the source in sources first)')
     if not insert and table in SOURCE_REQUIRED and 'source_id' in out and out['source_id'] is None:
         raise ValueError('Cannot remove the source of a data point')
+    if insert and table == 'reliability_items' and out.get('part') is None:
+        raise ValueError(f"reliability_items requires part: one of {config.RELIABILITY_PARTS} (docs/cost-research-protocol.md, step 2)")
     if insert and table in config.SCOPED_TABLES and sum(out.get(k) is not None for k in config.SCOPE_COLUMNS) != 1:
         raise ValueError(f'{table} must attach to exactly one level: vehicle_id (variant), engine_id or generation_id')
     if insert and table == 'sources' and sum(out.get(k) is not None for k in config.SCOPE_COLUMNS) > 1:

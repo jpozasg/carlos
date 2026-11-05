@@ -10,7 +10,7 @@ const SORTS = { score: [u => u.score, 'desc'], price: [u => u.metrics.price, 'as
   km_per_year: [u => u.metrics.km_per_year, 'asc'], consumption: [u => u.metrics.consumption, 'asc'], insurance: [u => u.metrics.insurance, 'asc'],
   tax: [u => u.metrics.tax, 'asc'], cost_month: [u => u.metrics.cost_month, 'asc'], known_month: [u => u.known_cost_per_month, 'asc'],
   power: [u => u.metrics.power, 'desc'], reliability: [u => u.metrics.reliability, 'asc'], inspection: [u => u.metrics.inspection, 'asc'],
-  simplicity: [u => u.metrics.simplicity, 'desc'], confidence: [u => u.metrics.confidence, 'desc'],
+  confidence: [u => u.metrics.confidence, 'desc'],
   selected_cost: [u => { const r = selCost(u); return r.complete ? r.sum : null; }, 'asc'] };
 let sortState = store.get('sort', { key: 'score', dir: 'desc' });
 let filters = store.get('filters', { overBudget: false, withdrawn: true, pinRef: false });
@@ -112,7 +112,7 @@ function details(us) {
     [t('g_unit'), [[t('asking_price'), u => u.is_reference ? `<span class="muted">${t('owned')}</span>` : eP(u.price_eur)], [t('mileage'), u => u.mileage_km == null ? PEND() : num(u.mileage_km, 0) + ' km'],
       [t('age'), u => u.metrics.age == null ? PEND() : yrs(u.metrics.age)], [t('km_per_year'), u => u.metrics.km_per_year == null ? PEND() : num(u.metrics.km_per_year, 0)],
       [t('power'), u => u.power_ps == null ? PEND() : num(u.power_ps, 0) + ' PS'], [t('insurance_year'), u => eP(u.annual_insurance)], [t('tax_year'), u => eP(u.annual_tax)],
-      [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : num(u.metrics.reliability, 1)], [t('c_simplicity'), u => u.metrics.simplicity == null ? PEND() : num(u.metrics.simplicity, 1) + ' / 4'],
+      [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : num(u.metrics.reliability, 1)], [t('rel_by_part'), u => u.metrics.reliability == null ? PEND() : ['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'].map(k => `${t('part_' + k)} ${num((u.reliability_parts || {})[k] ?? 0, 1)}`).join(' · ')],
       [t('c_confidence'), u => u.metrics.confidence == null ? PEND() : num(u.metrics.confidence, 0) + ' %'],
       [t('score'), u => u.is_reference ? dash : u.score == null ? `<span class="pending">${t('not_ranked')}</span>` : `<b>${scoreTxt(u)}</b> <span class="muted">${t('rank_n', { n: u.rank })} · ${num(u.coverage * 100, 0)}% ${t('coverage_short')}</span>`],
       [t('consumption'), u => u.consumption == null ? PEND() : `${num(u.consumption)} l/100 km<br><span class="muted">${num(u.consumption_min)}–${num(u.consumption_max)} · n=${u.consumption_sample ?? '?'}</span>`]]],
@@ -152,7 +152,7 @@ function exportCsv() {
   const us = ordered(), cols = [['rank', u => u.rank], ['score', u => u.score], ['coverage', u => u.coverage], ['make', u => u.make], ['model', u => u.model], ['trim', u => u.trim], ['listing_id', u => u.listing_id],
     ['reference', u => u.is_reference ? 1 : 0], ['status', u => u.listing_status], ['price_eur', u => u.price_eur], ['mileage_km', u => u.mileage_km], ['age_years', u => u.metrics.age], ['km_per_year', u => u.metrics.km_per_year],
     ['consumption_l_100km', u => u.consumption], ['insurance_eur_year', u => u.annual_insurance], ['tax_eur_year', u => u.annual_tax], ['power_ps', u => u.power_ps],
-    ['reliability_points', u => u.metrics.reliability], ['simplicity', u => u.metrics.simplicity], ['confidence_pct', u => u.metrics.confidence],
+    ['reliability_points', u => u.metrics.reliability], ...['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'].map(k => [`reliability_${k.toLowerCase()}`, u => (u.reliability_parts || {})[k]]), ['confidence_pct', u => u.metrics.confidence],
     ...S.components.map(k => [k + '_eur_period', u => u.components[k]]), ['known_subtotal_eur', u => u.known_cost_subtotal], ['known_eur_month', u => u.known_cost_per_month],
     ['tco_complete', u => u.tco_complete ? 1 : 0], ['budget_status', u => u.budget_status], ['url', u => u.url]];
   const q = v => v == null ? '' : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);

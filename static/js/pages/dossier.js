@@ -8,7 +8,9 @@ const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·']
 let PHOTOS = [], cur = 0, VIEWING = false, root, D = null;
 const lb = $('lightbox');
 const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, mileage: v => num(v, 0) + ' km', age: yrs, reliability: v => num(v, 1), inspection: v => num(v, 0),
-  power: v => num(v, 0) + ' PS', simplicity: v => num(v, 1) + ' / 4', confidence: v => num(v, 0) + ' %' };
+  power: v => num(v, 0) + ' PS', confidence: v => num(v, 0) + ' %' };
+const PARTS = ['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'];  // reliability parts (config.RELIABILITY_PARTS)
+const partsLine = d => PARTS.map(k => `${t('part_' + k)} ${num((d.reliability_parts || {})[k] ?? 0, 1)}`).join(' · ');
 
 function viewer(d) {
   PHOTOS = d.media.map(m => m.file_path); cur = 0;
@@ -41,8 +43,7 @@ function plate(d) {
     ${row(t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a>`)}
     ${row(t('power'), d.power_ps == null ? PEND() : num(d.power_ps, 0) + ' PS')}
     ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' l/100 km')}
-    ${row(`${t('plate_reliability')}<span class="small muted" style="display:block">${t('plate_lower_better')}</span>`, (d.metrics || {}).reliability == null ? PEND() : t('plate_rel', { n: num(d.metrics.reliability, 1) }))}
-    ${row(t('plate_simplicity'), (d.metrics || {}).simplicity == null ? PEND() : num(d.metrics.simplicity, 1) + ' / 4')}
+    ${row(`${t('plate_reliability')}<span class="small muted" style="display:block">${t('plate_lower_better')}</span>`, (d.metrics || {}).reliability == null ? PEND() : `${t('plate_rel', { n: num(d.metrics.reliability, 1) })}<span class="small muted" style="display:block;font-family:inherit">${partsLine(d)}</span>`)}
     ${d.is_reference ? '' : row(t('plate_rank'), d.rank ? `#${d.rank} · ${scoreTxt(d)}` : `<span class="pending">${t('not_ranked')}</span>`)}
     ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>
     ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;
@@ -112,6 +113,18 @@ function risksCard(d) {
     <tr><td colspan="6"><b>${t('rk_total')}</b></td><td class="n"><b>${euro(tot)}</b></td><td></td></tr>
     ${cert ? `<tr><td colspan="8" class="small muted">${t('rk_certain')}</td></tr>${certainRows(d, cr)}<tr><td colspan="6"><b>${esc(comp('repairs'))}</b></td><td class="n"><b>${euro(tot + cert)}</b></td><td></td></tr>` : ''}</tbody></table></div></div>`;
 }
+// weak points grouped by part; each part counts its 3 worst (issue #54), a recall drops out once checked as done
+function reliabilityCard(d) {
+  if (!d.reliability.length) return `<div class="card"><h3>${t('reliability')}</h3>${empty(t('no_reliability'))}</div>`;
+  const det = Object.fromEntries((d.reliability_detail || []).map(x => [x.id, x]));
+  const state = r => { const x = det[r.id] || {};
+    return x.excluded ? `<span class="tag good">${t('rel_recall_done')}</span>` : x.counted ? `<span class="tag">${t('rel_counted')}</span>` : `<span class="small muted">${t('rel_not_counted')}</span>`; };
+  const group = (part, rows) => rows.length ? `<h4 class="small" style="margin:12px 0 4px">${part ? esc(t('part_' + part)) : esc(t('rel_no_part'))}${part ? ` <span class="muted num">${num((d.reliability_parts || {})[part] ?? 0, 1)} ${t('rel_pts')}</span>` : ''}</h4>
+    <ul class="check">${rows.sort((a, b) => (det[b.id]?.points || 0) - (det[a.id]?.points || 0)).map(r => `<li><span class="ico pend" aria-hidden="true">i</span><div><b>${esc(r.component)}</b> · ${esc(r.issue ?? '')}<div class="small" style="margin:4px 0">${sevTag(r.severity)} ${lvlTag(r.level)}${r.is_recall ? ` <span class="tag warn">${t('rel_recall')}</span>` : ''} ${state(r)}</div>${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}</div></li>`).join('')}</ul>` : '';
+  const total = (d.metrics || {}).reliability;
+  return `<div class="card"><h3>${t('reliability')} ${total == null ? '' : `<span class="muted small num">${t('plate_rel', { n: num(total, 1) })}</span>`}</h3><p class="small muted" style="margin-top:0">${t('rel_lead')}</p>
+    ${[...PARTS, null].map(p => group(p, d.reliability.filter(r => (r.part ?? null) === p))).join('')}</div>`;
+}
 function inspectionCard(d) {
   const c = d.inspection_counts, tot = d.inspection.length, ok = c.OK ?? 0;
   if (!VIEWING) return `<div class="card"><h3>${t('inspection')} ${tot ? `<span class="muted small">${ok}/${tot} OK</span>` : ''}</h3>
@@ -159,7 +172,7 @@ async function draw(id) {
     ${rankCard(d)}${maintenanceCard(d)}${risksCard(d)}${inspectionCard(d)}
     <div class="card"><h3>${t('valuations')}</h3>${d.valuations.length ? d.valuations.map(valuationRow).join('') : empty(t('no_valuations'))}
       <h3 style="margin-top:16px">${t('own_costs')}</h3>${d.unit_costs.length ? `<div class="tablewrap"><table><thead><tr><th>${t('concept')}</th><th class="n">${t('parts')}</th><th class="n">${t('labour')}</th><th class="n">DIY</th></tr></thead><tbody>${d.unit_costs.map(x => `<tr><td>${esc(x.item)}<div class="small muted">${esc(tv(x.category))} · ${esc(tv(x.status))}</div></td><td class="n">${eP(x.parts_eur)}</td><td class="n">${eP(x.labor_eur)}</td><td class="n">${x.diy_hours == null ? '—' : num(x.diy_hours, 1) + ' h'}</td></tr>`).join('')}</tbody></table></div>` : empty(t('no_own_costs'))}</div>
-    <div class="card"><h3>${t('reliability')}</h3>${d.reliability.length ? `<ul class="check">${d.reliability.map(r => `<li><span class="ico pend" aria-hidden="true">i</span><div><b>${esc(r.component)}</b> · ${esc(r.issue ?? '')}<div class="small" style="margin:4px 0">${sevTag(r.severity)} ${lvlTag(r.level)} <span class="muted">${esc(tv(r.frequency_status) ?? '')}</span></div>${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}</div></li>`).join('')}</ul>` : empty(t('no_reliability'))}</div>
+    ${reliabilityCard(d)}
     <div class="card"><h3>${t('archive')}</h3>${archive(d)}</div>
     <div class="card"><h3>${t('log')}</h3>${d.events.length ? `<ol class="timeline">${d.events.slice().reverse().map(ev => `<li><time>${esc(ev.event_date)}</time> <span class="tag">${esc(tv(ev.kind))}</span><div>${esc(ev.text)}</div></li>`).join('')}</ol>` : empty(t('no_events'))}</div>
     <div class="card span2"><h3>${t('tab_sources')} <span class="muted small">${d.sources.length}</span></h3><div class="small">${d.sources.map(s => `<div class="src"><div class="src-title">${qTag(s.quality)} <span>${esc(s.title)}</span> ${lvlTag(s.vehicle_id ? 'variant' : s.engine_id ? 'engine' : s.generation_id ? 'generation' : 'shared')}</div>${s.url ? `<a href="${safeUrl(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>` : ''}</div>`).join('')}</div></div></div>`;
