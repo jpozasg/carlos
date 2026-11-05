@@ -2,7 +2,7 @@
 catalogue level on its own, all from the research contract (carlos/research.py, issue #114)."""
 import datetime
 from . import config, research
-from .costs import Knowledge, days_since
+from .costs import Knowledge, days_since, electricity_price
 from .db import rows, variant_name, variants
 
 
@@ -19,6 +19,14 @@ def todo(c, p, ranked):
         t += [f'price missing for the account\'s DIY choice: {x}' for x in u.get('unpriced', [])]
         if (u['fuel_type'] or '').lower() == 'diesel' and not p.get('diesel_price_eur_l'):
             t.append('diesel price missing (Settings: diesel_price_eur_l)')
+        if u['fuel_type'] == 'Electric':  # electric cars (#121)
+            miss = electricity_price(p)[1]
+            if miss:
+                t.append('charging answers missing for the energy cost (setup Charging step / Settings): ' + ', '.join(miss))
+            if not u['is_reference'] and u.get('battery_soh_claim') is None:
+                t.append('battery state of health unknown: ask the seller for a SoH certificate (method, date, km)')
+        if u['fuel_type'] == 'Plug-in hybrid':
+            t.append('plug-in hybrid: energy cost not supported yet, fuel stays unknown (owner decision 2026-11-05)')
         if u['is_reference'] and (u['id'], 'sale_today') not in vals:
             t.append('valuation missing: sale_today')
         for field in ('first_registration', 'mileage_km') + (() if u['is_reference'] else ('price_eur', 'url')):
@@ -85,6 +93,12 @@ def account_todo(c, p, today):
     age = days_since(p.get('fuel_price_date'), today)
     if age is None or age > config.STALE_FUEL_PRICE_DAYS:
         t.append(f'fuel price older than {config.STALE_FUEL_PRICE_DAYS} days or undated (Settings)')
+    if c.execute("SELECT 1 FROM listings l JOIN vehicles v ON v.id=l.vehicle_id JOIN engines e ON e.id=v.engine_id "
+                 "WHERE e.fuel_type='Electric' AND l.listing_status!='WITHDRAWN'").fetchone():
+        for k in ('electricity_home', 'electricity_public'):
+            age = days_since(p.get(k + '_date'), today)
+            if p.get(k + '_eur_kwh') is not None and (age is None or age > config.STALE_FUEL_PRICE_DAYS):
+                t.append(f'{k.replace("_", " ")} price older than {config.STALE_FUEL_PRICE_DAYS} days or undated (Settings)')
     missing = [k for k in QUOTE_PARAMS if p.get(k) in (None, '')] + [k for k in QUOTE_PREFS if not prefs.get(k)]
     if missing:
         t.append('insurance profile incomplete for quotes (ask the user or the setup Drivers/Insurance steps): ' + ', '.join(missing))

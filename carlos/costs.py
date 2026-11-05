@@ -156,6 +156,26 @@ def budget(p):
     return {'ideal': p.get('budget_ideal_eur'), 'max': p.get('budget_max_eur')}
 
 
+SOCKET_EXTRA_LOSS = 0.10  # ADAC: charging losses 13–24 % at a household socket vs 6–10 % at a wallbox (docs/cost-research-protocol.md)
+
+
+def electricity_price(p):
+    """€ per kWh an electric car pays (#121): the home and public prices weighted by the share charged at home, a household
+    socket's extra loss on the home part. Returns (price, missing parameters); a price only weighted 0 is not needed."""
+    hc = p.get('home_charging')
+    if hc is None:
+        return None, ['home_charging']
+    share = 0 if hc == 'none' else (p.get('home_charging_pct') if p.get('home_charging_pct') is not None else None)
+    if share is None:
+        return None, ['home_charging_pct']
+    s = share / 100
+    need = [k for k, w in (('electricity_home_eur_kwh', s), ('electricity_public_eur_kwh', 1 - s)) if w and p.get(k) is None]
+    if need:
+        return None, need
+    home = s * p['electricity_home_eur_kwh'] * (1 + (SOCKET_EXTRA_LOSS if hc == 'socket' else 0)) if s else 0
+    return home + ((1 - s) * p['electricity_public_eur_kwh'] if s < 1 else 0), []
+
+
 def check_budget(p):
     """The ideal budget may not exceed the maximum."""
     if p.get('budget_ideal_eur') is not None and p.get('budget_max_eur') is not None and p['budget_ideal_eur'] > p['budget_max_eur']:

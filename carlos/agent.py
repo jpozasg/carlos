@@ -15,7 +15,7 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'inspection_items.status': ['PENDING', 'OK', 'PROBLEM', 'N/A'],
                'engines.aspiration': ['NATURALLY ASPIRATED', 'TURBO', 'SUPERCHARGED'],
                'engines.injection': ['PORT', 'DIRECT', 'DUAL', 'CARBURETTOR'],
-               'engines.timing_drive': ['CHAIN', 'BELT', 'WET BELT', 'GEAR'],
+               'engines.timing_drive': ['CHAIN', 'BELT', 'WET BELT', 'GEAR'], 'engines.fuel_type': config.FUEL_TYPES,
                'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED'],
                'reliability_items.part': config.RELIABILITY_PARTS,
                'maintenance_items.job': config.JOBS, 'repair_risks.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A']}
