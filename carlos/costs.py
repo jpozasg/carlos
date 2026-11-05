@@ -1,7 +1,7 @@
 """Cost calculation per listing over the ownership period (README, "Calculation"). NULL means unknown, never 0."""
 import datetime, re
 from . import config
-from .db import for_variant, latest, rows, scoped
+from .db import for_variant, rows, scoped
 from .ranking import QUALITY_POINTS, SEVERITY_POINTS, STATUS_POINTS
 
 
@@ -174,15 +174,15 @@ class Knowledge:
         return max(prim, key=lambda o: o['id']) if prim else None
 
     def insurance(self, v, is_reference):
-        rows_ = self.of('insurance_data', v)
-        if is_reference:
-            user = [r for r in rows_ if r['premium_status'] == config.USER_PREMIUM and r['annual_premium_eur'] is not None]
-            if user:
-                return max(user, key=lambda r: r['id'])['annual_premium_eur']
-        return latest(rows_, 'annual_premium_eur')
+        """The premium row behind the cost (and its evidence, #107): the reference car's own premium, else the newest."""
+        rows_ = [r for r in self.of('insurance_data', v) if r['annual_premium_eur'] is not None]
+        user = [r for r in rows_ if r['premium_status'] == config.USER_PREMIUM] if is_reference else []
+        return max(user or rows_, key=lambda r: r['id'], default=None)
 
     def tax(self, v):
-        return latest(self.of('tax_data', v), 'annual_tax_eur')
+        """The tax row behind the cost: verified or official rows before estimates, then the newest (#107)."""
+        rows_ = [r for r in self.of('tax_data', v) if r['annual_tax_eur'] is not None]
+        return max(rows_, key=lambda r: (STATUS_POINTS.get(r['status'], 0) == 1, r['id']), default=None)
 
     def tyres(self, v):
         rows_ = self.of('tyre_data', v)
@@ -258,11 +258,11 @@ def tco_rows(c, p):
     out = []
     for u in units:
         v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
-        cons = know.consumption(v)
+        cons, ins_row, tax_row = know.consumption(v), know.insurance(v, u['is_reference']), know.tax(v)
         u.update(consumption=cons['value_num'] if cons else None, consumption_sample=cons['sample_count'] if cons else None,
                  consumption_min=cons['min_value'] if cons else None, consumption_max=cons['max_value'] if cons else None,
                  consumption_metric=cons['metric'] if cons else None, consumption_source_id=cons['source_id'] if cons else None,
-                 annual_insurance=know.insurance(v, u['is_reference']), annual_tax=know.tax(v))
+                 annual_insurance=(ins_row or {}).get('annual_premium_eur'), annual_tax=(tax_row or {}).get('annual_tax_eur'))
         costs = by_listing.get(u['id'], [])
         unit_cost = {cat: sum((x['parts_eur'] or 0) + (x['labor_eur'] or 0) for x in costs if x['category'] == cat)
                      if any(x['category'] == cat for x in costs) else None for cat in config.UNIT_COST_CATEGORIES}
@@ -305,9 +305,7 @@ def tco_rows(c, p):
         age = age_years(u['first_registration'], today)
         counts = u['inspection_counts']
         tagged = lambda table, rs: [{**r, '_table': table} for r in rs if r is not None]
-        ins_rows = [r for r in know.of('insurance_data', v) if r['annual_premium_eur'] is not None]
-        ev = evidence(tagged('observations', [cons]) + tagged('insurance_data', ins_rows[-1:]) +
-                      tagged('tax_data', [r for r in know.of('tax_data', v) if r['annual_tax_eur'] is not None][-1:]) +
+        ev = evidence(tagged('observations', [cons]) + tagged('insurance_data', [ins_row]) + tagged('tax_data', [tax_row]) +
                       tagged('maintenance_items', [i for i in know.of('maintenance_items', v) if i['active'] and i['schedule'] == 'ITEM']) +
                       tagged('repair_risks', know.of('repair_risks', v)) + tagged('tyre_data', [know.tyres(v)]) +
                       tagged('valuations', [x for x in vals.get(u['id'], {}).values()]) + tagged('unit_costs', costs), sources)

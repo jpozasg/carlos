@@ -54,6 +54,10 @@ def check_parents(c, table, data):
         if ref_table != 'users' and data.get(col) is not None:
             if c.execute(f'SELECT 1 FROM {ref_table} WHERE id=?', (data[col],)).fetchone() is None:
                 raise ValueError(f'{col}={data[col]}: no such {ref_table} row in this account')
+    # source_id has no declared foreign key on some tables (#107): check it the same way
+    if data.get('source_id') is not None and not any(fk['from'] == 'source_id' for fk in c.execute(f'PRAGMA main.foreign_key_list({table})')):
+        if c.execute('SELECT 1 FROM sources WHERE id=?', (data['source_id'],)).fetchone() is None:
+            raise ValueError(f"source_id={data['source_id']}: no such sources row in this account")
 
 
 def clean_row(c, table, data, insert):

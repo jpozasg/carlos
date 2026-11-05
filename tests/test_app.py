@@ -312,6 +312,20 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'vehicle_id': V_REF, 'annual_premium_eur': 500})[0], 201)
         self.assertEqual(self.units()[REF]['annual_insurance'], 900)          # the reference keeps what the user pays
 
+    def test_data_bugs_107(self):
+        # a source of another account cannot be cited, also where source_id has no declared foreign key
+        self.sql_write("INSERT INTO users (id, username, role) VALUES (2, 'other', 'user')")
+        self.sql_write("INSERT INTO sources (id, owner_id, title) VALUES (99, 2, 'Not yours')")
+        row = {'vehicle_id': V_A, 'item': 'x', 'schedule': 'ITEM', 'source_id': 99}
+        self.assertEqual(self.agent('POST', 'maintenance_items', row)[0], 400)
+        self.assertEqual(self.agent('POST', 'maintenance_items', {**row, 'source_id': SRC_GUIDE})[0], 201)
+        # a newer estimate does not hide a verified tax row
+        self.agent('POST', 'tax_data', {'vehicle_id': V_A, 'annual_tax_eur': 120, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})
+        self.assertEqual(self.units()[CAR_A]['annual_tax'], 94)
+        # the reference car's insurance evidence is the premium the cost uses (USER DATA), not the newer quote
+        ev = [e for e in self.units()[REF]['evidence'] if e['table'] == 'insurance_data']
+        self.assertEqual([e['status'] for e in ev], ['USER DATA'])
+
     def test_todo(self):
         d = self.agent('GET', 'todo')[1]
         lst = {x['listing_id']: x['todo'] for x in d['listings']}
