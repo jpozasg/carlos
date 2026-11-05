@@ -147,6 +147,8 @@ class Handler(BaseHTTPRequestHandler):
             self.user = auth.user_by_token(c, bearer[1])
             if self.user is None:
                 raise Forbidden('Invalid token')
+            if self.user['role'] != 'admin':  # agents work with an admin token; people sign in (issue #130)
+                raise NotAllowed('Agent tokens work for admin accounts only; sign in to use the app')
             return self.user
         cookies = SimpleCookie(self.headers.get('Cookie', ''))
         raw = cookies[auth.COOKIE].value if auth.COOKIE in cookies else None
@@ -386,6 +388,8 @@ class Handler(BaseHTTPRequestHandler):
             auth.set_password(c, uid, d['new'])
             self.send_json({'ok': True})
         elif path == '/api/account/token' and method == 'POST':
+            if self.user['role'] != 'admin':
+                raise NotAllowed('Agent tokens are for admin accounts (the shared research worker); sign in to use the app')
             self.send_json({'token': auth.new_token(c, uid), 'note': 'Shown once; the previous token no longer works'}, 201)
         elif ui:
             result = self.ui_write(c, method, ui[1], int(ui[2]) if ui[2] else None, uid)

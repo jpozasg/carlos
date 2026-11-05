@@ -1,6 +1,6 @@
 # API
 
-All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths). Authentication: a session cookie (`carlos_session`, set by the login) or `Authorization: Bearer <agent token>`. Every request sees only the rows of its account. Errors are JSON `{"error": "..."}` with 400 (validation, constraint), 401 (login required or wrong token), 403 (not allowed for this account), 404, 405, 415, 429 (login locked), 507 (storage quota).
+All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths). Authentication: a session cookie (`carlos_session`, set by the login) or `Authorization: Bearer <agent token>` (admin accounts only: a normal account's token gets 403, issue #130). Every request sees only the rows of its account. Errors are JSON `{"error": "..."}` with 400 (validation, constraint), 401 (login required or wrong token), 403 (not allowed for this account), 404, 405, 415, 429 (login locked), 507 (storage quota).
 
 ## Pages
 `GET /` the app, `GET /login` and `GET /invite/<token>` the sign-in page, `GET /static/...` assets, `GET /media/<listing>/<sha256>.<ext>` an archived photo (owner only).
@@ -14,7 +14,7 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 | `GET /api/auth/invite/<token>` | | `{username}` of a valid, unused invite |
 | `POST /api/auth/invite/<token>` | `{password}` (8+ characters) | sets the password, burns the invite, signs in |
 | `POST /api/account/password` | `{old, new}` | changes the password |
-| `POST /api/account/token` | | `{token}`: a new agent token, shown once; the previous one stops working |
+| `POST /api/account/token` | | admin only: `{token}`, a new agent token shown once; the previous one stops working; 403 for normal accounts |
 | `GET /api/admin/users` | | all accounts (admin) |
 | `POST /api/admin/users` | `{username, role?}` | creates the account with its parameters and returns `{id, username, invite}` (the invite URL) |
 | `POST /api/admin/users/<id>/invite` | | a new invite link (password reset) |
