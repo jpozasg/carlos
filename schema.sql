@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=22). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=23). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -8,7 +8,7 @@ CREATE TABLE listings (
  seller_address TEXT, accident_free_claim INTEGER, owners_claim INTEGER,
  hu_claim TEXT, service_history_claim TEXT, equipment TEXT,
  listing_date TEXT, last_checked TEXT, listing_status TEXT, notes TEXT
-, is_reference INTEGER NOT NULL DEFAULT 0 CHECK (is_reference IN (0, 1)), first_registration TEXT, verdict TEXT, owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id));
+, is_reference INTEGER NOT NULL DEFAULT 0 CHECK (is_reference IN (0, 1)), first_registration TEXT, verdict TEXT, owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id), battery_soh_claim REAL CHECK (battery_soh_claim IS NULL OR (battery_soh_claim > 0 AND battery_soh_claim <= 100)));
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -204,7 +204,8 @@ CREATE TABLE "project_parameters" (
  currency TEXT DEFAULT 'EUR',
  ranking_weights TEXT CHECK (ranking_weights IS NULL OR json_type(ranking_weights) = 'object')
 , ranking_answers TEXT
-  CHECK (ranking_answers IS NULL OR json_type(ranking_answers) = 'object'));
+  CHECK (ranking_answers IS NULL OR json_type(ranking_answers) = 'object'), home_charging TEXT
+  CHECK (home_charging IS NULL OR home_charging IN ('none', 'socket', 'wallbox', 'wallbox_planned')), home_charging_pct INTEGER CHECK (home_charging_pct IS NULL OR home_charging_pct BETWEEN 0 AND 100), electricity_home_eur_kwh REAL CHECK (electricity_home_eur_kwh IS NULL OR electricity_home_eur_kwh > 0), electricity_home_date TEXT, electricity_public_eur_kwh REAL CHECK (electricity_public_eur_kwh IS NULL OR electricity_public_eur_kwh > 0), electricity_public_date TEXT, wallbox_cost_eur REAL CHECK (wallbox_cost_eur IS NULL OR wallbox_cost_eur >= 0));
 CREATE TABLE "project_preferences" (
  owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
  preference_key TEXT NOT NULL,
@@ -253,7 +254,7 @@ CREATE TABLE "engines" (
  status TEXT,
  notes TEXT,
  owner_id INTEGER REFERENCES users(id)
-);
+, battery_usable_kwh REAL CHECK (battery_usable_kwh IS NULL OR battery_usable_kwh > 0), ac_charge_kw REAL CHECK (ac_charge_kw IS NULL OR ac_charge_kw > 0), dc_charge_kw REAL CHECK (dc_charge_kw IS NULL OR dc_charge_kw > 0));
 CREATE TABLE "vehicles" (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  generation_id INTEGER NOT NULL REFERENCES generations(id),

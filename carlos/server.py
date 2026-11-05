@@ -18,10 +18,17 @@ from .todo import todo
 PARAM_NUM = {'annual_km': (int, True), 'ownership_years': (int, True), 'fuel_price_eur_l': (float, True),
              'diesel_price_eur_l': (float, False),
              'drivers_count': (int, False), 'driver_age': (int, False), 'insurance_deductible_eur': (float, False),
-             'budget_ideal_eur': (float, False), 'budget_max_eur': (float, False)}
-PARAM_TEXT = {'fuel_price_date', 'diesel_price_date', 'postal_code', 'sf_class', 'insurance_cover', 'purchase_mode'}
+             'budget_ideal_eur': (float, False), 'budget_max_eur': (float, False),
+             # electric cars (#121): € per kWh at home and in public, the share charged at home (0–100), a planned wallbox
+             'electricity_home_eur_kwh': (float, False), 'electricity_public_eur_kwh': (float, False),
+             'home_charging_pct': (int, False), 'wallbox_cost_eur': (float, False)}
+PARAM_TEXT = {'fuel_price_date', 'diesel_price_date', 'postal_code', 'sf_class', 'insurance_cover', 'purchase_mode',
+              'home_charging', 'electricity_home_date', 'electricity_public_date'}
+PARAM_CODES = {'home_charging': config.HOME_CHARGING}
+DATE_PARAMS = ('fuel_price_date', 'diesel_price_date', 'electricity_home_date', 'electricity_public_date')
 # Parameters that change the calculation; GET /api/tco?<key>=<value> previews them without saving.
-CALC_PARAMS = ('annual_km', 'ownership_years', 'fuel_price_eur_l', 'diesel_price_eur_l', 'budget_ideal_eur', 'budget_max_eur')
+CALC_PARAMS = ('annual_km', 'ownership_years', 'fuel_price_eur_l', 'diesel_price_eur_l', 'budget_ideal_eur', 'budget_max_eur',
+               'electricity_home_eur_kwh', 'electricity_public_eur_kwh', 'home_charging_pct', 'wallbox_cost_eur')
 STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
                 '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
                 '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2'}
@@ -67,8 +74,10 @@ def clean_params(data):
             out[k] = json.dumps(check_answers(v))
         elif k in PARAM_TEXT:
             v = str(v).strip()[:100] if v is not None else ''
-            if k in ('fuel_price_date', 'diesel_price_date') and v:
+            if k in DATE_PARAMS and v:
                 datetime.date.fromisoformat(v)
+            if k in PARAM_CODES and v and v not in PARAM_CODES[k]:
+                raise ValueError(f'{k} must be one of {PARAM_CODES[k]}')
             out[k] = v or None
         elif k in PARAM_NUM:
             typ, required = PARAM_NUM[k]
@@ -85,6 +94,8 @@ def clean_params(data):
                 raise ValueError(f'{k} must be an integer')
             if f < 0 or (required and f == 0):
                 raise ValueError(f'{k} must be {"greater than 0" if required else "non-negative"}')
+            if k == 'home_charging_pct' and f > 100:
+                raise ValueError('home_charging_pct must be between 0 and 100')
             out[k] = typ(f)
         else:
             raise ValueError(f'Unknown parameter: {k}')

@@ -288,6 +288,36 @@ class AppTest(unittest.TestCase):
         todo = {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[l['id']]
         self.assertIn('diesel price missing (Settings: diesel_price_eur_l)', todo)
 
+    def ev_listing(self, fuel='Electric', **listing):
+        st, e = self.agent('POST', 'engines', {'code': 'EM1', 'fuel_type': fuel, 'power_ps': 136, 'battery_usable_kwh': 52})
+        self.assertEqual(st, 201, e)
+        st, v = self.agent('POST', 'vehicles', {'generation_id': G2, 'engine_id': e['id'], 'trim': 'City EV'})
+        st, l = self.agent('POST', 'listings', {'vehicle_id': v['id'], 'source_id': SRC_LISTING, 'listing_id': 'EV1', 'price_eur': 12990,
+                                                'mileage_km': 45000, 'first_registration': '2020-11', **listing})
+        return e, v, l
+
+    def test_electric_data_121(self):
+        post = lambda b: self.req('POST', '/api/parameters', b)[0]
+        self.assertEqual(post({'home_charging': 'garage'}), 400)
+        self.assertEqual(post({'home_charging_pct': 120}), 400)
+        self.assertEqual(post({'electricity_home_date': 'today'}), 400)
+        self.assertEqual(self.agent('POST', 'engines', {'code': 'X', 'fuel_type': 'electric'})[0], 400)  # controlled code
+        e, v, l = self.ev_listing()
+        todo = lambda: {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[l['id']]
+        self.assertIn('charging answers missing for the energy cost (setup Charging step / Settings): home_charging', todo())
+        self.assertTrue(any(x.startswith('battery state of health unknown') for x in todo()))
+        self.assertEqual(post({'home_charging': 'wallbox', 'home_charging_pct': 80}), 200)
+        self.assertIn('charging answers missing for the energy cost (setup Charging step / Settings): electricity_home_eur_kwh, '
+                      'electricity_public_eur_kwh', todo())
+        self.assertEqual(post({'electricity_home_eur_kwh': 0.37, 'electricity_public_eur_kwh': 0.52}), 200)
+        self.assertEqual(self.agent('PATCH', f"listings/{l['id']}", {'battery_soh_claim': 94})[0], 200)
+        self.assertFalse(any('charging answers' in x or 'battery state' in x for x in todo()))
+        from carlos.costs import electricity_price
+        self.assertEqual(electricity_price({'home_charging': 'none', 'electricity_public_eur_kwh': 0.5}), (0.5, []))
+        self.assertAlmostEqual(electricity_price({'home_charging': 'socket', 'home_charging_pct': 100, 'electricity_home_eur_kwh': 0.4})[0], 0.44)
+        self.assertAlmostEqual(electricity_price({'home_charging': 'wallbox', 'home_charging_pct': 50, 'electricity_home_eur_kwh': 0.4,
+                                                  'electricity_public_eur_kwh': 0.6})[0], 0.5)
+
     def test_one_consumption_source_for_all_cars(self):
         self.sql_write('DELETE FROM observations WHERE vehicle_id=? AND metric=?', (V_REF, config.PRIMARY_CONSUMPTION))
         self.assertIsNone(self.units()[REF]['consumption'])                   # the owner's figure is a cross-check only
