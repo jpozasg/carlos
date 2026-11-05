@@ -29,7 +29,15 @@ def todo(c, p, ranked):
             t.append('plug-in hybrid: energy cost not supported yet, fuel stays unknown (owner decision 2026-11-05)')
         if u['is_reference'] and (u['id'], 'sale_today') not in vals:
             t.append('valuation missing: sale_today')
-        for field in ('first_registration', 'mileage_km') + (() if u['is_reference'] else ('price_eur', 'url')):
+        lease = not u['is_reference'] and u.get('lease_monthly_eur') is not None  # a lease offer (#127)
+        if lease:
+            t += [f'lease field not stated: {f} (ask the dealer; null is never 0)' for f in
+                  ('lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur', 'lease_fees_eur') if u.get(f) is None]
+            if u.get('lease_kind') is None:
+                t.append('lease kind not recorded: km, residual or abo')
+            elif u['lease_kind'] == 'residual':
+                t.append('residual-value leasing: recorded, not costed (owner decision 2026-11-05)')
+        for field in ('first_registration', 'mileage_km') + (() if u['is_reference'] else (() if lease else ('price_eur',)) + ('url',)):
             if u[field] is None:
                 t.append(f'listing field missing: {field}')
         if not u['is_reference']:

@@ -10,6 +10,7 @@ Format: see CAPTURE_FORMAT below (also printed with --help).
 import argparse, json, os, sys, urllib.error, urllib.request
 from pathlib import Path
 from urllib.parse import urlencode
+from carlos import config  # the controlled lease codes, checked here before any write
 
 ROOT = Path(__file__).resolve().parent
 MAX_IMAGE_BYTES = 1_500_000  # same limit as app.py: capture the ~1024 px version, not the original
@@ -18,7 +19,12 @@ IMAGE_TYPES = {b'\xff\xd8\xff': 'image/jpeg', b'\x89PNG': 'image/png', b'RIFF': 
 USER_AGENT = 'carlos/capture_listing.py (personal archive)'
 # Optional listings columns copied as-is from the capture (seller claims stay in the *_claim columns).
 LISTING_FIELDS = ('first_registration', 'seller', 'location', 'seller_address', 'accident_free_claim', 'owners_claim',
-                  'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes', 'battery_soh_claim')
+                  'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes', 'battery_soh_claim',
+                  # one lease offer as the ad states it (#127); NULL = not stated, never 0
+                  'lease_kind', 'lease_monthly_eur', 'lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur',
+                  'lease_fees_eur', 'lease_extra_km_eur', 'lease_fewer_km_eur', 'lease_includes')
+LEASE_NUMBERS = {'lease_monthly_eur': 0, 'lease_term_months': 0, 'lease_km_per_year': 0,  # value: the lowest allowed is above it
+                 'lease_down_payment_eur': -1, 'lease_fees_eur': -1, 'lease_extra_km_eur': -1, 'lease_fewer_km_eur': -1}
 # electric cars (#125): the battery is the costliest part; every electric listing gets this checklist item
 SOH_CHECK = ('Battery state of health: ask for a SoH certificate (method, date, km) no older than 3 months; ADAC guide '
              '>= 88 % at 100,000 km; check the remaining battery warranty (usually 8 years / 160,000 km / 70 %)')
@@ -34,7 +40,11 @@ CAPTURE_FORMAT = '''Capture JSON (null = unknown, never 0):
   "listing": {"first_registration": "2014-05", "seller": "...", "location": "...",
               "accident_free_claim": 1, "owners_claim": 2, "hu_claim": "05/2027",
               "service_history_claim": "...", "equipment": "...", "listing_date": "...",
-              "battery_soh_claim": 94},                               electric: battery health % as claimed
+              "battery_soh_claim": 94,                                electric: battery health % as claimed
+              "lease_kind": "km", "lease_monthly_eur": 224, "lease_term_months": 48,   a lease offer (km | residual | abo)
+              "lease_km_per_year": 10000, "lease_down_payment_eur": 0, "lease_fees_eur": null,
+              "lease_extra_km_eur": null, "lease_fewer_km_eur": null,
+              "lease_includes": "insurance,tax"},                    what the rate covers: insurance,tax,maintenance,repairs,tyres,gap
   "description": "verbatim seller text, original language",
   "attributes": {"Kilometerstand": "85.000 km", "...": "every feature exactly as shown"},
   "photos": [{"url": "https://img.../1024.jpg"}, {"file": "photos/1.jpg", "url": "original url"}],
@@ -99,6 +109,17 @@ def validate(cap):
     soh = cap.get('listing', {}).get('battery_soh_claim')
     if soh is not None and (isinstance(soh, bool) or not isinstance(soh, (int, float)) or not 0 < soh <= 100):
         raise ValueError('battery_soh_claim must be a percentage (0–100] or null (unknown)')
+    lst = cap.get('listing', {})
+    for k, low in LEASE_NUMBERS.items():
+        v = lst.get(k)
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= low
+                              or k in ('lease_term_months', 'lease_km_per_year') and v != int(v)):
+            raise ValueError(f'{k} must be a {"positive" if low == 0 else "non-negative"} number or null (not stated)')
+    if lst.get('lease_kind') is not None and lst['lease_kind'] not in config.LEASE_KINDS:
+        raise ValueError(f'lease_kind must be one of {config.LEASE_KINDS}')
+    inc = lst.get('lease_includes')
+    if inc is not None and (not isinstance(inc, str) or not set(inc.split(',')) <= set(config.LEASE_INCLUDES)):
+        raise ValueError(f'lease_includes must be a comma list of {config.LEASE_INCLUDES} without spaces, or null')
     extra = set(cap.get('listing', {})) - set(LISTING_FIELDS)
     if extra:
         raise ValueError(f'listing fields not allowed: {sorted(extra)} (allowed: {LISTING_FIELDS})')
@@ -159,6 +180,14 @@ def checklist_items(reliability_rows, existing):
 
 def fmt(v, unit):
     return 'unknown' if v is None else f'{v:g} {unit}'
+
+
+def lease_txt(lst):
+    """The lease offer for the log, as the ad states it (#127)."""
+    if lst.get('lease_monthly_eur') is None:
+        return ''
+    return (f"; lease {fmt(lst['lease_monthly_eur'], 'EUR/month')}, {fmt(lst.get('lease_term_months'), 'months')}, "
+            f"{fmt(lst.get('lease_km_per_year'), 'km/year')}, down payment {fmt(lst.get('lease_down_payment_eur'), 'EUR')}")
 
 
 def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
@@ -228,12 +257,13 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
         write('POST', '/api/agent/listing_events', {
             'listing_id': lid, 'event_date': day, 'kind': 'found', 'source_id': source_id,
             'text': f"Listing captured from {cap['platform']} via {method}: asking price {fmt(cap.get('price_eur'), 'EUR')}, "
-                    f"{fmt(cap.get('mileage_km'), 'km')}; {photo_note}."}, 'found log entry')
+                    f"{fmt(cap.get('mileage_km'), 'km')}{lease_txt(cap.get('listing', {}))}; {photo_note}."}, 'found log entry')
     else:
         patch, changes = {'last_checked': day}, []
-        for k, unit in (('price_eur', 'EUR'), ('mileage_km', 'km')):
-            if cap.get(k) is not None and cap[k] != existing[k]:
-                patch[k] = cap[k]; changes.append(f'{k} {fmt(existing[k], unit)} → {fmt(cap[k], unit)}')
+        new = {**cap.get('listing', {}), 'price_eur': cap.get('price_eur'), 'mileage_km': cap.get('mileage_km')}
+        for k, unit in (('price_eur', 'EUR'), ('mileage_km', 'km'), ('lease_monthly_eur', 'EUR/month')):
+            if new.get(k) is not None and new[k] != existing.get(k):
+                patch[k] = new[k]; changes.append(f'{k} {fmt(existing.get(k), unit)} → {fmt(new[k], unit)}')
         write('PATCH', f'/api/agent/listings/{lid}', patch, ', '.join(changes) or 'last_checked')
         if changes:
             write('POST', '/api/agent/listing_events', {'listing_id': lid, 'event_date': day, 'kind': 'price',

@@ -349,6 +349,26 @@ class AppTest(unittest.TestCase):
         e2, v2, l2 = self.ev_listing('Plug-in hybrid', listing_id='PH1')
         self.assertIsNone(self.units()[l2['id']]['components']['fuel'])  # plug-in hybrids: not supported yet
 
+    def test_lease_data_127(self):
+        post = lambda b: self.req('POST', '/api/parameters', b)[0]
+        self.assertEqual(post({'acquisition_mode': 'rent'}), 400)
+        self.assertEqual(post({'acquisition_mode': 'both', 'lease_rate_max_eur': 300}), 200)
+        e, v, l = self.ev_listing('Petrol', listing_id='LS1', price_eur=None, lease_monthly_eur=224, lease_term_months=48)
+        self.assertEqual(self.agent('PATCH', f"listings/{l['id']}", {'lease_kind': 'rent'})[0], 400)          # controlled code
+        self.assertEqual(self.agent('PATCH', f"listings/{l['id']}", {'lease_includes': 'insurance, tax'})[0], 400)  # no spaces
+        self.assertEqual(self.agent('PATCH', f"listings/{l['id']}", {'lease_includes': 'insurance,tax,gap'})[0], 200)
+        todo = {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[l['id']]
+        self.assertIn('lease field not stated: lease_fees_eur (ask the dealer; null is never 0)', todo)
+        self.assertIn('lease kind not recorded: km, residual or abo', todo)
+        self.assertNotIn('listing field missing: price_eur', todo)  # a lease-only ad has no purchase price
+        import capture_listing
+        cap = {'url': 'https://x', 'platform': 'p', 'captured_at': '2026-11-05', 'vehicle_id': v['id']}
+        for bad in ({'lease_monthly_eur': 0}, {'lease_term_months': 47.5}, {'lease_kind': 'rent'}, {'lease_includes': 'fuel'}):
+            with self.assertRaises(ValueError):
+                capture_listing.validate({**cap, 'listing': bad})
+        capture_listing.validate({**cap, 'listing': {'lease_kind': 'abo', 'lease_monthly_eur': 299, 'lease_down_payment_eur': 0,
+                                                     'lease_includes': 'insurance,tax,maintenance'}})
+
     def test_electric_research_contract_125(self):
         e, v, l = self.ev_listing()
         todo = lambda: next(m for m in self.agent('GET', 'todo')[1]['models'] if m['vehicle_id'] == v['id'])['todo']

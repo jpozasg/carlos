@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=23). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=24). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -8,7 +8,7 @@ CREATE TABLE listings (
  seller_address TEXT, accident_free_claim INTEGER, owners_claim INTEGER,
  hu_claim TEXT, service_history_claim TEXT, equipment TEXT,
  listing_date TEXT, last_checked TEXT, listing_status TEXT, notes TEXT
-, is_reference INTEGER NOT NULL DEFAULT 0 CHECK (is_reference IN (0, 1)), first_registration TEXT, verdict TEXT, owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id), battery_soh_claim REAL CHECK (battery_soh_claim IS NULL OR (battery_soh_claim > 0 AND battery_soh_claim <= 100)));
+, is_reference INTEGER NOT NULL DEFAULT 0 CHECK (is_reference IN (0, 1)), first_registration TEXT, verdict TEXT, owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id), battery_soh_claim REAL CHECK (battery_soh_claim IS NULL OR (battery_soh_claim > 0 AND battery_soh_claim <= 100)), lease_kind TEXT CHECK (lease_kind IS NULL OR lease_kind IN ('km', 'residual', 'abo')), lease_monthly_eur REAL CHECK (lease_monthly_eur IS NULL OR lease_monthly_eur > 0), lease_term_months INTEGER CHECK (lease_term_months IS NULL OR lease_term_months > 0), lease_km_per_year INTEGER CHECK (lease_km_per_year IS NULL OR lease_km_per_year > 0), lease_down_payment_eur REAL CHECK (lease_down_payment_eur IS NULL OR lease_down_payment_eur >= 0), lease_fees_eur REAL CHECK (lease_fees_eur IS NULL OR lease_fees_eur >= 0), lease_extra_km_eur REAL CHECK (lease_extra_km_eur IS NULL OR lease_extra_km_eur >= 0), lease_fewer_km_eur REAL CHECK (lease_fewer_km_eur IS NULL OR lease_fewer_km_eur >= 0), lease_includes TEXT);
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -205,7 +205,8 @@ CREATE TABLE "project_parameters" (
  ranking_weights TEXT CHECK (ranking_weights IS NULL OR json_type(ranking_weights) = 'object')
 , ranking_answers TEXT
   CHECK (ranking_answers IS NULL OR json_type(ranking_answers) = 'object'), home_charging TEXT
-  CHECK (home_charging IS NULL OR home_charging IN ('none', 'socket', 'wallbox', 'wallbox_planned')), home_charging_pct INTEGER CHECK (home_charging_pct IS NULL OR home_charging_pct BETWEEN 0 AND 100), electricity_home_eur_kwh REAL CHECK (electricity_home_eur_kwh IS NULL OR electricity_home_eur_kwh > 0), electricity_home_date TEXT, electricity_public_eur_kwh REAL CHECK (electricity_public_eur_kwh IS NULL OR electricity_public_eur_kwh > 0), electricity_public_date TEXT, wallbox_cost_eur REAL CHECK (wallbox_cost_eur IS NULL OR wallbox_cost_eur >= 0));
+  CHECK (home_charging IS NULL OR home_charging IN ('none', 'socket', 'wallbox', 'wallbox_planned')), home_charging_pct INTEGER CHECK (home_charging_pct IS NULL OR home_charging_pct BETWEEN 0 AND 100), electricity_home_eur_kwh REAL CHECK (electricity_home_eur_kwh IS NULL OR electricity_home_eur_kwh > 0), electricity_home_date TEXT, electricity_public_eur_kwh REAL CHECK (electricity_public_eur_kwh IS NULL OR electricity_public_eur_kwh > 0), electricity_public_date TEXT, wallbox_cost_eur REAL CHECK (wallbox_cost_eur IS NULL OR wallbox_cost_eur >= 0), acquisition_mode TEXT
+  CHECK (acquisition_mode IS NULL OR acquisition_mode IN ('buy', 'lease', 'both')), lease_rate_max_eur REAL CHECK (lease_rate_max_eur IS NULL OR lease_rate_max_eur > 0));
 CREATE TABLE "project_preferences" (
  owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
  preference_key TEXT NOT NULL,
