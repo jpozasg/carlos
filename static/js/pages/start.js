@@ -14,7 +14,9 @@ const CHOICE = {
   preferred_transmission: { any: 'Any', manual: 'Manual', automatic: 'Automatic' },
   insurance_claims_3y: { none: '0', one: '1', more: '2 or more' },
   insurance_parking: { street: 'Street', carport: 'Carport', garage: 'Garage', private: 'Private ground' },
-  insurance_usage: { private: 'Private only', commute: 'Private and commuting', business: 'Also business' },
+  insurance_usage: { private: 'Private (including commuting)', business: 'Business only', both: 'Private and business' },  // as CHECK24 asks
+  insurance_main_user: { holder: 'Policyholder', driver2: 'Driver 2', other: 'Someone else' },
+  insurance_keeper: { holder: 'Policyholder', driver2: 'Driver 2', other: 'Someone else' },
   insurance_cancelled: { no: 'No', yes: 'Yes' },
   insurance_seasonal_plate: { no: 'No', yes: 'Yes' },
   insurance_workshop_binding: { either: 'Either', yes: 'Yes', no: 'No' },
@@ -22,9 +24,9 @@ const CHOICE = {
 // People on the policy (CHECK24 "Versicherungsnehmer" and "Fahrer"): codes stored as they are; docs/data-model.md
 const PERSON = { gender: ['female', 'male', 'diverse'], licence_country: ['germany', 'eu', 'other'],
   marital: ['single', 'married', 'partnership', 'divorced', 'widowed'],
-  occupation: ['employee', 'public_service', 'civil_servant', 'self_employed', 'student', 'trainee', 'retired', 'not_working'],
+  occupation: ['employee', 'worker', 'public_service', 'civil_servant', 'self_employed', 'student', 'trainee', 'retired', 'homemaker', 'not_working'],
   relationship: ['partner', 'child', 'other'], yesno: ['yes', 'no'] };
-const DISCOUNTS = ['homeowner', 'children', 'transit_pass', 'bahncard', 'club', 'liability'];
+const DISCOUNTS = ['homeowner', 'children', 'transit_pass', 'bahncard', 'club', 'liability', 'household', 'legal', 'accident', 'other_policy'];
 const PARAM_CHOICE = { purchase_mode: ['cash', 'financing'], insurance_cover: ['Haftpflicht', 'Teilkasko', 'Vollkasko'] };
 const DIY = { oil: 'oil and filters', plugs: 'spark plugs', service: 'yearly service', brakes: 'brake pads and discs', battery: 'battery',
   bulbs: 'bulbs', wipers: 'wipers', coolant: 'coolant', timing: 'timing belt or chain', clutch: 'clutch' };
@@ -53,7 +55,7 @@ function personFields(px, d, holder, first = '') {  // px: id prefix; d: stored 
     ${field(px + 'birth_date', t('p_birth_date'), `<input id="${px}birth_date" type="date" value="${esc(d.birth_date ?? '')}" max="${new Date().toISOString().slice(0, 10)}">`)}
     ${field(px + 'licence_date', t('p_licence_date'), `<input id="${px}licence_date" type="date" value="${esc(d.licence_date ?? '')}">`, holder ? t('h_licence_date') : '')}
     ${field(px + 'occupation', t('p_occupation'), sel(px + 'occupation', PERSON.occupation, d.occupation, c => 'o_occ_' + c), t('h_occupation'))}
-    ${holder ? field(px + 'marital', t('p_marital'), sel(px + 'marital', PERSON.marital, d.marital, c => 'o_marital_' + c)) : ''}
+    ${field(px + 'marital', t('p_marital'), sel(px + 'marital', PERSON.marital, d.marital, c => 'o_marital_' + c))}
     ${holder ? group(px + 'licence_country', t('p_licence_country'), codeChoice(px + 'licence_country', PERSON.licence_country, d.licence_country, c => 'o_lc_' + c)) : ''}
     ${group(px + 'bf17', t('p_bf17'), codeChoice(px + 'bf17', PERSON.yesno, d.bf17, c => 'o_' + c))}
     ${field(px + 'points', t('p_points'), number(px + 'points', d.points ?? '', 'min="0" max="20"'), t('h_points'))}
@@ -64,7 +66,7 @@ const holderStored = () => Object.fromEntries(HOLDER_KEYS.map(k => [k, prefs['in
 function readPerson(px, keys) {
   return Object.fromEntries(keys.map(k => [k, (root.querySelector(`input[name="${px}${k}"]:checked`)?.value ?? $(px + k)?.value ?? '').trim()]));
 }
-const DRIVER_KEYS = ['relationship', 'household', ...HOLDER_KEYS.filter(k => !['marital', 'licence_country'].includes(k))];
+const DRIVER_KEYS = ['relationship', 'household', ...HOLDER_KEYS.filter(k => k !== 'licence_country')];
 function readDrivers() { return [...root.querySelectorAll('[data-driver]')].map(el => readPerson('d' + el.dataset.driver + '_', DRIVER_KEYS)); }
 const ageOn = (birth, today = new Date()) => { const b = new Date(birth + 'T00:00'); if (isNaN(b)) return null;
   return today.getFullYear() - b.getFullYear() - (today < new Date(today.getFullYear(), b.getMonth(), b.getDate()) ? 1 : 0); };
@@ -101,7 +103,8 @@ const VIEWS = {
     <fieldset class="person"><legend>${t('holder_title')}</legend>
       ${personFields('h_', holderStored(), true, field('postal_code', t('p_postal'), text('postal_code', P('postal_code'), 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code"'), t('h_postal')))}</fieldset>
     <div id="driverList">${driverCards()}</div>
-    <div class="row"><button class="btn ghost" type="button" data-add-driver>${t('driver_add')}</button><span class="hint" style="margin:0">${t('h_drivers')}</span></div>`,
+    <div class="row"><button class="btn ghost" type="button" data-add-driver>${t('driver_add')}</button><span class="hint" style="margin:0">${t('h_drivers')}</span></div>
+    <div class="fields two">${prefChoice('insurance_main_user', t('p_main_user'))}${prefChoice('insurance_keeper', t('p_keeper'), t('h_keeper'))}</div>`,
   insurance: () => { const disc = (prefs.insurance_discounts ?? [prefs.insurance_homeowner === 'Yes' ? 'homeowner' : '', prefs.insurance_club_member === 'Yes' ? 'club' : ''].filter(Boolean).join(',')).split(',').map(x => x.trim());
     return `<div class="fields two">
       ${field('sf_class', t('p_sf'), `<select id="sf_class">${['', ...SF, ...(P('sf_class') && !SF.includes(P('sf_class')) ? [P('sf_class')] : [])].map(v => `<option value="${esc(v)}" ${v === P('sf_class') ? 'selected' : ''}>${v || '—'}</option>`).join('')}</select>`, t('h_sf'))}
@@ -140,6 +143,7 @@ function collect(name) {
   if (name === 'drivers') {
     const h = readPerson('h_', HOLDER_KEYS), ds = readDrivers();
     for (const k of HOLDER_KEYS) pr['insurance_holder_' + k] = h[k];
+    for (const k of ['insurance_main_user', 'insurance_keeper']) pr[k] = radio(k);
     pr.insurance_drivers = ds.length ? JSON.stringify(ds) : null;
     params.postal_code = val('postal_code');
     // the calculation's "drivers" and "youngest driver's age" follow from the people entered
