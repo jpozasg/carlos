@@ -323,7 +323,9 @@ def tco_rows(c, p):
     for r in out:
         r['breakeven'] = breakeven(r, ref_row, vals, years * 12)
     for r in out:  # comparing partial subtotals would mislead: delta only between complete TCOs
-        r['delta_vs_reference'] = (r['known_cost_subtotal'] - ref_row['known_cost_subtotal']
+        # switching also pays the reference's sale costs (deregistration) now, as keeping pays them at the end
+        ref_tx = 0 if r['is_reference'] or not ref_row else ref_row['components']['purchase_sale'] or 0
+        r['delta_vs_reference'] = (r['known_cost_subtotal'] + ref_tx - ref_row['known_cost_subtotal']
                                    if ref_row and r['tco_complete'] and ref_row['tco_complete'] else None)
     return out
 
