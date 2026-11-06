@@ -12,7 +12,7 @@ from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 5  # 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
+CONTRACT_VERSION = 6  # 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
 LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id', 'engine_family': 'engine_family_id',
@@ -131,6 +131,7 @@ ITEMS = [
      _is('type', 'MANUAL', 'DCT'), 5),
     ('gbx.risks', 'gearbox', 'gearbox faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
     ('gfam.risks', 'gearbox_family', 'gearbox family faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
+    ('gen.safety', 'generation', 'Euro NCAP stars and test year (or a check: N/A, never tested)', _fields('ncap_stars', 'ncap_year'), NOT_APPLICABLE, 'B', always, 6),
     ('bdy.risks', 'body_style', 'body style faults and maintenance (convertible roof …) or a check: none found', _risks, ('NONE FOUND',), None, always, 5),
 ]
 # weak points: the same four sources per part (docs/cost-research-protocol.md, step 2); the engine part on the engine,

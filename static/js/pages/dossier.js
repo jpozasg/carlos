@@ -2,12 +2,12 @@
 import { S, refreshTco, go } from '../app.js';
 import { get, send } from '../api.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt, critColor, researchLevels, flagsCard, faultProb } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
 let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
 const lb = $('lightbox');
-const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, mileage: v => num(v, 0) + ' km', age: yrs, reliability: v => num(v, 1), inspection: v => num(v, 0),
+const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, budget: euro, safety: v => num(v, 0) + ' ★', distance: v => num(v, 0) + ' km', mileage: v => num(v, 0) + ' km', age: yrs, reliability: v => num(v, 1), inspection: v => num(v, 0),
   power: v => num(v, 0) + ' PS', confidence: v => num(v, 0) + ' %' };
 const PARTS = ['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'];  // reliability parts (config.RELIABILITY_PARTS)
 
@@ -45,7 +45,7 @@ const ringAt = (v, r1, r2) => { const a = (v / 100) * 2 * Math.PI - Math.PI / 2;
 function scoreBox(d) {
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_score_note'))}" data-tip="${esc(t('plate_score_note'))}">${INFO_SVG}</span>`;
   const title = `<span class="sc-title">${t('plate_score')} ${tip}</span>`;
-  if (d.score == null) return `<div class="scorecard"><div class="sc-top">${title}</div><div class="sc-none">${PEND()}</div></div>`;
+  if (d.score == null) return `<div class="scorecard"><div class="sc-top">${title}</div><div class="sc-none"><span class="pending">${esc(notScoredTxt(d))}</span></div></div>`;
   const band = SCORE_BANDS.find(([min]) => d.score >= min)[1], word = t('score_' + band);
   const scored = S.units.filter(u => !u.is_reference && u.listing_status !== 'WITHDRAWN' && u.score != null);
   const n = scored.length + (d.is_reference || scored.some(u => u.id === d.id) ? 0 : 1);
@@ -138,9 +138,9 @@ function rankCard(d) {  // the reference car is scored too (issue #72), only not
   const R = S.ranking;
   const rows = (d.explain && d.explain.length ? d.explain : Object.keys(R.criteria).map(k => ({ criterion: k, weight: R.weights[k], value: d.metrics[k], score: null, contribution: null, why_missing: 'no value for this car' }))).map(x => {
     const k = x.criterion;
-    return `<tr><td><b>${t('c_' + k)}</b><div class="small muted">${esc(t('cb_' + k))}</div></td><td class="n">${x.weight || '<span class="muted">0</span>'}</td><td class="n">${x.value == null ? PEND() : FMT[k](x.value)}${x.bounds ? `<div class="small muted">${FMT[k](x.bounds.min)} – ${FMT[k](x.bounds.max)}</div>` : ''}</td>
+    return `<tr><td><b>${t('c_' + k)}</b><div class="small muted">${esc(t('cb_' + k))}</div></td><td class="n">${x.weight || '<span class="muted">0</span>'}</td><td class="n">${x.value == null ? PEND() : FMT[k](x.value)}${x.anchor ? `<div class="small muted">${t('anchor_note', { v: FMT[k](x.anchor) })}</div>` : ''}</td>
       <td style="min-width:120px">${x.score == null ? `<span class="muted small">${t('why_' + (x.why_missing || 'no value for this car').replace(/ /g, '_'))}</span>` : `<div class="scorebar" title="${x.score}"><i style="width:${x.score}%"></i></div><span class="small">${x.score} · ${t('contribution')} ${num(x.contribution, 0)}%</span>`}</td></tr>`; }).join('');
-  const head = d.score == null ? `<span class="pending">${t('not_ranked')}</span>` : `<b class="big" style="font-size:22px">${scoreTxt(d)}</b> <span class="muted small">${d.rank ? t('rank_n', { n: d.rank }) : t('ref_not_ranked')} · ${t('coverage', { n: num(d.coverage * 100, 0) })}</span>`;
+  const head = d.score == null ? `<span class="pending">${esc(notScoredTxt(d))}</span>` : `<b class="big" style="font-size:22px">${scoreTxt(d)}</b> <span class="muted small">${d.rank ? t('rank_n', { n: d.rank }) : t('ref_not_ranked')}</span>`;
   const rel = d.reliability_detail || [];
   return `<div class="card span2"><h3>${t('ranking')}</h3><div style="margin-bottom:8px">${head} ${R.manual ? `<span class="tag warn">${t('weights_manual')}</span>` : ''}</div><div class="tags">${statusTags(d).join('')}</div>
     <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>${t('criterion')}</th><th class="n">${t('weight')}</th><th class="n">${t('value')}</th><th>${t('score')}</th></tr></thead><tbody>${rows}</tbody></table></div>

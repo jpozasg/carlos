@@ -1033,30 +1033,42 @@ class AppTest(unittest.TestCase):
 
     # --- ranking ---
     def test_rank_scoring(self):
-        m = lambda **kw: {k: kw.get(k) for k in ranking.CRITERIA}
-        rows = [{'id': 1, 'is_reference': 1, 'listing_status': 'OWNED', 'metrics': m(cash_now=None, mileage=200000)},
-                {'id': 2, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'metrics': m(cash_now=5000, mileage=100000, power=90)},
-                {'id': 3, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'metrics': m(cash_now=7000, mileage=50000, power=120)},
-                {'id': 4, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'metrics': m(cash_now=6000, confidence=70)},
-                {'id': 5, 'is_reference': 0, 'listing_status': 'WITHDRAWN', 'metrics': m(cash_now=1, mileage=1)}]
-        w = {k: 0 for k in ranking.CRITERIA} | {'cash_now': 2, 'mileage': 1, 'power': 1, 'confidence': 3}
-        self.assertEqual(ranking.rank(rows, w), 3)                 # reference and withdrawn are not candidates
+        """#169: fixed curves; a car is scored only when complete; cost and power in percent against the current car;
+        adding a car never changes the order of the others."""
+        m = lambda **kw: {k: kw.get(k) for k in list(ranking.CRITERIA) + ['reliability_stats']}
+        car = lambda i, **kw: {'id': i, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'research': [], 'metrics': m(**kw)}
+        rows = [{'id': 1, 'is_reference': 1, 'listing_status': 'OWNED', 'research': [], 'metrics': m(cost_month=400, mileage=200000, power=100)},
+                car(2, cost_month=400, mileage=100000, power=100), car(3, cost_month=360, mileage=50000, power=110),
+                car(4, cost_month=300), car(5, cost_month=500, mileage=150000, power=90)]
+        rows[4]['research'] = [{'id': 'gen.safety', 'grade': 'MISSING'}]
+        w = {k: 0 for k in ranking.CRITERIA} | {'cost_month': 2, 'mileage': 1, 'power': 1}
+        self.assertEqual(ranking.rank(rows, w), 4)
         r = {x['id']: x for x in rows}
-        self.assertEqual(r[2]['score_parts'], {'cash_now': 100, 'mileage': 0, 'power': 0})
-        self.assertEqual(r[2]['score'], 50.0)
-        self.assertEqual(r[4]['coverage'], round(2 / 7, 2))        # missing data lowers coverage, it never scores 0
-        self.assertTrue(r[5]['score'] is None and r[5]['rank'] is None)                        # withdrawn: not scored
-        self.assertEqual((r[1]['score'], r[1]['rank']), (0.0, None))   # reference (issue #72): scored with the candidates' bounds, clamped (200,000 km is worse than every candidate), never ranked
-        self.assertEqual(ranking.rank(rows, w), 3)                                             # and it does not change the candidates
-        ex = {e['criterion']: e for e in r[4]['explain']}
-        self.assertEqual((ex['cash_now']['score'], ex['cash_now']['contribution'], ex['cash_now']['bounds']), (50, 50.0, {'min': 5000, 'max': 7000, 'n': 3}))
-        self.assertEqual(ex['confidence']['why_missing'], 'fewer than two cars with a value')
-        self.assertEqual(ex['mileage']['why_missing'], 'no value for this car')
-        self.assertEqual(ex['age']['why_missing'], 'weight 0')
+        self.assertEqual(r[2]['score_parts'], {'cost_month': 60, 'mileage': 75, 'power': 60})   # at the anchor = 60
+        self.assertEqual(r[2]['score'], round((2 * 60 + 75 + 60) / 4, 1))
+        self.assertAlmostEqual(r[3]['score_parts']['cost_month'], 60 + 112 * __import__('math').log(400 / 360), delta=1)
+        self.assertEqual(r[4]['not_scored'], {'criteria': ['mileage', 'power'], 'research': []})    # incomplete: no score
+        self.assertEqual(r[5]['not_scored']['research'], ['gen.safety'])                            # research missing: no score
+        self.assertEqual((r[1]['score'] is not None, r[1]['rank']), (True, None))                    # reference: scored, never ranked
+        self.assertEqual([x['id'] for x in sorted(rows[1:], key=lambda x: x['rank'] or 9)][:2], [3, 2])
+        before = {x['id']: x['score'] for x in rows}
+        rows.append(car(6, cost_month=2000, mileage=20000, power=300))                              # a far more expensive car
+        ranking.rank(rows, w)
+        self.assertEqual({i: r[i]['score'] for i in (2, 3)}, {i: before[i] for i in (2, 3)})     # anchored on the current car: unchanged
+        self.assertEqual(ranking.budget_score(3000, 6500, 8000), 100)
+        self.assertEqual(ranking.budget_score(6500, 6500, 8000), 80)
+        self.assertEqual(ranking.budget_score(8000, 6500, 8000), 0)
+        self.assertLess(80 - ranking.budget_score(6875, 6500, 8000), ranking.budget_score(7250, 6500, 8000) - ranking.budget_score(7625, 6500, 8000))  # falls faster further above the ideal
+        self.assertEqual(ranking.score_of('safety', {'safety': 5}, {}), 100)
+        self.assertAlmostEqual(ranking.score_of('reliability', {'reliability': 36, 'reliability_stats': 1.0}, {}), 2 / 3 * 100 + 1 / 3 * 50)
+        self.assertIsNone(ranking.score_of('reliability', {'reliability': 36, 'reliability_stats': None}, {}))
+        self.assertEqual(costs.safety_stars({'ncap_stars': 5, 'ncap_year': 2005, 'esp': 0}), 3)            # old regime and no ESP
+        self.assertEqual(costs.stats_ratio([{'value': 6, 'class_average': 4, 'age_from': 6, 'age_to': 7}], 7.5), 1.5)
 
     def test_questionnaire_weights(self):
-        C, T = ranking.CRITERIA, ranking.TASKS
-        self.assertEqual(set(ranking.weights_from_answers({}).values()), {ranking.NEUTRAL_WEIGHT})   # no answers: neutral
+        C, T = ranking._KEYS, ranking.TASKS
+        self.assertEqual({k: v for k, v in ranking.weights_from_answers({}).items() if k in C}, {k: ranking.NEUTRAL_WEIGHT for k in C})   # no answers: neutral
+        self.assertEqual(ranking.weights_from_answers({})['distance'], 0)               # not asked yet
         seen = {k: sum(k in x['criteria'] for x in T) for k in C}
         self.assertEqual((len(C), len(T), set(len(x['criteria']) for x in T)), (8, 8, {4}))
         self.assertEqual(set(seen.values()), {4})                         # every criterion in exactly four tasks
@@ -1067,18 +1079,18 @@ class AppTest(unittest.TestCase):
         self.assertEqual(w['power'], 5)                                   # picked first every time it was shown
         never = {x['id']: f"{x['criteria'][1] if x['criteria'][0] == 'power' else x['criteria'][0]}>power" for x in T if 'power' in x['criteria']}
         self.assertEqual(ranking.weights_from_answers(never)['power'], 1)  # picked last every time: floor 1
-        self.assertEqual(ranking.weights_from_answers({'r1': 'cost_month>power'})['mileage'], 3)   # middle once → neutral
-        self.assertEqual(ranking.known_answers({'cash': 'tight', 'r1': 'power>mileage', 'r2': 'power>age', 'q1': 'power>mileage', 't1': 'power>age'}), {'r1': 'power>mileage'})   # t…, q…: retired
+        self.assertEqual(ranking.weights_from_answers({'s1': 'cost_month>power'})['mileage'], 3)   # middle once → neutral
+        self.assertEqual(ranking.known_answers({'cash': 'tight', 's1': 'power>mileage', 's2': 'power>age', 'r1': 'power>mileage', 't1': 'power>age'}), {'s1': 'power>mileage'})   # r…, t…: retired
         with self.assertRaises(ValueError):
-            ranking.check_answers({'r1': 'power>power'})
+            ranking.check_answers({'s1': 'power>power'})
         st, d = self.req('GET', '/api/ranking')
         self.assertEqual((st, d['answered'], d['manual'], len(d['tasks'])), (200, False, False, 8))
-        st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'r1': 'power>cost_month'}})
+        st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'s1': 'power>cost_month'}})
         self.assertEqual(st, 200)
         d = self.req('GET', '/api/ranking')[1]
         self.assertEqual((d['answered'], d['weights']['power'], d['weights']['cost_month'], d['weights']['age'], d['tally']['power']),
                          (True, 5, 1, 3, {'shown': 1, 'best': 1, 'worst': 0}))
-        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'r1': 'age>cash_now'}})[0], 400)
+        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'s1': 'age>budget'}})[0], 400)
         self.req('POST', '/api/parameters', {'ranking_weights': {'power': 2}})
         d = self.req('GET', '/api/ranking')[1]
         self.assertEqual((d['manual'], d['weights']['power'], d['derived_weights']['power']), (True, 2, 5))
@@ -1196,13 +1208,20 @@ class AppTest(unittest.TestCase):
         self.assertEqual((us['A1']['budget_status'], us['B1']['budget_status'], us['B2']['budget_status']), ('within', 'over_ideal', 'over_max'))
         self.assertIsNone(us[None]['budget_status'])
         self.assertEqual(d['ranking']['candidates'], 3)
-        self.assertEqual(sorted(u['rank'] for u in d['listings'] if u['rank']), [1, 2, 3])
+        self.assertEqual([u['rank'] for u in d['listings'] if u['rank']], [])   # research incomplete: not scored yet (#169)
+        self.assertTrue(all(u['not_scored']['research'] for u in d['listings'] if u['listing_status'] != 'WITHDRAWN'))
+        self.assertEqual(us['B2']['excluded'], 'over_max')                               # over the maximum: not ranked
         self.assertEqual(self.req('POST', '/api/parameters', {'ranking_weights': {'cash_now': 9}})[0], 400)
         self.assertEqual(self.req('POST', '/api/parameters', {'ranking_weights': {'price': 1}})[0], 400)   # old criterion
-        st, p = self.req('POST', '/api/parameters', {'ranking_weights': {'cash_now': 5, 'power': 0}})
+        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_weights': {'cash_now': 5}})[0], 400)   # no longer a criterion
+        st, p = self.req('POST', '/api/parameters', {'ranking_weights': {'budget': 5, 'power': 0}})
         self.assertEqual(st, 200)
         w = self.req('GET', '/api/tco')[1]['ranking']['weights']
-        self.assertEqual((w['cash_now'], w['mileage']), (5, ranking.weights_from_answers({})['mileage']))
+        self.assertEqual((w['budget'], w['mileage']), (5, ranking.weights_from_answers({})['mileage']))
+        self.assertEqual(self.req('POST', '/api/parameters', {'exclude_over_max': 2})[0], 400)
+        self.req('POST', '/api/parameters', {'exclude_over_max': 0})
+        us = {u['listing_id']: u for u in self.req('GET', '/api/tco')[1]['listings']}
+        self.assertIsNone(us['B2']['excluded'])                                          # switched off: ranked like the rest
         self.assertEqual(self.req('POST', '/api/parameters', {'budget_ideal_eur': 9000, 'budget_max_eur': 8000})[0], 400)
         self.assertEqual(self.req('GET', '/api/tco?budget_ideal_eur=9000')[0], 400)   # preview validated too
 

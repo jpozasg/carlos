@@ -135,6 +135,7 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `var.tax` | variant | a tax row from the BMF Kfz-Steuer-Rechner (`tax_official_calculator`) | A |
 | `var.gearbox` | variant (automatics) | check: weak points of this automatic gearbox | C |
 | `var.gearbox_level` | variant | the variant names its gearbox (`gearbox_id`) | – |
+| `gen.safety` | generation | Euro NCAP stars (`ncap_stars`) and the test year (`ncap_year`; the stricter overall rating began in 2009) for the safety criterion, or a check `N/A` (never tested); ESP standard or not goes on the variant (`esp`) | B |
 | `gen.baseline` | generation | TÜV/ADAC figures per age class (`reliability_stats`, with the class average), or a check `N/A` (too new) | B |
 | `fam.risks` | engine family (else the engine) | engine family faults, each priced with a probability, or a check `NONE FOUND` | – |
 | `gbx.identity` | gearbox (else the variant) | gearbox code and type | – |

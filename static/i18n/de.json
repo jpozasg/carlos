@@ -947,5 +947,19 @@
  "history_title": "Bekannte Historie",
  "quotes_title": "Versicherungsangebote",
  "engine_family": "Motorfamilie",
- "gearbox_family": "Getriebefamilie"
+ "gearbox_family": "Getriebefamilie",
+ "c_budget": "Preis gegenüber Budget",
+ "cb_budget": "Preis gegenüber deinem Budget: 100 Punkte bis 55 % des Idealbudgets, 80 beim Idealbudget, dann immer schneller fallend bis 0 beim Maximum; über dem Maximum wird das Auto nicht gerankt (in den Einstellungen umschaltbar).",
+ "c_safety": "Sicherheit",
+ "cb_safety": "Euro-NCAP-Sterne des Modells; eine Wertung vor dem strengeren Test von 2009 zählt einen Stern weniger, ohne ESP einen weiteren.",
+ "c_distance": "Entfernung zur Besichtigung",
+ "cb_distance": "Entfernung von deiner Postleitzahl zum Auto: bis 25 km = 100 Punkte, 100 km = 50, ab 200 km = 0.",
+ "ns_criteria": "noch nicht bewertet: kein Wert für {l}",
+ "ns_research": "noch nicht bewertet: {n} Recherchepunkte fehlen",
+ "ns_title": "{n} Autos noch nicht bewertet",
+ "excluded_over_max": "über deinem Höchstbudget: nicht gerankt",
+ "anchor_note": "verglichen mit {v}",
+ "p_exclude_over_max": "Autos über dem Höchstbudget",
+ "eo_1": "nicht ranken",
+ "eo_0": "ranken (0 Punkte für den Preis)"
 }

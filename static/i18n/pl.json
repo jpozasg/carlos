@@ -949,5 +949,19 @@
  "history_title": "Znana historia",
  "quotes_title": "Oferty ubezpieczenia",
  "engine_family": "Rodzina silników",
- "gearbox_family": "Rodzina skrzyń"
+ "gearbox_family": "Rodzina skrzyń",
+ "c_budget": "Cena względem budżetu",
+ "cb_budget": "Cena względem budżetu: 100 punktów do 55 % budżetu idealnego, 80 przy idealnym, potem coraz szybciej do 0 przy maksymalnym; powyżej maksimum auto nie jest klasyfikowane (do zmiany w Ustawieniach).",
+ "c_safety": "Bezpieczeństwo",
+ "cb_safety": "Gwiazdki Euro NCAP modelu; ocena sprzed surowszego testu z 2009 r. liczy się o gwiazdkę mniej, brak ESP o kolejną.",
+ "c_distance": "Odległość do obejrzenia",
+ "cb_distance": "Odległość od twojego kodu pocztowego do auta: do 25 km = 100 punktów, 100 km = 50, od 200 km = 0.",
+ "ns_criteria": "jeszcze bez oceny: brak wartości dla {l}",
+ "ns_research": "jeszcze bez oceny: brakuje {n} elementów badania",
+ "ns_title": "{n} aut jeszcze bez oceny",
+ "excluded_over_max": "powyżej maksymalnego budżetu: poza rankingiem",
+ "anchor_note": "w porównaniu z {v}",
+ "p_exclude_over_max": "Auta powyżej maksymalnego budżetu",
+ "eo_1": "poza rankingiem",
+ "eo_0": "w rankingu (0 punktów za cenę)"
 }

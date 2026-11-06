@@ -6,11 +6,11 @@ import * as i18n from '../i18n.js';
 import { t } from '../i18n.js';
 import { $, esc, num, store, toast } from '../ui.js';
 
-const KEYS = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'fuel_price_date', 'diesel_price_eur_l', 'diesel_price_date', 'budget_ideal_eur', 'budget_max_eur', 'postal_code', 'drivers_count', 'driver_age', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'purchase_mode',
+const KEYS = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'fuel_price_date', 'diesel_price_eur_l', 'diesel_price_date', 'budget_ideal_eur', 'budget_max_eur', 'exclude_over_max', 'postal_code', 'drivers_count', 'driver_age', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'purchase_mode',
   'home_charging', 'home_charging_pct', 'electricity_home_eur_kwh', 'electricity_home_date', 'electricity_public_eur_kwh', 'electricity_public_date', 'wallbox_cost_eur'];
 const CALC = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'diesel_price_eur_l', 'budget_ideal_eur', 'budget_max_eur', 'electricity_home_eur_kwh', 'electricity_public_eur_kwh', 'home_charging_pct', 'wallbox_cost_eur'];
 const OPTS = { insurance_cover: ['Haftpflicht', 'Teilkasko', 'Vollkasko'], sf_class: ['SF 0', 'SF 1/2', ...Array.from({ length: 35 }, (_, i) => 'SF ' + (i + 1)), 'M', 'S'],
-  insurance_deductible_eur: ['0', '150', '300', '500', '1000'], purchase_mode: ['cash', 'financing'], home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'] };
+  insurance_deductible_eur: ['0', '150', '300', '500', '1000'], purchase_mode: ['cash', 'financing'], home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'], exclude_over_max: ['1', '0'] };
 let root, previewTimer;
 const val = k => { const e = $(k); return e.type === 'number' ? (e.value === '' ? null : Number(e.value)) : e.value; };
 const dirty = () => KEYS.some(k => String(val(k) ?? '').replace(/\.0$/, '') !== String(S.saved[k] ?? '').replace(/\.0$/, ''));
@@ -19,7 +19,7 @@ function form() {
   const p = S.saved, f = (k, label, extra = '') => `<div class="field"><label for="${k}">${label}</label>${extra}</div>`;
   const inp = (k, type, attrs = '') => `<input id="${k}" type="${type}" ${attrs} value="${p[k] == null ? '' : esc(String(p[k]).replace(/\.0$/, ''))}">`;
   const sel = k => { const cur = p[k] == null ? '' : String(p[k]).replace(/\.0$/, ''); const vals = [...new Set(['', ...OPTS[k], ...(cur && !OPTS[k].includes(cur) ? [cur] : [])])];
-    return `<select id="${k}">${vals.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v === '' ? '—' : k === 'purchase_mode' ? t('pm_' + v) : k === 'home_charging' ? t('hc_' + v) : k === 'insurance_deductible_eur' ? v + ' €' : esc(v)}</option>`).join('')}</select>`; };
+    return `<select id="${k}">${vals.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v === '' ? '—' : k === 'purchase_mode' ? t('pm_' + v) : k === 'home_charging' ? t('hc_' + v) : k === 'exclude_over_max' ? t('eo_' + v) : k === 'insurance_deductible_eur' ? v + ' €' : esc(v)}</option>`).join('')}</select>`; };
   return `<form id="paramForm" novalidate>
     <fieldset><legend>${t('calc_group')}</legend><p class="small muted" style="margin:0 0 10px">${t('calc_group_hint')}</p><div class="fields">
       ${f('annual_km', t('p_annual_km'), `<div class="pair"><input id="annual_km_range" type="range" min="5000" max="40000" step="1000" value="${p.annual_km}" aria-hidden="true" tabindex="-1">${inp('annual_km', 'number', 'min="1" step="500" inputmode="numeric"')}</div>`)}
@@ -30,6 +30,7 @@ function form() {
       ${f('diesel_price_date', t('p_diesel_date'), inp('diesel_price_date', 'date'))}
       ${f('budget_ideal_eur', t('p_budget_ideal'), inp('budget_ideal_eur', 'number', 'step="100" min="1" inputmode="numeric"'))}
       ${f('budget_max_eur', t('p_budget_max'), inp('budget_max_eur', 'number', 'step="100" min="1" inputmode="numeric"'))}
+      ${f('exclude_over_max', t('p_exclude_over_max'), sel('exclude_over_max'))}
     </div><p class="small" id="derived" style="margin:10px 0 0"></p></fieldset>
     <fieldset><legend>${t('insurance_purchase')}</legend><p class="small muted" style="margin:0 0 10px">${t('profile_hint')}</p><div class="fields">
       ${f('insurance_cover', t('p_cover'), sel('insurance_cover'))}${f('sf_class', 'SF-Klasse', sel('sf_class'))}${f('insurance_deductible_eur', t('p_deductible'), sel('insurance_deductible_eur'))}

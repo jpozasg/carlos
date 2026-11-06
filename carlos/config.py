@@ -105,6 +105,7 @@ HEAVY_USE_MIX = ('Mostly town',)  # setup driving_mix values that mean heavy use
 # follow-up research request; nothing is scaled automatically.
 STATS_MISMATCH_RATIO = 1.5
 TYPICAL_KM_PER_YEAR = 15000  # to place an age class on a fault's km curve in the consistency check
+NCAP_REGIME_YEAR = 2009  # Euro NCAP's stricter overall rating; earlier ratings count one star less (#169)
 PRIVATE_SALE_DISCOUNT = 0.05  # asking → private sale price (#166): ESTIMATED, range 3–10 %, no primary source found
 MARKET_MIN_PER_BAND, MARKET_MAX_AGE_DAYS = 5, 183  # resale sample (#166): ≥ 5 cars in each of the three bands, 6 months
 

@@ -947,5 +947,19 @@
  "history_title": "Historial conocido",
  "quotes_title": "Presupuestos de seguro",
  "engine_family": "Familia de motor",
- "gearbox_family": "Familia de caja"
+ "gearbox_family": "Familia de caja",
+ "c_budget": "Precio frente al presupuesto",
+ "cb_budget": "Precio frente a tu presupuesto: 100 puntos hasta el 55 % del ideal, 80 en el ideal y cada vez menos hasta 0 en el máximo; por encima del máximo el coche no se clasifica (se puede cambiar en Ajustes).",
+ "c_safety": "Seguridad",
+ "cb_safety": "Estrellas Euro NCAP del modelo; una valoración anterior a la prueba más estricta de 2009 cuenta una estrella menos, sin ESP otra menos.",
+ "c_distance": "Distancia para verlo",
+ "cb_distance": "Distancia desde tu código postal hasta el coche: hasta 25 km = 100 puntos, 100 km = 50, 200 km o más = 0.",
+ "ns_criteria": "aún sin puntuación: falta {l}",
+ "ns_research": "aún sin puntuación: faltan {n} puntos de investigación",
+ "ns_title": "{n} coches aún sin puntuación",
+ "excluded_over_max": "por encima de tu presupuesto máximo: sin clasificar",
+ "anchor_note": "comparado con {v}",
+ "p_exclude_over_max": "Coches por encima del presupuesto máximo",
+ "eo_1": "sin clasificar",
+ "eo_0": "clasificados (0 puntos por precio)"
 }

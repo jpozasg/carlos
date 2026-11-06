@@ -947,5 +947,19 @@
  "history_title": "Known history",
  "quotes_title": "Insurance quotes",
  "engine_family": "Engine family",
- "gearbox_family": "Gearbox family"
+ "gearbox_family": "Gearbox family",
+ "c_budget": "Price against budget",
+ "cb_budget": "Asking price against your budget: 100 points up to 55 % of the ideal, 80 at the ideal, falling faster and faster to 0 at the maximum; above the maximum the car is not ranked (switchable in Settings).",
+ "c_safety": "Safety",
+ "cb_safety": "Euro NCAP stars of the model; a rating from before the stricter 2009 test counts one star less, no ESP one star less.",
+ "c_distance": "Distance to view",
+ "cb_distance": "Distance from your postcode to the car: up to 25 km = 100 points, 100 km = 50, 200 km or more = 0.",
+ "ns_criteria": "not scored yet: no value for {l}",
+ "ns_research": "not scored yet: {n} research items missing",
+ "ns_title": "{n} cars not scored yet",
+ "excluded_over_max": "over your maximum budget: not ranked",
+ "anchor_note": "compared with {v}",
+ "p_exclude_over_max": "Cars over the maximum budget",
+ "eo_1": "not ranked",
+ "eo_0": "ranked (with 0 points for price)"
 }
