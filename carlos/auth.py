@@ -39,6 +39,7 @@ def scope(c, user_id, curator=False):
     """Shadows the tables with per-owner TEMP views (temp names win over main for unqualified reads); curator (admin)
     views also show the whole shared catalogue."""
     for name, sql in VIEWS.items():
+        c.execute(f'DROP VIEW IF EXISTS temp.{name}')  # scope() may run twice on one connection (admin writes, issue #143)
         c.execute(f'CREATE TEMP VIEW {name} AS {sql.format(o=int(user_id), cat=int(bool(curator)))}')
 
 

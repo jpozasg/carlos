@@ -6,7 +6,7 @@ import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
 from . import auth, config, research, research_requests as rq
 from .agent import (AGENT_TABLES, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
-                    UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, save_media,
+                    UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, row_owner, save_media,
                     storage_usage, table_columns)
 from .costs import budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
@@ -364,6 +364,14 @@ class Handler(BaseHTTPRequestHandler):
         agent = re.fullmatch(r'/api/agent/([\w-]+)(?:/(\d+))?', path)
         ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|media|decision)(?:/(\d+))?', path)
         req = re.fullmatch(r'/api/(?:requests|worker/requests)/(\d+)', path)
+        if (agent and agent[2] and method in ('PATCH', 'DELETE', 'POST') and self.admin and self.request is None
+                and self.headers.get('Authorization') and not self.headers.get('X-Carlos-Account')):
+            # the admin agent token reaches every account (issue #143): a row of another account is written as that account
+            table, rid = ('listings', int(agent[2])) if agent[1] == 'media' else (agent[1], int(agent[2]))
+            owner = row_owner(c, table, rid, None) if table in AGENT_TABLES and (method != 'POST' or agent[1] == 'media') else None
+            if owner is not None and owner != uid:
+                self.uid = uid = owner
+                auth.scope(c, uid, curator=True)
         if path == '/api/requests' and method == 'POST':
             rid = rq.create(c, uid, self.read_json(), by=self.user['id'] if self.user['id'] != uid else None)
             self.send_json(next(r for r in rq.mine(c, uid) if r['id'] == rid), 201)
@@ -540,7 +548,16 @@ class Handler(BaseHTTPRequestHandler):
         admin = self.require(c, admin=True)
         m = re.fullmatch(r'/api/admin/users/(\d+)(/invite)?', path)
         wk = re.fullmatch(r'/api/admin/workers/(\d+)(/token)?', path)
-        if path == '/api/admin/workers' and method == 'GET':  # registered workers (issue #141)
+        tbl = re.fullmatch(r'/api/admin/data/(\w+)', path)
+        if tbl and method == 'GET':  # every account's rows of one table (the admin agent, issue #143)
+            if tbl[1] not in AGENT_TABLES | {'users', 'catalogue_links', 'research_requests', 'workers', 'change_log'}:
+                raise NotFound(f'No such table: {tbl[1]}')
+            q = parse_qs(urlsplit(self.path).query)
+            where = ' WHERE owner_id=?' if 'owner_id' in q and tbl[1] in auth.OWNED + auth._KNOW + ('research_requests',) else ''
+            cols = '*' if tbl[1] not in ('users', 'workers') else ('id, username, role, is_active, created_at' if tbl[1] == 'users' else rq.WORKER_COLS)
+            sql = f'SELECT {cols} FROM main.{tbl[1]}{where} ORDER BY id DESC LIMIT ?'
+            self.send_json(rows(c, sql, ([int(q['owner_id'][-1])] if where else []) + [min(int(q.get('limit', ['1000'])[-1]), 5000)]))
+        elif path == '/api/admin/workers' and method == 'GET':  # registered workers (issue #141)
             self.send_json(rq.workers(c))
         elif path == '/api/admin/workers' and method == 'POST':
             wid, raw = rq.new_worker(c, self.read_json().get('name'))

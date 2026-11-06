@@ -611,6 +611,28 @@ class AppTest(unittest.TestCase):
         self.assertNotIn(new, log)
         self.assertNotIn('tok= ', log)
 
+    def test_admin_agent_token_reaches_every_account_143(self):
+        """Issue #143: the admin agent token reads every account's rows and writes a row of another account as that account."""
+        uid2, c2 = self.second_account()
+        H = {'X-Carlos-Account': str(uid2)}
+        st, src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, headers=H)
+        st, l = self.agent('POST', 'listings', {'vehicle_id': V_A, 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'A1',
+                                                'price_eur': 5000, 'mileage_km': 90000}, headers=H)
+        # no header: the row's own account is used
+        self.assertEqual(self.agent('PATCH', f'listings/{l["id"]}', {'notes': 'checked by the admin agent'})[0], 200)
+        self.assertEqual(self.sql('SELECT owner_id, notes FROM listings WHERE id=?', (l['id'],))[0], (uid2, 'checked by the admin agent'))
+        hers = self.req('GET', f'/api/listings/{l["id"]}', token=None, cookie=c2)[1]
+        self.assertEqual(hers['notes'], 'checked by the admin agent')
+        st, ev = self.agent('POST', 'listing_events', {'listing_id': l['id'], 'event_date': '2026-11-06', 'kind': 'user_data', 'text': 'x'}, headers=H)
+        self.assertEqual(self.agent('PATCH', f'listing_events/{ev["id"]}', {'text': 'y'})[0], 200)
+        # every account's rows of one table, optionally one owner's
+        mine_and_hers = {r['owner_id'] for r in self.req('GET', '/api/admin/data/listings')[1]}
+        self.assertTrue({1, uid2} <= mine_and_hers)
+        self.assertEqual({r['owner_id'] for r in self.req('GET', f'/api/admin/data/listings?owner_id={uid2}')[1]}, {uid2})
+        self.assertNotIn('password_hash', self.req('GET', '/api/admin/data/users')[1][0])
+        self.assertEqual(self.req('GET', '/api/admin/data/sessions')[0], 404)
+        self.assertEqual(self.req('GET', '/api/admin/data/listings', token=None, cookie=c2)[0], 401)
+
     def test_worker_once_with_fake_claude_113(self):
         import worker
         from capture_listing import Api

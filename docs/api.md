@@ -51,7 +51,7 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 
 Every write is recorded in `change_log` (with the writer's user id) and regenerates the account's dossiers in `data/dossiers/<account id>/`, and those of every account with a listing on a changed catalogue level.
 
-**Acting for an account** (the shared research worker): an admin agent token may send `X-Carlos-Account: <user id>`; reads, `/api/agent/` writes and research requests then use that account (its listings, its private rows; models still go to the catalogue), and `change_log` records the admin. Other writes with the header get 403.
+**The admin agent token reaches every account** (issue #143; it stays with the owner and never goes to a worker): a PATCH or DELETE of a row of another account (a listing, its rows, an account's own source or premium) and a photo upload to another account's listing are done as that account without any header; `GET /api/admin/data/<table>?owner_id=&limit=` lists every account's rows of a writable table (and `users` without hashes, `catalogue_links`, `research_requests`, `workers`, `change_log`), newest first. **Acting for an account** (account views and new rows): an admin agent token may send `X-Carlos-Account: <user id>`; reads, `/api/agent/` writes and research requests then use that account (its listings, its private rows; models still go to the catalogue), and `change_log` records the admin. Other writes with the header get 403.
 
 ## Research requests (issue #113)
 An account asks for a listing to be researched; a registered worker (`worker.py`, issue #141) does it and writes the car into that account.
