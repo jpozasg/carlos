@@ -4,8 +4,11 @@ export const esc = s => s == null ? '' : String(s).replace(/[&<>"']/g, c => ({ '
 export const safeUrl = u => /^https?:\/\//i.test(u || '') ? esc(u) : '#';
 export const euro = n => n == null ? '—' : new Intl.NumberFormat(locale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0, useGrouping: 'always' }).format(n);
 export const num = (n, d = 2) => n == null ? '—' : new Intl.NumberFormat(locale(), { maximumFractionDigits: d, useGrouping: 'always' }).format(n);
-// a score from less than half of the weighted data is provisional (Ranking page explains it)
-export const scoreTxt = u => `${num(u.score, 0)}${u.coverage != null && u.coverage < 0.5 ? `<abbr class="prov" title="${esc(t('provisional_hint'))}">?</abbr>` : ''}`;
+// a score exists only when the car is complete (#169); otherwise what is missing
+export const scoreTxt = u => num(u.score, 0);
+export const notScoredTxt = u => u.excluded === 'over_max' ? t('excluded_over_max') : !u.not_scored ? t('not_ranked')
+  : [u.not_scored.criteria.length ? t('ns_criteria', { l: u.not_scored.criteria.map(k => t('c_' + k)).join(', ') }) : '',
+     u.not_scored.research.length ? t('ns_research', { n: u.not_scored.research.length }) : ''].filter(Boolean).join(' · ') || t('not_ranked');
 // eight validated series colours (docs/frontend.md) by the criterion's position; a ninth gets a neutral colour, never an undefined --s9
 export const critColor = (k, keys) => { const i = keys.indexOf(k); return i >= 0 && i < 8 ? `var(--s${i + 1})` : 'var(--text-3)'; };
 export const PEND = () => `<span class="pending">${t('pending')}</span>`;

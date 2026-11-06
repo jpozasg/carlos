@@ -11,10 +11,10 @@ const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { cons
 export function attributes(p = {}) {
   const y = new Date().getFullYear(), price = Math.max(2000, Math.round((p.budget_ideal_eur || 8000) / 100) * 100);
   return {
-    cost_month: [euro(330) + t('per_month'), euro(290) + t('per_month')], cash_now: [euro(price), euro(price - 1500)],
+    cost_month: [euro(330) + t('per_month'), euro(290) + t('per_month')], budget: [euro(price), euro(price - 1500)],
     mileage: [num(150000, 0) + ' km', num(100000, 0) + ' km'], age: [String(y - 13), String(y - 9)], power: ['75 PS', '115 PS'],
     reliability: [t('bw_rel_base'), t('bw_rel_adv')], inspection: [t('bw_insp_base'), t('bw_insp_adv')],
-    confidence: [t('bw_conf_base'), t('bw_conf_adv')],
+    safety: ['3 ★ Euro NCAP', '5 ★ Euro NCAP'],
   };
 }
 

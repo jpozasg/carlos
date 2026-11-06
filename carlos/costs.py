@@ -333,6 +333,7 @@ UNITS_SQL = '''SELECT l.*, v.generation_id, v.engine_id, v.gearbox_id, v.body_st
   gb.family_id gearbox_family_id, gb.code gearbox_code, gb.type gearbox_type, v.trim, v.transmission, v.body_style, v.model_year,
   v.emissions_standard, v.co2_g_km, v.hsn, v.tsn, v.technical_status, v.notes vehicle_notes,
   g.make, g.model, g.name generation, g.start_year generation_start_year, g.end_year generation_end_year, g.facelift_year,
+  g.ncap_stars, g.ncap_year, v.esp,
   e.code engine_code, e.family engine_family, e.description engine_description, e.fuel_type, e.displacement_cc, e.cylinders,
   e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive, e.battery_usable_kwh, e.ac_charge_kw, e.dc_charge_kw
 FROM listings l JOIN vehicles v ON v.id=l.vehicle_id JOIN generations g ON g.id=v.generation_id JOIN engines e ON e.id=v.engine_id
@@ -523,6 +524,24 @@ def lease_costs(u, p, running, vollkasko, wallbox):
     det['lease'] = {'term_months': term, 'km_allowance': allowance, 'km_over': over, 'km_cost': km_cost, 'includes': sorted(inc - {''}),
                     'vollkasko_quote_id': (vollkasko or {}).get('id'), 'insurance_included': 'insurance' in inc}
     return parts, det, annual_ins
+
+
+def stats_ratio(rows, age):
+    """TÜV/ADAC figure of the model at the car's age class ÷ the class average (1 = average, lower is better); the mean of
+    TÜV and ADAC when both exist; None without a figure for that age."""
+    rs = [r['value'] / r['class_average'] for r in rows if age is not None and r.get('class_average')
+          and r['age_from'] <= age <= r['age_to'] + 1]  # +1: an age between two classes takes the lower one
+    return round(sum(rs) / len(rs), 3) if rs else None
+
+
+def safety_stars(u):
+    """Euro NCAP stars adjusted for the test regime (#169): a rating from before the stricter 2009 overall rating counts
+    one star less; a car without ESP loses another; None when the generation's rating is unknown."""
+    s = u.get('ncap_stars')
+    if s is None:
+        return None
+    s -= 1 if (u.get('ncap_year') or 2009) < config.NCAP_REGIME_YEAR else 0
+    return max(0, s - (1 if u.get('esp') == 0 else 0))
 
 
 def cash_now(u, parts):
@@ -716,6 +735,12 @@ def tco_rows(c, p):
             'reliability': rel_total,
             'inspection': insp_problem if insp_ok or insp_problem else None,
             'power': u['power_ps'],
+            # ranking inputs (#169): the purchase price for the budget curve, TÜV/ADAC against the class at this age,
+            # Euro NCAP adjusted for the test regime, the distance to view (per account, on the listing)
+            'budget': None if u['is_reference'] or u['offer'] != 'purchase' else u['price_eur'],
+            'reliability_stats': stats_ratio(know.of('reliability_stats', v), age),
+            'safety': safety_stars(u),
+            'distance': u.get('distance_km'),
             'confidence': research.confidence(items),  # the contract's grades (issue #114), not the number of rows
             # informative, not ranked (they are inside cost_month)
             'price': None if u['is_reference'] else u['price_eur'],

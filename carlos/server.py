@@ -24,7 +24,8 @@ PARAM_NUM = {'annual_km': (int, True), 'ownership_years': (int, True), 'fuel_pri
              # electric cars (#121): € per kWh at home and in public, the share charged at home (0–100), a planned wallbox
              'electricity_home_eur_kwh': (float, False), 'electricity_public_eur_kwh': (float, False),
              'home_charging_pct': (int, False), 'wallbox_cost_eur': (float, False),
-             'lease_rate_max_eur': (float, False)}  # leasing (#127): the highest monthly rate
+             'lease_rate_max_eur': (float, False),  # leasing (#127): the highest monthly rate
+             'exclude_over_max': (int, False)}  # ranking (#169): 1/NULL = cars over the maximum budget are not ranked
 PARAM_TEXT = {'fuel_price_date', 'diesel_price_date', 'postal_code', 'sf_class', 'insurance_cover', 'purchase_mode',
               'home_charging', 'electricity_home_date', 'electricity_public_date', 'acquisition_mode'}
 PARAM_CODES = {'home_charging': config.HOME_CHARGING, 'acquisition_mode': config.ACQUISITION_MODES}
@@ -47,7 +48,7 @@ class Forbidden(Exception):
 def ranked_rows(c, p):
     """Listings with costs, metrics and ranking; returns (rows, number of ranking candidates)."""
     out = tco_rows(c, p)
-    return out, rank(out, weights_from(p))
+    return out, rank(out, weights_from(p), p)
 
 
 def detail(c, listing_id, p):
@@ -97,6 +98,8 @@ def clean_params(data):
                 raise ValueError(f'{k} must be an integer')
             if f < 0 or (required and f == 0):
                 raise ValueError(f'{k} must be {"greater than 0" if required else "non-negative"}')
+            if k == 'exclude_over_max' and f > 1:
+                raise ValueError('exclude_over_max must be 0 or 1')
             if k == 'home_charging_pct' and f > 100:
                 raise ValueError('home_charging_pct must be between 0 and 100')
             out[k] = typ(f)
