@@ -2,6 +2,8 @@
 import { S, refreshTco, go } from '../app.js';
 import { t, tv, comp } from '../i18n.js';
 import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media, scoreTxt, notScoredTxt } from '../ui.js';
+// cars a ranking filter (Settings) excludes (#169)
+export const filteredNote = () => { const n = S.units.filter(u => (u.excluded || '').startsWith('filter:')).length; return n ? `<p class="small muted">${t('filtered_n', { n })} <a href="#/settings">${t('filters_title')}</a></p>` : ''; };
 import { costStack, beChart, beTable, beHover, beColors } from '../charts.js';
 import { loadRequests, requestsPanel, bindRequests } from '../requests.js';
 
@@ -173,7 +175,7 @@ function draw() {
   const all = ordered(), us = all.filter(u => selected.has(u.id));
   const body = {
     ruler: () => ruler(all),
-    overview: () => `<div class="section"><p class="lead">${t('units_lead', { n: S.components.length })}</p>${all.length ? overview(all) : `<p class="empty">${t('no_units')}</p>`}<p class="small muted" style="margin-top:10px">${t('ranking_hint')} <a href="#/ranking">${t('tab_ranking')}</a></p></div>`,
+    overview: () => `<div class="section"><p class="lead">${t('units_lead', { n: S.components.length })}</p>${filteredNote()}${all.length ? overview(all) : `<p class="empty">${t('no_units')}</p>`}<p class="small muted" style="margin-top:10px">${t('ranking_hint')} <a href="#/ranking">${t('tab_ranking')}</a></p></div>`,
     costs: () => `<div class="section"><h2>${t('composition')}</h2><p class="lead">${t('composition_lead', { y: yrs(S.p.ownership_years), km: num(S.p.annual_km * S.p.ownership_years, 0) })} ${t('cost_pick_lead')}</p>${selNote(us)}${costs(us)}</div>`,
     breakeven: () => `${selNote(us)}${breakeven(us)}`,
     details: () => `<div class="section"><h2>${t('detail')}</h2>${selNote(us)}${details(us) || `<p class="empty">${t('select_one')}</p>`}</div>`,

@@ -17,6 +17,8 @@ The ranking answers one question: *given what matters to this account, which car
 | `safety` | Euro NCAP stars of the generation (`ncap_stars`); a rating before 2009 (`ncap_year`) counts one star less, no ESP (`vehicles.esp = 0`) one star less | 5 = 100, 4 = 70, 3 = 40, 2 = 25, 1 = 10, 0 = 0 |
 | `distance` | km from the account's postcode to the car (`listings.distance_km`, per account) | ≤ 25 = 100; 100 = 50; ≥ 200 = 0 |
 
+**Filters** (Settings, preferences `filter_*`): seller type, warranty required, service history (documented, or documented or claimed), accident-free (confirmed, or confirmed or claimed), HU at least N months left. A car that fails one, or whose ad does not say, is not ranked (`excluded: 'filter:<name>'`). **Distance** = straight-line km between the account's postcode and the listing's `postal_code`, from the bundled table `carlos/plz_de.csv` (one point per postcode; data © OpenStreetMap contributors, ODbL 1.0), computed live so a new postcode applies at once; `listings.distance_km`, when set, overrides it; the reference car is at 0 km.
+
 Car score = `Σ weight × points ÷ Σ weights` over the weighted criteria (all present by the completeness rule). `GET /api/tco` returns per car `score`, `rank`, `excluded`, `not_scored`, `score_parts` and `explain` (value, weight, points, contribution, the anchor for cost and power, why a criterion is missing). Price, consumption, insurance and tax stay information only (inside `cost_month`); `cash_now` and `confidence` remain metrics, not criteria.
 
 ## Weights

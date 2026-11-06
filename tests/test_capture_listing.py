@@ -94,7 +94,10 @@ class CaptureListingTest(unittest.TestCase):
     def test_validation_before_any_write(self):
         before = len(self.api.call('GET', '/api/sources'))
         for bad in ({'vehicle_id': None}, {'price_eur': 0}, {'attributes': ['x']}, {'listing': {'verdict': 'buy'}},
-                    {'photos': [{}]}, {'url': ''}, {'vehicle_id': 999}):
+                    {'photos': [{}]}, {'url': ''}, {'vehicle_id': 999},
+                    # structured facts (#169): fixed codes, YYYY-MM, 5-digit postcode, stars 0–5
+                    {'listing': {'seller_type': 'dealer'}}, {'listing': {'hu_until': '05/2027'}}, {'listing': {'postal_code': '9720'}},
+                    {'listing': {'seller_rating': 6}}, {'listing': {'accident_free': True}}, {'listing': {'warranty': 2}}):
             with self.assertRaises(ValueError, msg=bad):
                 self.run_import(self.capture(**bad))
         self.assertEqual(len(self.api.call('GET', '/api/sources')), before)

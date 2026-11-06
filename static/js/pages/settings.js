@@ -1,6 +1,6 @@
 // Settings: calculation parameters (with live preview), insurance profile, appearance (theme, light/dark, language),
 // account (password, agent token).
-import { S, applyTheme, loadAll, renderShell } from '../app.js';
+import { S, applyTheme, loadAll, renderShell, refreshTco } from '../app.js';
 import { post, get } from '../api.js';
 import * as i18n from '../i18n.js';
 import { t } from '../i18n.js';
@@ -78,11 +78,19 @@ function account() {
     ${S.me.role === 'admin' ? `<h3 style="margin-top:16px">${t('agent_token')}</h3><p class="small muted" style="margin-top:0">${t('agent_token_hint')}</p>
     <div class="row"><button class="btn ghost sm" type="button" data-token>${S.me.has_token ? t('token_renew') : t('token_create')}</button></div><div id="tokenOut"></div>` : ''}</div>`;  // agent tokens: admins only (issue #130)
 }
+// ranking filters (#169): cars that fail one are not ranked; unknown never passes
+const FILTERS = { filter_seller: ['', 'DEALER', 'PRIVATE'], filter_warranty: ['', '1'], filter_service_history: ['', 'YES', 'YES_OR_CLAIMED'],
+  filter_accident_free: ['', 'YES', 'YES_OR_CLAIMED'], filter_hu_months: ['', '6', '12', '18'] };
+function filters() {
+  const cur = k => S.prefs?.[k] ?? '';
+  return `<div class="card"><h3>${t('filters_title')}</h3><p class="small muted" style="margin-top:0">${t('filters_lead')}</p><div class="fields">
+    ${Object.entries(FILTERS).map(([k, vals]) => `<div class="field"><label for="${k}">${t('flt_' + k.slice(7))}</label><select id="${k}" data-filter="${k}">${vals.map(v => `<option value="${v}" ${v === cur(k) ? 'selected' : ''}>${v === '' ? t('flt_any') : t('fv_' + k.slice(7) + '_' + v)}</option>`).join('')}</select></div>`).join('')}</div></div>`;
+}
 function draw() {
   root.innerHTML = `<div class="section"><h2>${t('tab_settings')}</h2><p class="lead">${t('settings_lead')}</p>
     <div class="callout"><p>${t('setup_again_text')}</p><a class="btn ghost sm" href="#/start">${t('setup_again')}</a></div>
     <div class="grid" style="grid-template-columns:1fr"><div class="card">${form()}</div></div>
-    <div class="grid" style="margin-top:16px">${appearance()}${account()}</div></div>`;
+    <div class="grid" style="margin-top:16px">${filters()}${appearance()}${account()}</div></div>`;
   paramUi();
 }
 function bind() {
@@ -96,6 +104,8 @@ function bind() {
     if (e.target.id === 'discardParams') { await loadAll(); renderShell(); draw(); return; }
     const md = e.target.closest('[data-mode-pick]'); if (md) { applyTheme(md.dataset.modePick); draw(); return; }
     if (e.target.closest('[data-token]')) { try { const r = await post('/api/account/token', {}); $('tokenOut').innerHTML = `<p class="small">${t('token_shown_once')}</p><div class="token-box">${esc(r.token)}</div>`; S.me.has_token = true; } catch (err) { toast(err.message, true); } } });
+  root.addEventListener('change', async e => { const k = e.target.dataset.filter; if (!k) return;
+    try { await post('/api/preferences', { [k]: e.target.value || null }); S.prefs[k] = e.target.value; await refreshTco(); toast(t('saved')); } catch (err) { toast(err.message, true); } });
   root.addEventListener('submit', async e => {
     e.preventDefault();
     if (e.target.id === 'pwForm') { try { await post('/api/account/password', { old: $('pw_old').value, new: $('pw_new').value }); toast(t('pw_changed')); e.target.reset(); } catch (err) { toast(err.message, true); } return; }

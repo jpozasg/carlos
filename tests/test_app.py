@@ -1032,6 +1032,29 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(costs.age_years(None, today))
 
     # --- ranking ---
+    def test_filters_and_distance_169(self):
+        """#169: filters leave out cars that fail them (or whose ad doesn't say); distance from the account's postcode."""
+        from carlos import geo
+        self.assertEqual(geo.km('97070', '97070'), 0.0)
+        self.assertTrue(85 < geo.km('97070', '90402') < 100)          # Würzburg → Nürnberg ≈ 90 km straight line
+        self.assertIsNone(geo.km('97070', '00000'))
+        row = lambda **kw: {'id': 1, 'is_reference': 0, **kw}
+        self.assertIsNone(ranking.failed_filter(row(seller_type='DEALER'), {'filter_seller': 'DEALER'}))
+        self.assertEqual(ranking.failed_filter(row(seller_type=None), {'filter_seller': 'DEALER'}), 'seller')   # unknown never passes
+        self.assertEqual(ranking.failed_filter(row(service_history='CLAIMED'), {'filter_service_history': 'YES'}), 'service_history')
+        self.assertIsNone(ranking.failed_filter(row(service_history='CLAIMED'), {'filter_service_history': 'YES_OR_CLAIMED'}))
+        today = datetime.date(2026, 11, 6)
+        self.assertEqual(ranking.months_left('2027-05', today), 6)
+        self.assertIsNone(ranking.failed_filter(row(), {}))                                                    # no filter set
+        self.agent('PATCH', f'listings/{CAR_A}', {'postal_code': '90402', 'seller_type': 'PRIVATE', 'seller_rating': 4.5, 'seller_reviews': 12})
+        self.req('POST', '/api/parameters', {'postal_code': '97070'})
+        a = next(u for u in self.req('GET', '/api/tco')[1]['listings'] if u['id'] == CAR_A)
+        self.assertTrue(85 < a['metrics']['distance'] < 100)
+        self.req('POST', '/api/preferences', {'filter_seller': 'DEALER'})
+        a = next(u for u in self.req('GET', '/api/tco')[1]['listings'] if u['id'] == CAR_A)
+        self.assertEqual((a['excluded'], a['rank']), ('filter:seller', None))
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_A}', {'seller_type': 'dealer'})[0], 400)          # fixed codes (schema)
+
     def test_rank_scoring(self):
         """#169: fixed curves; a car is scored only when complete; cost and power in percent against the current car;
         adding a car never changes the order of the others."""

@@ -108,6 +108,7 @@ function valuationRow(v) {
 // the seller's rating as the platform publishes it (issue #135): read from the newest capture that has one (mobile.de
 // "Händlerbewertung": "3.2 Sterne (28 Bewertungen)"); private sellers have none, so no row
 function sellerRating(d) {
+  if (d.seller_rating != null) return `<span class="stars" aria-hidden="true">★</span> ${num(d.seller_rating, 1)} / 5${d.seller_reviews != null ? ' · ' + t('reviews_n', { n: d.seller_reviews }) : ''}`;
   for (const snap of d.snapshots.slice().reverse()) {
     let a = {}; try { a = JSON.parse(snap.attributes_json || '{}'); } catch (e) { continue; }
     const m = /([\d]+[.,]?\d*)\s*Sterne\s*\((\d+)/.exec(a['Händlerbewertung'] || '');
