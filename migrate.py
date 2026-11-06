@@ -45,7 +45,7 @@ def create(db):
         c.close()
 
 
-def run(db=ROOT / 'cars.sqlite'):
+def run(db):
     db = Path(db)
     if not db.exists():
         create(db)
@@ -77,6 +77,8 @@ def run(db=ROOT / 'cars.sqlite'):
 
 def dump_schema(db, out=ROOT / 'schema.sql'):
     """Regenerates schema.sql (the reference schema and the baseline for new databases) from a migrated database."""
+    if not Path(db).exists():  # sqlite3.connect would create an empty file and dump an empty schema
+        raise SystemExit(f'No database at {db}: give the path of a migrated database')
     c = sqlite3.connect(db)
     version = c.execute('PRAGMA user_version').fetchone()[0]
     rows = c.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' "
@@ -89,7 +91,8 @@ def dump_schema(db, out=ROOT / 'schema.sql'):
 
 
 if __name__ == '__main__':
-    target = Path(sys.argv[-1]) if len(sys.argv) > 1 and not sys.argv[-1].startswith('--') else ROOT / 'cars.sqlite'
+    from carlos import config  # default: the data directory's database, never ./cars.sqlite at the repo root (#158)
+    target = Path(sys.argv[-1]) if len(sys.argv) > 1 and not sys.argv[-1].startswith('--') else config.DB
     if '--schema' in sys.argv:
         print('Schema written:', dump_schema(target))
     else:

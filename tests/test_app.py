@@ -109,6 +109,21 @@ class AppTest(unittest.TestCase):
         self.assertEqual(c.execute('SELECT max(n) FROM (SELECT count(*) n FROM listings WHERE is_reference=1 GROUP BY owner_id)').fetchone()[0], 1)
         c.close()
 
+    def test_migrate_cli_defaults_to_the_data_directory(self):
+        """#158: `python migrate.py` without a path migrates CARLOS_DATA's database, never ./cars.sqlite at the repo root;
+        --schema refuses a missing database instead of dumping an empty one."""
+        import subprocess, sys
+        root = Path(migrate.__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as d:
+            env = {**os.environ, 'CARLOS_DATA': d}
+            r = subprocess.run([sys.executable, 'migrate.py'], cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertTrue((Path(d) / 'cars.sqlite').exists())
+            self.assertFalse((root / 'cars.sqlite').exists())
+            r = subprocess.run([sys.executable, 'migrate.py', '--schema', str(Path(d) / 'missing.sqlite')], cwd=root, env=env, capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertFalse((Path(d) / 'missing.sqlite').exists())
+
     def test_failed_migration_rolls_back(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d); (d / 'migrations').mkdir(); db = d / 'c.sqlite'
