@@ -556,6 +556,61 @@ class AppTest(unittest.TestCase):
         ids = [r['id'] for r in out if r]
         self.assertEqual((len(out), len(ids), len(set(ids))), (8, 3, 3))
 
+    def test_registered_workers_141(self):
+        """Issue #141: a worker token only heartbeats, claims and finishes; the claim hands out a per-request token that
+        writes the catalogue and the requester's account only, and dies when the request ends."""
+        st, w = self.req('POST', '/api/admin/workers', {'name': 'desk'})
+        self.assertEqual(st, 201, w)
+        wt = w['token']
+        self.assertEqual(self.req('GET', '/api/tco', token=wt)[0], 403)                 # a worker token reads no data
+        self.assertEqual(self.req('POST', '/api/worker/heartbeat', {'state': 'idle'}, token=wt)[0], 200)
+        status = lambda: {x['name']: x for x in self.req('GET', '/api/admin/workers')[1]}['desk']
+        self.assertEqual(status()['status'], 'idle')
+        uid2, c2 = self.second_account()
+        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/41'}, token=None, cookie=c2)
+        req = self.req('POST', '/api/worker/claim', {}, token=wt)[1]['request']
+        rt = req['request_token']
+        self.assertEqual((req['owner_id'], req['worker']), (uid2, 'desk'))
+        self.assertEqual((status()['status'], status()['request_id'], status()['username']), ('working', req['id'], 'maria'))
+        # the request token: her account and the catalogue, nothing else
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}', token=rt)[0], 404)
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_A}', {'notes': 'x'}, token=rt)[0], 404)
+        st, src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, token=rt)
+        st, l = self.agent('POST', 'listings', {'vehicle_id': V_A, 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'W1',
+                                                'price_eur': 5000, 'mileage_km': 90000}, token=rt)
+        self.assertEqual((st, self.sql('SELECT owner_id FROM listings WHERE id=?', (l['id'],))[0][0]), (201, uid2))
+        st, g = self.agent('POST', 'generations', {'make': 'Zeta', 'model': 'Z', 'name': 'Z1'}, token=rt)
+        self.assertEqual((st, self.sql('SELECT owner_id FROM generations WHERE id=?', (g['id'],))[0][0]), (201, None))   # catalogue
+        for method, path, body, h in (('GET', '/api/admin/users', None, None), ('POST', '/api/parameters', {'annual_km': 1}, None),
+                                      ('POST', '/api/worker/claim', {}, None), ('DELETE', f'/api/agent/listings/{l["id"]}', None, None),
+                                      ('GET', '/api/tco', None, {'X-Carlos-Account': '1'})):
+            self.assertEqual(self.req(method, path, body, token=rt, headers=h)[0], 403, path)
+        self.assertEqual(self.req('POST', f'/api/worker/requests/{req["id"]}', {'status': 'DONE', 'listing_id': l['id']}, token=wt)[0], 200)
+        self.assertEqual(self.req('GET', '/api/tco', token=rt)[0], 401)                 # dead once the request ended
+        self.assertEqual(status()['state'], 'idle')
+        # deactivate, reactivate, regenerate
+        self.req('PATCH', f'/api/admin/workers/{w["id"]}', {'is_active': 0})
+        self.assertEqual((status()['status'], self.req('POST', '/api/worker/claim', {}, token=wt)[0]), ('deactivated', 401))
+        self.req('PATCH', f'/api/admin/workers/{w["id"]}', {'is_active': 1})
+        new = self.req('POST', f'/api/admin/workers/{w["id"]}/token', {})[1]['token']
+        self.assertEqual(self.req('POST', '/api/worker/heartbeat', {'state': 'idle'}, token=wt)[0], 401)
+        self.assertEqual(self.req('POST', '/api/worker/heartbeat', {'state': 'error', 'error': 'site down'}, token=new)[0], 200)
+        self.assertEqual((status()['status'], status()['last_error']), ('error', 'site down'))
+        self.sql_write("UPDATE workers SET last_seen=datetime('now', '-1 hour')")
+        self.assertEqual(status()['status'], 'down')
+        self.assertEqual(self.req('GET', '/api/admin/workers', token=new)[0], 403)      # a worker is no admin
+        # worker.py with a worker token hands the run only the per-request token, never its own or an account header
+        import worker
+        from capture_listing import Api
+        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/42'}, token=None, cookie=c2)
+        api, logs = Api(self.base, new), Path(self.tmp.name) / 'wlogs'
+        api.worker = True
+        worker.work_one(api, 'desk', "sh -c 'echo tok=$AGENT_TOKEN acct=${CARLOS_ACCOUNT:-none}; echo CARLOS_RESULT failed: test'", logs, 30)
+        log = next(logs.glob('request-*.log')).read_text()
+        self.assertIn('acct=none', log)
+        self.assertNotIn(new, log)
+        self.assertNotIn('tok= ', log)
+
     def test_worker_once_with_fake_claude_113(self):
         import worker
         from capture_listing import Api
@@ -573,6 +628,11 @@ class AppTest(unittest.TestCase):
         self.assertEqual([x['result'] for x in self.req('GET', '/api/requests')[1]][0], 'page blocked')
         self.assertEqual(worker.outcome('noise\nCARLOS_RESULT listing_id=12\n')['listing_id'], 12)
         self.assertEqual(worker.outcome('crashed')['status'], 'FAILED')
+        # the research runs on Sonnet (owner, 2026-11-06): --model added after the claude executable unless given
+        self.assertEqual(worker.command('claude -p', 'sonnet'), ['claude', '--model', 'sonnet', '-p'])
+        self.assertEqual(worker.command('claude --chrome -p --', 'sonnet')[:3], ['claude', '--model', 'sonnet'])
+        self.assertEqual(worker.command('claude --model opus -p', 'sonnet'), ['claude', '--model', 'opus', '-p'])
+        self.assertEqual(worker.command("sh -c 'x'", 'sonnet'), ['sh', '-c', 'x'])
 
     def test_insurance_quotes(self):
         quote = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 850, 'premium_min_eur': 700,

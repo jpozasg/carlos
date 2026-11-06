@@ -2,9 +2,13 @@
 requests, runs Claude Code headless with docs/prompts/research-request.md for each one, and reports the listing it wrote
 into the requester's account (or why it failed). One request at a time.
 
-Environment: CAR_API (the site, e.g. https://carlos.example.net), AGENT_TOKEN (an admin's agent token; or .env),
-WORKER_NAME (default: the host name), POLL_SECONDS (60), CLAUDE_CMD ('claude -p'), WORKER_TIMEOUT_MIN (120),
-WORKER_LOGS (worker-logs/, one log per request).
+Environment: CAR_API (the site, e.g. https://carlos.example.net), WORKER_TOKEN (this worker's token, created by an
+admin on the Accounts page; issue #141), WORKER_NAME (default: the host name; with a worker token the registered name
+counts), POLL_SECONDS (60), CLAUDE_CMD ('claude -p'), WORKER_MODEL ('sonnet': the research runs on Sonnet; added as
+--model unless CLAUDE_CMD has one), WORKER_TIMEOUT_MIN (120), WORKER_LOGS (worker-logs/, one log per request).
+The headless run gets only the per-request token of the request it works on (the requester's account and the shared
+catalogue, dead when the request ends). Without WORKER_TOKEN the worker falls back to AGENT_TOKEN (an admin token) and
+the X-Carlos-Account header, the way it worked before #141.
 Run: python worker.py [--once]   (--once: handle at most one request, then exit)"""
 import os, re, shlex, socket, subprocess, sys, time
 from pathlib import Path
@@ -31,25 +35,43 @@ def prompt_for(req):
     return text.strip()
 
 
-def work_one(api, name, cmd, logs, timeout_s):
+def command(cmd, model):
+    """The headless command with --model <model> after the claude executable, unless one is given (owner: research on Sonnet)."""
+    parts = shlex.split(cmd)
+    if model and parts and Path(parts[0]).name == 'claude' and not any(p == '--model' or p.startswith('--model=') for p in parts):
+        parts[1:1] = ['--model', model]
+    return parts
+
+
+def work_one(api, name, cmd, logs, timeout_s, model='sonnet'):
     """Claims and handles one request; False when the queue is empty."""
     req = api.call('POST', '/api/worker/claim', {'worker': name})['request']
     if not req:
         return False
     # print mode stops background tasks 10 min after the last turn, which left request 4 hanging (issue #137): wait for them
-    env = {**os.environ, 'CAR_API': api.base, 'AGENT_TOKEN': api.token, 'CARLOS_ACCOUNT': str(req['owner_id']),
-           'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS': '0'}
+    env = {**os.environ, 'CAR_API': api.base, 'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS': '0'}
+    if req.get('request_token') and is_worker(api):  # the run only ever sees the per-request token (#141)
+        env.update(AGENT_TOKEN=req['request_token']); env.pop('CARLOS_ACCOUNT', None)
+    else:  # admin fallback: the admin token acting for the requester
+        env.update(AGENT_TOKEN=api.token, CARLOS_ACCOUNT=str(req['owner_id']))
     log = Path(logs) / f'request-{req["id"]}.log'
     log.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        p = subprocess.run(shlex.split(cmd) + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, text=True, timeout=timeout_s)
-        out = p.stdout
-        result = outcome(out) if p.returncode == 0 else {
-            'status': 'FAILED', 'result': f'Exit code {p.returncode}. Log tail:\n' + '\n'.join(out.splitlines()[-30:])}
-    except subprocess.TimeoutExpired as e:
-        out = e.stdout if isinstance(e.stdout, str) else (e.stdout or b'').decode(errors='replace')
-        result = {'status': 'FAILED', 'result': f'Timed out after {timeout_s // 60} minutes'}
+    p = subprocess.Popen(command(cmd, model) + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, text=True)
+    deadline = time.time() + timeout_s
+    while True:  # wait for the run, with a heartbeat every minute so the admin panel shows the worker as working
+        try:
+            out = p.communicate(timeout=max(1, min(60, deadline - time.time())))[0]
+            result = outcome(out) if p.returncode == 0 else {
+                'status': 'FAILED', 'result': f'Exit code {p.returncode}. Log tail:\n' + '\n'.join(out.splitlines()[-30:])}
+            break
+        except subprocess.TimeoutExpired:
+            if time.time() < deadline:
+                beat(api, 'working'); continue
+            p.kill()
+            out = p.communicate()[0]
+            result = {'status': 'FAILED', 'result': f'Timed out after {timeout_s // 60} minutes'}
+            break
     log.write_text(out, encoding='utf-8')
     try:
         api.call('POST', f'/api/worker/requests/{req["id"]}', result)
@@ -60,18 +82,35 @@ def work_one(api, name, cmd, logs, timeout_s):
     return True
 
 
+def is_worker(api):
+    return getattr(api, 'worker', False)
+
+
+def beat(api, state, error=None):
+    """Heartbeat for the admin panel (registered workers only); a failed heartbeat never stops the work."""
+    if is_worker(api):
+        try:
+            api.call('POST', '/api/worker/heartbeat', {'state': state, **({'error': error} if error else {})})
+        except (ApiError, OSError) as e:
+            print(f'worker: heartbeat failed: {e}', file=sys.stderr, flush=True)
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    os.environ.pop('CARLOS_ACCOUNT', None)  # the worker itself claims and finishes as the admin
-    api = Api(os.environ.get('CAR_API', 'http://127.0.0.1:8000'), load_token())
+    os.environ.pop('CARLOS_ACCOUNT', None)  # the worker itself never acts for an account
+    api = Api(os.environ.get('CAR_API', 'http://127.0.0.1:8000'), os.environ.get('WORKER_TOKEN') or load_token())
+    api.worker = bool(os.environ.get('WORKER_TOKEN'))
     name, cmd = os.environ.get('WORKER_NAME') or socket.gethostname(), os.environ.get('CLAUDE_CMD', 'claude -p')
+    model = os.environ.get('WORKER_MODEL', 'sonnet')
     logs = os.environ.get('WORKER_LOGS', str(ROOT / 'worker-logs'))
     timeout_s, poll = int(os.environ.get('WORKER_TIMEOUT_MIN', '120')) * 60, int(os.environ.get('POLL_SECONDS', '60'))
     while True:
+        beat(api, 'idle')
         try:
-            worked = work_one(api, name, cmd, logs, timeout_s)
+            worked = work_one(api, name, cmd, logs, timeout_s, model)
         except (ApiError, OSError) as e:  # site unreachable or a bad answer: report and keep polling
             print(f'worker: {e}', file=sys.stderr, flush=True)
+            beat(api, 'error', str(e))
             worked = False
         if '--once' in argv:
             return

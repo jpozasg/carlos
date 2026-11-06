@@ -1,6 +1,6 @@
 # Prompt: research request (the shared worker)
 
-`worker.py` fills `{URL}`, `{NOTE}`, `{ACCOUNT}`, `{REQUEST_ID}` and `{REPO}` and runs this prompt headless with Claude Code on the owner's desktop (issue #113). The environment already points every helper at the site and the requester's account: `CAR_API` (the site's URL), `AGENT_TOKEN` (the worker's admin token), `CARLOS_ACCOUNT={ACCOUNT}` (sent as `X-Carlos-Account`, so everything you write belongs to that account).
+`worker.py` fills `{URL}`, `{NOTE}`, `{ACCOUNT}`, `{REQUEST_ID}` and `{REPO}` and runs this prompt headless with Claude Code on the owner's desktop (issue #113). The environment already points every helper at the site and the requester's account: `CAR_API` (the site's URL), `AGENT_TOKEN` (the token of this one request, issue #141: it writes the shared catalogue and account {ACCOUNT} only and stops working when the request ends; with the older admin setup, `CARLOS_ACCOUNT={ACCOUNT}` is set instead and sent as `X-Carlos-Account`). Everything you write about the listing belongs to that account.
 
 ---
 
