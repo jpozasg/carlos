@@ -346,6 +346,7 @@
  "status": "Estado",
  "quality": "Calidad",
  "level": "Nivel",
+ "window_hint": "Solo para coches matriculados por primera vez en este periodo (p. ej. antes o después del restyling, el rango de producción de una llamada a revisión)",
  "level_hint": "El nivel al que está asociada esta fila: la variante, su motor o su generación",
  "level_variant": "variante",
  "level_engine": "motor",

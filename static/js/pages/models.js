@@ -40,7 +40,7 @@ async function variant(id) {
   root.innerHTML = '<div class="skel"></div>';
   let v; try { v = await get('/api/vehicles/' + id); } catch (e) { root.innerHTML = `<div class="card err">${esc(e.message)}</div>`; return; }
   const src = sid => { const s = v.sources.find(x => x.id === sid); return s ? qTag(s.quality, s.title) : ''; };
-  const lvl = r => lvlTag(r.level);
+  const lvl = r => lvlTag(r.level, r);
   if (!S.models) S.models = await get('/api/models');
   const vname = i => { const x = vlist(S.models).find(x => x.v.id === i); return x ? esc(`${x.mk.make} ${x.md.model} ${x.v.trim ?? ''} ${x.e.code}`.trim()) : '#' + i; };
   root.innerHTML = `<p class="small"><a href="#/models">${t('models_title')}</a></p><div class="section"><h2><a class="carlink" href="${modelsHref({ make: v.make, model: v.model })}">${esc(v.make)} ${esc(v.model)}</a> ${esc(v.trim ?? '')}</h2><p class="lead"><a href="${modelsHref({ make: v.make, model: v.model })}">${esc(v.generation)}</a> · <a href="${modelsHref({ engine: v.engine_code })}">${esc(v.engine_code)}</a> · ${esc(v.transmission ?? '')}</p>

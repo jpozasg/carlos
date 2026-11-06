@@ -346,6 +346,7 @@
  "status": "Status",
  "quality": "Quality",
  "level": "Level",
+ "window_hint": "Applies only to cars first registered in this window (e.g. before or after the facelift, a recall's build range)",
  "level_hint": "The level this row is attached to: the variant, its engine or its generation",
  "level_variant": "variant",
  "level_engine": "engine",

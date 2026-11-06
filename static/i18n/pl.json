@@ -348,6 +348,7 @@
  "status": "Status",
  "quality": "Jakość",
  "level": "Poziom",
+ "window_hint": "Dotyczy tylko aut z pierwszą rejestracją w tym okresie (np. przed lub po liftingu, zakres produkcji akcji serwisowej)",
  "level_hint": "Poziom, do którego przypisany jest wiersz: wariant, jego silnik lub generacja",
  "level_variant": "wariant",
  "level_engine": "silnik",

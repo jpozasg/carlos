@@ -892,6 +892,22 @@ class AppTest(unittest.TestCase):
         self.req('POST', '/api/parameters', {'ranking_weights': None})                 # back to the answers
         self.assertEqual(self.req('GET', '/api/ranking')[1]['manual'], False)
 
+    def test_phase_windows_153(self):
+        """Issue #153: a generation row with a first-registration window applies only to cars registered inside it."""
+        w = costs.in_window
+        self.assertTrue(w({}, '2011-06') and w({'applies_from': '2011-06'}, None))           # no window / unknown registration: kept
+        self.assertTrue(w({'applies_from': '2010', 'applies_to': '2011-06'}, '2011-06'))
+        self.assertFalse(w({'applies_from': '2011-07'}, '2011-06') or w({'applies_to': '2010-12'}, '2011-06'))
+        self.assertTrue(w({'applies_to': '2011'}, '2011-06'))                                # coarser side compares years
+        self.assertEqual(self.agent('POST', 'reliability_items', {'generation_id': G1, 'component': 'x', 'severity': 'LOW', 'part': 'CHASSIS',
+                                                                  'source_id': SRC_GUIDE, 'applies_from': '2011-13'})[0], 400)
+        names = lambda: {r['component'] for r in self.req('GET', f'/api/listings/{CAR_A}')[1]['reliability']}   # CAR_A: 2011-06
+        for comp, lo, hi in (('Early rust', None, '2011-12'), ('Facelift wiring', '2012-01', None)):
+            self.assertEqual(self.agent('POST', 'reliability_items', {'generation_id': G1, 'component': comp, 'severity': 'LOW', 'part': 'CHASSIS',
+                                                                      'source_id': SRC_GUIDE, 'applies_from': lo, 'applies_to': hi})[0], 201)
+        self.assertIn('Early rust', names())
+        self.assertNotIn('Facelift wiring', names())
+
     def test_reliability_parts(self):
         """Issue #54: each part starts at 9 and loses its 3 worst points (higher is better); a recall drops out once its check is OK; no part = unknown."""
         rows = [dict(id=i, component=f'c{i}', severity=sev, part=part, is_recall=rec, source_id=1)

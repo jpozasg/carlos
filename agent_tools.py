@@ -160,15 +160,18 @@ def consumption(v, value, n, lo, hi, source_id, notes='', level='variant', elect
 
 
 def reliability(v, component, issue, evidence, severity, source_id, inspection_action, frequency_status='PENDING',
-                level='variant', *, part, recall=False):
+                level='variant', *, part, recall=False, applies_from=None, applies_to=None):
     """Known weak point; inspection_action becomes a checklist item for every listing of the model. Engine faults go
     on the engine (level='engine'), body/chassis faults on the generation, variant-only quirks on the variant.
     part (required): ENGINE (incl. intake, cooling, turbo, injection, timing drive, emissions), GEARBOX (gearbox,
     clutch, driveshafts), CHASSIS (suspension, steering, brakes, body, rust, exhaust pipes) or ELECTRICS. Each part
-    counts its 3 worst points. recall=True for a manufacturer recall: it counts until its checklist item is OK or N/A."""
+    counts its 3 worst points. recall=True for a manufacturer recall: it counts until its checklist item is OK or N/A.
+    applies_from/applies_to ('YYYY-MM'): only for cars first registered in that window (#153): a fault fixed by the
+    facelift, a recall's build range. Never to split facts that hold for the whole generation."""
     return post('reliability_items', {**scope(v, level), 'component': component, 'issue': issue, 'evidence': evidence,
                                       'severity': severity, 'frequency_status': frequency_status, 'source_id': source_id,
-                                      'inspection_action': inspection_action, 'part': part, 'is_recall': 1 if recall else 0})
+                                      'inspection_action': inspection_action, 'part': part, 'is_recall': 1 if recall else 0,
+                                      'applies_from': applies_from, 'applies_to': applies_to})
 
 
 def check(level, level_id, task, source_id, result, notes=None):
@@ -197,7 +200,8 @@ def deactivate_packages(v, listing_id):
             patch('maintenance_items', m['id'], {'active': 0})
 
 
-def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, notes, level='variant', job=None):
+def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, notes, level='variant', job=None,
+         applies_from=None, applies_to=None):
     """Maintenance item: `parts` = DIY parts price (+ `hours`), `workshop` = total workshop price; give both for a job an
     owner may do themselves (`job` in config.DIYABLE_JOBS): each account's DIY choice picks one at calculation time, and the
     research contract matches jobs by `job` (config.JOBS). `diy` is only the default for rows without a job.
@@ -205,7 +209,8 @@ def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, no
     return post('maintenance_items', {**scope(v, level), 'item': name, 'job': job, 'interval_km': km, 'interval_months': months,
                                       'schedule': 'ITEM', 'diy': 1 if diy else 0, 'diy_parts_cost_eur': parts,
                                       'reference_cost_eur': workshop, 'diy_hours': hours, 'labor_included': 0 if diy else 1,
-                                      'status': status, 'source_id': source_id, 'notes': notes, 'active': 1})
+                                      'status': status, 'source_id': source_id, 'notes': notes, 'active': 1,
+                                      'applies_from': applies_from, 'applies_to': applies_to})
 
 
 def hu(v, level='generation'):
@@ -213,7 +218,8 @@ def hu(v, level='generation'):
                 'OFFICIAL FEE LEVEL', 'Every 24 months; 2 inspections in a 4-year period. Timing depends on the HU date of the car.', level, job='HU')
 
 
-def risk(v, component, km_from, km_to, probability, parts, labor, diy, hours, source_id, evidence, notes='', level='variant', job=None):
+def risk(v, component, km_from, km_to, probability, parts, labor, diy, hours, source_id, evidence, notes='', level='variant', job=None,
+         applies_from=None, applies_to=None):
     """Expected repair: probability of failure somewhere in [km_from, km_to]. Every risk needs a price: estimate one when
     none is found (user decision 2026-11-03) and say how in `notes`. A plain replacement job (clutch, battery, timing
     drive) takes its `job` code and both parts and labour, since each account's DIY choice decides whether labour counts."""
@@ -221,7 +227,8 @@ def risk(v, component, km_from, km_to, probability, parts, labor, diy, hours, so
         raise ValueError(f'{component}: every risk needs a price; estimate one and say how in notes')
     return post('repair_risks', {**scope(v, level), 'component': component, 'job': job, 'km_from': km_from, 'km_to': km_to,
                                  'probability': probability, 'parts_eur': parts, 'labor_eur': labor, 'diy': 1 if diy else 0,
-                                 'diy_hours': hours, 'status': 'ESTIMATED', 'evidence': evidence, 'source_id': source_id, 'notes': notes})
+                                 'diy_hours': hours, 'status': 'ESTIMATED', 'evidence': evidence, 'source_id': source_id, 'notes': notes,
+                                 'applies_from': applies_from, 'applies_to': applies_to})
 
 
 def tyres(v, size, price_per_tyre, source_id, notes, life_km=TYRE_LIFE_KM, fitting=TYRE_FITTING_EUR, level='variant'):

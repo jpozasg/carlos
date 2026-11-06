@@ -36,7 +36,7 @@ def maintenance_plan(items, km, months, restarted=frozenset(), new=False):
             continue
         n = due(i, km, months, restarted, new)
         price = i['diy_parts_cost_eur'] if i['diy'] else i['reference_cost_eur']
-        plan.append({'id': i['id'], 'item': i['item'], 'level': i.get('level'), 'interval_km': i['interval_km'],
+        plan.append({'id': i['id'], 'item': i['item'], 'level': i.get('level'), 'applies_from': i.get('applies_from'), 'applies_to': i.get('applies_to'), 'interval_km': i['interval_km'],
                      'interval_months': i['interval_months'], 'diy': i['diy'], 'price_eur': price, 'occurrences': round(n, 3),
                      'restarted': i['id'] in restarted, 'cost_eur': None if (n and price is None) else round(n * (price or 0), 2),
                      'diy_hours': round(n * i['diy_hours'], 2) if i['diy'] and i['diy_hours'] else 0,
@@ -65,6 +65,7 @@ def risk_plan(risks, km_now, km_period):
         unit = risk_price(r)
         out.append({**{k: r[k] for k in ('id', 'component', 'km_from', 'km_to', 'probability', 'parts_eur', 'labor_eur', 'diy',
                                           'diy_hours', 'status', 'evidence', 'source_id', 'notes')}, 'level': r.get('level'),
+                    'applies_from': r.get('applies_from'), 'applies_to': r.get('applies_to'),
                     'price_eur': unit, 'share': round(share, 3),
                     'expected_eur': None if (share and unit is None) else round(share * r['probability'] * (unit or 0), 2)})
     return out
@@ -230,6 +231,16 @@ def diy_choice(c):
     return {j for name in v[0].split(',') for j in config.DIY_JOBS.get(name.strip(), ())}
 
 
+def in_window(r, reg):
+    """A row with a first-registration window (issue #153) applies to a car registered inside it; compared at the precision
+    of the coarser side ('2015' vs '2014-08' compares years). An unknown registration keeps the row: never dropped by guess."""
+    if not reg:
+        return True
+    lo, hi = r.get('applies_from'), r.get('applies_to')
+    n = lambda w: min(len(w), len(reg))
+    return (not lo or lo[:n(lo)] <= reg[:n(lo)]) and (not hi or reg[:n(hi)] <= hi[:n(hi)])
+
+
 class Knowledge:
     """Every knowledge table loaded once and resolved per variant (variant + engine + generation rows)."""
 
@@ -237,9 +248,12 @@ class Knowledge:
         self.t = {t: scoped(c, t) for t in config.SCOPED_TABLES}
         self.jobs = diy_choice(c)
 
-    def of(self, table, v):
-        """The variant's rows; maintenance items and risks with a job code carry this account's DIY choice (#106 part 4)."""
+    def of(self, table, v, reg=None):
+        """The variant's rows; maintenance items and risks with a job code carry this account's DIY choice (#106 part 4);
+        with `reg` (a listing's first registration) rows whose window excludes the car are left out (#153)."""
         rs = for_variant(self.t[table], v)
+        if table in config.WINDOWED_TABLES:
+            rs = [r for r in rs if in_window(r, reg)]
         if self.jobs is None or table not in ('maintenance_items', 'repair_risks'):
             return rs
         return [{**r, 'diy': int(r['job'] in self.jobs), 'diy_as_stored': r['diy']} if r.get('job') else r for r in rs]
@@ -396,7 +410,7 @@ def tco_rows(c, p):
         costs = by_listing.get(u['id'], [])
         unit_cost = {cat: sum((x['parts_eur'] or 0) + (x['labor_eur'] or 0) for x in costs if x['category'] == cat)
                      if any(x['category'] == cat for x in costs) else None for cat in config.UNIT_COST_CATEGORIES}
-        m_rows, r_rows, restarted = know.of('maintenance_items', v), know.of('repair_risks', v), frozenset(resets.get(u['id'], ()))
+        m_rows, r_rows, restarted = know.of('maintenance_items', v, reg), know.of('repair_risks', v, reg), frozenset(resets.get(u['id'], ()))
         # energy price: diesel, petrol (full hybrids too), electricity for an electric car; a plug-in hybrid's mix of both
         # is not supported yet, so its fuel stays unknown (owner decision 2026-11-05)
         price_l = None if u['fuel_type'] in ('Electric', 'Plug-in hybrid') else \
@@ -475,7 +489,7 @@ def tco_rows(c, p):
         age = 0.0 if new else age_years(u['first_registration'], today)
         counts = u['inspection_counts']
         items = contract.resolved(v['id'])
-        rel_rows = know.of('reliability_items', v)
+        rel_rows = know.of('reliability_items', v, reg)
         items += research.listing_items(u, {'insurance': know.of('insurance_data', v), 'tax': {'exempt': True} if electric and taxable == 0 else tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
                                             'weak_points': {r['id'] for r in rel_rows}, 'checked': set(checks.get(u['id'], {})),
                                             'captured': u['id'] in captured}, today)
@@ -582,6 +596,7 @@ def listing_detail(c, listing_id, p, ranked):
     q = lambda sql: rows(c, sql, (listing_id,))
     v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
     know = Knowledge(c)
+    reg = u['first_registration'] or (datetime.date.today().isoformat()[:7] if is_new(u) else None)  # as in the ranking
     u.update(valuations=q('SELECT * FROM valuations WHERE listing_id=? ORDER BY id'),
              unit_costs=q('SELECT * FROM unit_costs WHERE listing_id=? ORDER BY id'),
              maintenance_resets=q('SELECT * FROM maintenance_resets WHERE listing_id=? ORDER BY id'),
@@ -589,7 +604,7 @@ def listing_detail(c, listing_id, p, ranked):
              events=q('SELECT * FROM listing_events WHERE listing_id=? ORDER BY event_date, id'),
              snapshots=q('SELECT * FROM listing_snapshots WHERE listing_id=? ORDER BY captured_at, id'),
              media=q('SELECT * FROM listing_media WHERE listing_id=? ORDER BY id'),
-             reliability=know.of('reliability_items', v), maintenance=know.of('maintenance_items', v),
+             reliability=know.of('reliability_items', v, reg), maintenance=know.of('maintenance_items', v, reg),
              insurance=know.of('insurance_data', v), tax=know.of('tax_data', v), observations=know.of('observations', v),
              tyres=know.of('tyre_data', v),
              engine_row=rows(c, 'SELECT * FROM engines WHERE id=?', (v['engine_id'],))[0],
@@ -601,7 +616,7 @@ def listing_detail(c, listing_id, p, ranked):
     months = p['ownership_years'] * 12
     restarted = frozenset(r['maintenance_item_id'] for r in u['maintenance_resets'])
     u['maintenance_plan'] = maintenance_plan(u['maintenance'], u['period_km'], months, restarted, is_new(u))
-    u['repair_risks'] = risk_plan(sorted(know.of('repair_risks', v), key=lambda r: (r['km_from'], r['id'])), u['mileage_km'], u['period_km'])
+    u['repair_risks'] = risk_plan(sorted(know.of('repair_risks', v, reg), key=lambda r: (r['km_from'], r['id'])), u['mileage_km'], u['period_km'])
     # the dossier lists the sources these rows cite too (shared sources such as the HU fee have no vehicle)
     have = {s['id'] for s in u['sources']}
     cited = {x['source_id'] for x in u['maintenance_plan'] + u['repair_risks'] + u['tyres'] + u['insurance'] + u['tax']
