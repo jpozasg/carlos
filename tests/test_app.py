@@ -508,6 +508,11 @@ class AppTest(unittest.TestCase):
         # each account sees only its own; the admin sees the whole queue with who asked
         self.assertEqual(self.req('GET', '/api/requests')[1], [])
         self.assertEqual(len(self.req('GET', '/api/requests', token=None, cookie=t2)[1]), 5)
+        # an admin agent may queue for her (issue #139): recorded as requested_by, refused once her 5 open slots are full
+        st, r = self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/99'}, headers={'X-Carlos-Account': str(uid2)})
+        self.assertEqual(st, 400, r)
+        first = self.req('GET', '/api/requests', token=None, cookie=t2)[1][-1]
+        self.assertIsNone(first['requested_by'])
         self.assertEqual({x['username'] for x in self.req('GET', '/api/admin/requests')[1]}, {'maria'})
         self.assertEqual(self.req('GET', '/api/admin/requests', token=None, cookie=t2)[0], 401)
         # cancel: own QUEUED only
@@ -515,6 +520,11 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('PATCH', f'/api/requests/{mine[0]["id"]}', {'status': 'CANCELLED'})[0], 400)       # not the admin's
         self.assertEqual(self.req('PATCH', f'/api/requests/{mine[0]["id"]}', {'status': 'DONE'}, token=None, cookie=t2)[0], 400)
         self.assertEqual(self.req('PATCH', f'/api/requests/{mine[0]["id"]}', {'status': 'CANCELLED'}, token=None, cookie=t2)[0], 200)
+        st, r = self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/99'}, headers={'X-Carlos-Account': str(uid2)})
+        self.assertEqual((st, r['owner_id'], r['requested_by']), (201, uid2, 1), r)  # 1 = the fixture's admin
+        self.assertIn(r['id'], [x['id'] for x in self.req('GET', '/api/requests', token=None, cookie=t2)[1]])
+        self.assertEqual(self.req('PATCH', f'/api/requests/{r["id"]}', {'status': 'CANCELLED'}, headers={'X-Carlos-Account': str(uid2)})[0], 200)
+        self.assertEqual(self.req('POST', '/api/account/password', {'old': 'x', 'new': 'yyyyyyyyyy'}, headers={'X-Carlos-Account': str(uid2)})[0], 403)
         self.assertEqual(self.req('PATCH', f'/api/requests/{mine[0]["id"]}', {'status': 'CANCELLED'}, token=None, cookie=t2)[0], 400)  # no longer queued
         # the worker side is for admin tokens only
         self.assertEqual(self.req('POST', '/api/worker/claim', {'worker': 'x'}, token=None, cookie=t2)[0], 403)
