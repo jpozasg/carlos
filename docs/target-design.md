@@ -1,6 +1,6 @@
 # Target design: data model, ranking, resale and research workflow
 
-Status: **for review** (issue #172). Nothing here is built yet. It consolidates the owner's decisions of 2026-11-06 in #164 (PR #170), #165, #166, #167, #168 (rounds 1–3) and #169, the first independent data-model and ranking reviews, and two further independent designs (web research only), which agreed with the direction. Ideas that came from a review are marked **[review]**; everything else is an owner decision or follows from one. The reset and re-research (#167) is the **last** step, after a validation pilot (§8).
+Status: **approved by the owner (2026-11-06); being built** (issue #172) in the order of §8. It consolidates the owner's decisions of 2026-11-06 in #164 (PR #170), #165, #166, #167, #168 (rounds 1–3) and #169, the first independent data-model and ranking reviews, and two further independent designs (web research only), which agreed with the direction. Ideas that came from a review are marked **[review]**; everything else is an owner decision or follows from one. The reset and re-research (#167) is the **last** step, after a validation pilot (§8).
 
 ## 1. Principles
 
@@ -144,25 +144,25 @@ Any missing input makes that component unknown, and the TCO incomplete. The reli
 
 ### 6.1 Criteria
 
-| Criterion | Measures | Proposed score curve (100 → 0) |
+| Criterion | Measures | Score (0–100) |
 |---|---|---|
-| cost_month | complete TCO / months | ≤ 70 % of the reference car's cost → 100; reference cost → 60; ≥ 150 % → 0 |
+| cost_month | complete TCO / months | **points = 60 − 112·ln(cost / anchor)**, capped 0–100 (≈ +10.7 points per 10 % cheaper); anchor = the current car's cost per month, else the median of the candidates |
 | budget (replaces cash_now) | purchase price | 100 up to ~55 % of the ideal budget, slowly to ~80 at the ideal, accelerating decline above, 0 at the maximum; above the maximum excluded (switchable) |
-| mileage | odometer | ≤ 50,000 km → 100; 250,000 km → 0 |
-| age | years since registration | ≤ 3 → 100; 20 → 0 |
-| reliability | fault points per part (out of 36) blended with the TÜV/ADAC baseline for the car's age class | proposed: 36 → 100; 18 → 0, baseline weight to set |
-| inspection | checklist problems | 0 → 100; 5 → 0 |
-| power | PS | 0 at 60 PS; 100 at the setup's "enough power" |
-| safety (new) | Euro NCAP stars + test year, else ESP/airbags | 5★ recent → 100; no ESP → 0 |
-| distance to view (new) | km from the account's postcode, on the listing | ≤ 25 km → 100; 300 km → 0 |
+| mileage | odometer | ≤ 50,000 km = 100; 150,000 = 50; ≥ 250,000 = 0 |
+| age | years since registration | ≤ 3 years = 100; 10 = 50; ≥ 20 = 0 |
+| reliability | **one value: 2/3 researched faults + 1/3 TÜV/ADAC rates** for the model at the car's age class | its own fixed scale |
+| inspection | checklist problems | its own fixed scale |
+| power | PS **relative in percent** to the current car (else the candidates' median), like cost | log-scale, same form as cost |
+| safety (new) | Euro NCAP stars of the generation, adjusted for the test regime (pre-2009 ratings count less than the stricter post-2009 overall rating) | 5 stars current regime = 100; 3 = 40; none = 0; missing ESP = penalty |
+| distance to view (new) | km from the account's postcode, on the listing | ≤ 25 km = 100; 100 km = 50; ≥ 200 km = 0 |
 
-- **Fixed curves** per account (defaults from the setup, adjustable); a car's points never depend on the other cars **[review: min–max problem]**.
+- **Fixed curves**, defaults adjustable in Settings; a car's points never depend on the other cars **[review: min–max problem]**. For cost and power the anchor may move when cars are added, which shifts every displayed score by the same amount but **never changes the order** (an analysis on the real data found min–max reshuffled 76 of 300 pairs when one car was added; this rule reshuffles none). It requires every scored car to be complete.
 - **Not criteria:** confidence (shown next to the score) **[review]**; seller type and evidence (service history, accident-free claim, HU left, dealer warranty) are **filters**.
-- **Scored only when complete:** every weighted criterion has a value and research meets the minimum (§9). The owner's car is scored exactly the same way **[review]**.
+- **Scored only when complete:** every weighted criterion has a value and **every required research item** (§7) is done. The owner's car is scored exactly the same way **[review]**.
 
 ### 6.2 Questionnaire
 
-Shorter than the current eight tasks, finer weights: 5–6 cars per screen, adaptive stop when weights are stable, a final screen to confirm or adjust weights. Simulated before release **[review]**.
+**Shorter than the current eight tasks**, finer weights: 5–6 cars per screen, adaptive stop when weights are stable, a final screen to confirm or adjust weights; the cost advantage is shown as a percentage ("12 % less per month"). Simulated before release **[review]**.
 
 ## 7. Research contract and worker workflow
 
@@ -201,12 +201,11 @@ Rules: every fault has a price, existence grade and curve; every "fixed from" wi
 
 **Risks:** the rebuild touches most tables (big PR; mitigate with tests per step); curves and baselines are mostly ESTIMATE/C-quality until better sources exist; the completeness gate will leave many cars "not scored" until research catches up; one HSN/TSN with several engine codes needs the listing to show the engine code; mobile.de search parameters must be verified in the browser.
 
-## 9. Open questions (recommended values)
+## 9. Still open
 
-1. **Minimum research to be scored:** every mandatory contract item at least ACCEPTED, no MISSING (recommended), or a percentage threshold.
-2. **Market sample:** ≥ 5 cars per band; refresh after 6 months.
-3. **Negotiation discount (private sale):** 5 % (range 3–10 %), ESTIMATED — no primary source found.
-4. **Curve defaults** in §6.1: confirm or adjust each; and the **weight of the TÜV/ADAC baseline** inside reliability (proposed 1/3 baseline, 2/3 faults).
-5. **Age classes** for the baseline: follow TÜV's classes (2–3, 4–5 … 10–11 years).
-6. **Safety source:** Euro NCAP stars + test year.
-7. **Fault reference table** and **existence grades** in §3.1: confirm.
+Everything else above is decided by the owner (2026-11-06). Two details remain and will be set with the owner in the build PRs:
+
+1. **Derived-severity thresholds** (§3.1): the consequence/price rule, e.g. the €1,500 line between MEDIUM and LOW-MEDIUM.
+2. **Fault reference table** (§3.1): the four probability levels used for ESTIMATE curves, and the existence grades.
+
+Decided values for reference: scored only when every required research item is done; reliability 2/3 faults + 1/3 TÜV/ADAC; market sample **≥ 5 cars per band, refreshed after 6 months**; private-sale negotiation discount 5 % (range 3–10 %, ESTIMATED, no primary source found); baseline age classes follow TÜV's classes.
