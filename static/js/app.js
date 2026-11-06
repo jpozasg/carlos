@@ -6,7 +6,6 @@ import { $, esc, num, store, toast, yrs } from './ui.js';
 
 export const S = { accounts: [], me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
   fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null, prefs: {} };
-export const THEMES = ['cluster', 'friendly', 'garage', 'retro', 'olive', 'terminal', 'kawaii', 'circuit', 'arcade', 'hyrule'];
 const PAGES = {
   compare: () => import('./pages/compare.js'), ranking: () => import('./pages/ranking.js'), listing: () => import('./pages/dossier.js'),
   models: () => import('./pages/models.js'), sources: () => import('./pages/sources.js'), settings: () => import('./pages/settings.js'),
@@ -19,13 +18,12 @@ function setView(id) {
   location.hash = '#/compare'; location.reload();
 }
 
-export function applyTheme(theme = store.get('theme', 'cluster'), mode = store.get('mode', 'auto')) {
-  if (!THEMES.includes(theme)) theme = 'cluster';
+export function applyTheme(mode = store.get('mode', 'auto')) {  // one theme (issue #181): only light/dark/auto is chosen
   const root = document.documentElement;
-  root.dataset.theme = theme;
+  root.dataset.theme = 'cluster';
   if (mode === 'auto') root.removeAttribute('data-mode'); else root.dataset.mode = mode;
   root.classList.toggle('os-dark', matchMedia('(prefers-color-scheme: dark)').matches);
-  store.set('theme', theme); store.set('mode', mode);
+  store.set('mode', mode);
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim() || '#fff');
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme());

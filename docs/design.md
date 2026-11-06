@@ -11,8 +11,7 @@ An instrument cluster at night, chosen by the owner as the main look.
 - Amber `#F5A524` as the accent: selection, the current tab, focus, the ruler markers. Amber carries dark text, never white.
 - Teal `#2FD4A8` for "costs less" and good states; red `#FF5C5C` for "costs more". Status colours stay reserved for status.
 - The big readouts (versus number, spec plate figures, cost per month) use a monospace readout face on purpose: it is the cluster's digital display, not a costume.
-- The "friendly" light theme uses road colours instead: concrete `#F2F2EF`, asphalt ink, road-marking yellow, teal-green links.
-Other themes replace these tokens wholesale (`static/css/tokens.css`); layout and components never change with the theme.
+This is the only theme (issue #181); its tokens live in `static/css/tokens.css`.
 
 ## Type
 One family: **Bricolage Grotesque** (SIL OFL, self-hosted in `static/fonts/`, variable weight and optical size). Large sizes use the wide optical size for the versus number and page titles; small sizes stay neutral for labels and data. Numbers use tabular figures. Scale in rem with a 1.15 ratio; no fluid headings. No all-caps labels, no eyebrows above headings, no arrows appended to links, no monospace as a costume.
