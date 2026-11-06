@@ -7,7 +7,7 @@ URLs given in the capture; a refused download is reported and skipped, never ret
 Usage:  python capture_listing.py capture.json [--dry-run] [--api http://127.0.0.1:8000]
 Format: see CAPTURE_FORMAT below (also printed with --help).
 """
-import argparse, json, os, sys, urllib.error, urllib.request
+import argparse, json, os, re, sys, urllib.error, urllib.request
 from pathlib import Path
 from urllib.parse import urlencode
 from carlos import config  # NEW_CAR_MAX_KM: a new car is refused before any write (#165)
@@ -19,7 +19,10 @@ IMAGE_TYPES = {b'\xff\xd8\xff': 'image/jpeg', b'\x89PNG': 'image/png', b'RIFF': 
 USER_AGENT = 'carlos/capture_listing.py (personal archive)'
 # Optional listings columns copied as-is from the capture (seller claims stay in the *_claim columns).
 LISTING_FIELDS = ('first_registration', 'seller', 'location', 'seller_address', 'accident_free_claim', 'owners_claim',
-                  'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes', 'battery_soh_claim')
+                  'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes', 'battery_soh_claim',
+                  # structured facts for the ranking filters, the distance and the dossier (#169)
+                  'seller_type', 'warranty', 'hu_until', 'service_history', 'accident_free', 'seller_rating', 'seller_reviews',
+                  'postal_code')
 # lease columns (#127) stay in the schema for listings captured before #165, but a capture never writes them
 LEASE_FIELDS = ('lease_kind', 'lease_monthly_eur', 'lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur',
                 'lease_fees_eur', 'lease_extra_km_eur', 'lease_fewer_km_eur', 'lease_includes')
@@ -38,7 +41,11 @@ CAPTURE_FORMAT = '''Capture JSON (null = unknown, never 0):
   "listing": {"first_registration": "2014-05", "seller": "...", "location": "...",
               "accident_free_claim": 1, "owners_claim": 2, "hu_claim": "05/2027",
               "service_history_claim": "...", "equipment": "...", "listing_date": "...",
-              "battery_soh_claim": 94},                               electric: battery health % as claimed
+              "battery_soh_claim": 94,                                electric: battery health % as claimed
+              "seller_type": "DEALER", "warranty": 1, "hu_until": "2027-05",     DEALER/PRIVATE; 1/0; HU month
+              "service_history": "YES", "accident_free": "CLAIMED",        YES/NO/CLAIMED as the ad states it
+              "seller_rating": 4.8, "seller_reviews": 120,                   dealer's stars and review count (null: private / not shown)
+              "postal_code": "97209"},                                      the car's postcode (for the distance)
   (second-hand purchases only, #165: no lease fields; a new car or a lease-only ad is refused)
   "description": "verbatim seller text, original language",
   "attributes": {"Kilometerstand": "85.000 km", "...": "every feature exactly as shown"},
@@ -105,6 +112,19 @@ def validate(cap):
     if soh is not None and (isinstance(soh, bool) or not isinstance(soh, (int, float)) or not 0 < soh <= 100):
         raise ValueError('battery_soh_claim must be a percentage (0–100] or null (unknown)')
     lst = cap.get('listing', {})
+    for k, allowed in (('seller_type', ('DEALER', 'PRIVATE')), ('service_history', ('YES', 'NO', 'CLAIMED')),
+                       ('accident_free', ('YES', 'NO', 'CLAIMED')), ('warranty', (0, 1))):
+        if lst.get(k) is not None and (isinstance(lst[k], bool) or lst[k] not in allowed):
+            raise ValueError(f'{k} must be one of {allowed} or null (not shown in the ad)')
+    if lst.get('hu_until') is not None and not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', str(lst['hu_until'])):
+        raise ValueError('hu_until must be YYYY-MM or null')
+    if lst.get('postal_code') is not None and not re.fullmatch(r'\d{5}', str(lst['postal_code'])):
+        raise ValueError('postal_code must be 5 digits or null')
+    r_, n_ = lst.get('seller_rating'), lst.get('seller_reviews')
+    if r_ is not None and (isinstance(r_, bool) or not isinstance(r_, (int, float)) or not 0 <= r_ <= 5):
+        raise ValueError('seller_rating must be stars 0–5 or null (private seller / not shown)')
+    if n_ is not None and (isinstance(n_, bool) or not isinstance(n_, int) or n_ < 0):
+        raise ValueError('seller_reviews must be a count or null')
     # Carlos compares second-hand purchases only (issue #165): a used ad that also shows a lease offer is captured as a
     # purchase (leave the lease out); a lease-only ad and a new car are not captured
     if any(lst.get(k) is not None for k in LEASE_FIELDS):

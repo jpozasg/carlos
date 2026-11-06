@@ -48,7 +48,8 @@ class Forbidden(Exception):
 def ranked_rows(c, p):
     """Listings with costs, metrics and ranking; returns (rows, number of ranking candidates)."""
     out = tco_rows(c, p)
-    return out, rank(out, weights_from(p), p)
+    f = {r['preference_key']: r['preference_value'] for r in rows(c, "SELECT preference_key, preference_value FROM project_preferences WHERE preference_key LIKE 'filter_%'")}
+    return out, rank(out, weights_from(p), {**p, **f})
 
 
 def detail(c, listing_id, p):

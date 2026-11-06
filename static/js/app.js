@@ -55,7 +55,7 @@ export function renderShell() {
     ${S.me ? `<a class="chip" href="#/settings" title="${esc(t('account'))}">👤 ${esc(S.me.username)}</a><button class="chip" type="button" data-logout>${t('logout')}</button>` : ''}</div>
     ${viewedName() ? `<div class="callout viewas" role="status"><p>${t('viewing_as', { u: `<b>${esc(viewedName())}</b>` })}</p><button class="btn sm" type="button" data-viewas-exit>${t('viewing_exit')}</button></div>` : ''}
     <nav class="main" aria-label="${esc(t('sections'))}">${[...NAV, ...(S.me?.role === 'admin' ? ['admin'] : [])].map(k => `<a href="#/${k}" data-nav="${k}">${t('tab_' + k)}</a>`).join('')}</nav>`;
-  $('footer').innerHTML = esc(t('footer'));
+  $('footer').innerHTML = esc(t('footer')) + ' · ' + t('osm_credit');  // ODbL attribution for the bundled postcode points (#169)
   setHeaderHeight();
 }
 function setHeaderHeight() {  // the compare control bar sticks right below the (sticky) header

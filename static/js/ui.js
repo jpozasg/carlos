@@ -6,7 +6,7 @@ export const euro = n => n == null ? '—' : new Intl.NumberFormat(locale(), { s
 export const num = (n, d = 2) => n == null ? '—' : new Intl.NumberFormat(locale(), { maximumFractionDigits: d, useGrouping: 'always' }).format(n);
 // a score exists only when the car is complete (#169); otherwise what is missing
 export const scoreTxt = u => num(u.score, 0);
-export const notScoredTxt = u => u.excluded === 'over_max' ? t('excluded_over_max') : !u.not_scored ? t('not_ranked')
+export const notScoredTxt = u => u.excluded === 'over_max' ? t('excluded_over_max') : (u.excluded || '').startsWith('filter:') ? t('excluded_filter', { f: t('flt_' + u.excluded.slice(7)) }) : !u.not_scored ? t('not_ranked')
   : [u.not_scored.criteria.length ? t('ns_criteria', { l: u.not_scored.criteria.map(k => t('c_' + k)).join(', ') }) : '',
      u.not_scored.research.length ? t('ns_research', { n: u.not_scored.research.length }) : ''].filter(Boolean).join(' · ') || t('not_ranked');
 // eight validated series colours (docs/frontend.md) by the criterion's position; a ninth gets a neutral colour, never an undefined --s9

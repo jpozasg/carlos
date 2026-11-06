@@ -166,6 +166,34 @@ def score_of(k, m, ctx):
     return None
 
 
+FILTERS = {  # preference key → (allowed values, test on the listing row); unknown (NULL) never passes
+    'filter_seller': (('DEALER', 'PRIVATE'), lambda r, v: r.get('seller_type') == v),
+    'filter_warranty': (('1',), lambda r, v: r.get('warranty') == 1),
+    'filter_service_history': (('YES', 'YES_OR_CLAIMED'), lambda r, v: r.get('service_history') == 'YES' or v == 'YES_OR_CLAIMED' and r.get('service_history') == 'CLAIMED'),
+    'filter_accident_free': (('YES', 'YES_OR_CLAIMED'), lambda r, v: r.get('accident_free') == 'YES' or v == 'YES_OR_CLAIMED' and r.get('accident_free') == 'CLAIMED'),
+    'filter_hu_months': (None, lambda r, v: months_left(r.get('hu_until')) is not None and months_left(r['hu_until']) >= int(v)),
+}
+
+
+def months_left(yyyy_mm, today=None):
+    """Whole months from this month to the HU month ('YYYY-MM'); None when unknown."""
+    import datetime
+    if not yyyy_mm:
+        return None
+    t = today or datetime.date.today()
+    y, m = map(int, yyyy_mm.split('-'))
+    return (y - t.year) * 12 + m - t.month
+
+
+def failed_filter(r, p):
+    """The first filter this listing fails, or None."""
+    for k, (allowed, ok) in FILTERS.items():
+        v = p.get(k)
+        if v not in (None, '') and (allowed is None or v in allowed) and not ok(r, v):
+            return k[len('filter_'):]
+    return None
+
+
 def rank(rows, weights, p=None):
     """Fixed-curve 0–100 score with a per-criterion explanation; returns the number of ranking candidates. A car without a
     value for a weighted criterion, or with research still missing, is 'not scored yet' and says what is missing."""
@@ -184,10 +212,11 @@ def rank(rows, weights, p=None):
         research_left = [i['id'] for i in (r.get('research') or []) if i.get('grade') == 'MISSING']
         parts = {k: score_of(k, m, ctx) for k in CRITERIA}
         missing = [k for k in used if parts[k] is None]
-        excluded = exclude and not r['is_reference'] and r.get('budget_status') == 'over_max'
+        excluded = None if r['is_reference'] else 'over_max' if exclude and r.get('budget_status') == 'over_max' else (
+            'filter:' + failed_filter(r, p) if failed_filter(r, p) else None)
         scored = bool(total_w) and not missing and not research_left and r['listing_status'] != 'WITHDRAWN'
         score = round(sum(used[k] * parts[k] for k in used) / total_w, 1) if scored else None
-        r.update(score=score, rank=None, excluded='over_max' if excluded else None,
+        r.update(score=score, rank=None, excluded=excluded,
                  score_parts={k: round(parts[k]) for k in used if parts[k] is not None},
                  not_scored=None if scored else {'criteria': missing, 'research': research_left},
                  explain=[{'criterion': k, 'value': m.get(k), 'unit': CRITERIA[k]['unit'], 'better': CRITERIA[k]['better'],

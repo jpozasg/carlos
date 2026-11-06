@@ -1,7 +1,7 @@
 """Cost calculation per listing over the ownership period (README, "Calculation"). NULL means unknown, never 0."""
 import datetime, json, re
 from . import config
-from . import research
+from . import geo, research
 from .db import for_variant, rows, scoped
 from .ranking import SEVERITY_POINTS, STATUS_POINTS
 
@@ -741,7 +741,7 @@ def tco_rows(c, p):
             'budget': None if u['is_reference'] or u['offer'] != 'purchase' else u['price_eur'],
             'reliability_stats': stats_ratio(know.of('reliability_stats', v), age),
             'safety': safety_stars(u),
-            'distance': u.get('distance_km'),
+            'distance': 0 if u['is_reference'] else u.get('distance_km') if u.get('distance_km') is not None else geo.km(p.get('postal_code'), u.get('postal_code')),
             'confidence': research.confidence(items),  # the contract's grades (issue #114), not the number of rows
             # informative, not ranked (they are inside cost_month)
             'price': None if u['is_reference'] else u['price_eur'],
