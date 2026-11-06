@@ -388,6 +388,11 @@ class AppTest(unittest.TestCase):
         u = self.units()[l['id']]
         self.assertAlmostEqual(u['components']['tax'], 40 * u['period_months'] / 12)  # the window covers a car registered today
         self.assertEqual(u['metrics']['age'], 0)
+        gap = 'listing field missing: first_registration'
+        todo = lambda: next(x for x in self.req('GET', '/api/agent/todo')[1]['listings'] if x['listing_id'] == l['id'])['todo']
+        self.assertNotIn(gap, todo())  # a new car has no registration yet (#162)
+        self.agent('PATCH', f"listings/{l['id']}", {'mileage_km': 5000})
+        self.assertIn(gap, todo())  # a used car without it still gets the item
         items = [{'id': f'rel.CHASSIS.{s}', 'grade': 'ACCEPTED', 'na_only': s != 'guide'} for s in ('adac', 'tuev', 'guide')]
         self.assertNotIn('CHASSIS', research.known_parts(items))
         self.assertEqual(research.too_new_parts(items), ['CHASSIS'])
