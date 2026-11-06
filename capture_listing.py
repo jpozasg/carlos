@@ -253,6 +253,8 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
                     f"{fmt(cap.get('mileage_km'), 'km')}{lease_txt(cap.get('listing', {}))}; {photo_note}."}, 'found log entry')
     else:
         patch, changes = {'last_checked': day}, []
+        if existing.get('vehicle_id') != cap['vehicle_id']:  # re-research after the reset (#194) attaches the new variant
+            patch['vehicle_id'] = cap['vehicle_id']
         new = {**cap.get('listing', {}), 'price_eur': cap.get('price_eur'), 'mileage_km': cap.get('mileage_km')}
         for k, unit in (('price_eur', 'EUR'), ('mileage_km', 'km'), ('lease_monthly_eur', 'EUR/month')):
             if new.get(k) is not None and new[k] != existing.get(k):

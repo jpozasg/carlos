@@ -225,6 +225,9 @@ class Contract:
         (#174). A family item is graded on the engine (or gearbox) when there is no family, and a gearbox item on the
         variant when it names no gearbox. An item missing on its level but present one level lower (e.g. an engine job
         stored on the variant, an ADAC check stored on the engine) counts as ACCEPTED at most, with a hint to move it up."""
+        if vehicle_id is None:  # a listing awaiting (re-)research has no variant yet (#194): nothing is researched
+            return [{'id': 'var.identity', 'level': 'variant', 'title': 'Variant (awaiting research)', 'grade': 'MISSING',
+                     'hint': 'the listing has no variant yet: queue it for research'}]
         v = self.rows['vehicles'][vehicle_id]
         engine, generation = self.rows['engines'][v['engine_id']], self.rows['generations'][v['generation_id']]
         gearbox = self.rows['gearboxes'].get(v.get('gearbox_id'))
