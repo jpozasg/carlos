@@ -58,6 +58,33 @@ class PromoteTest(unittest.TestCase):
         self.assertEqual(self.q('PRAGMA foreign_key_check'), [])
         self.assertTrue(list((Path(self.tmp.name) / 'backups').glob('cars_*.sqlite')))
 
+    def test_whole_run_windows_and_level_sources(self):
+        """#153/#144: one model under two names sharing a code is one generation over the whole production run; rows naming
+        their phase or a recall's build range get a window; a source cited from two levels gets one copy per level."""
+        c = sqlite3.connect(self.db)
+        c.executescript("""
+            INSERT INTO generations (id, make, model, name, start_year, end_year, owner_id) VALUES
+              (30, 'Ford', 'Focus', 'Focus III (DYB)', 2010, 2018, 1), (40, 'Ford', 'Focus', 'III (DYB, facelift)', 2014, 2018, 5);
+            INSERT INTO engines (id, code, fuel_type, power_kw, displacement_cc, owner_id) VALUES (30, 'XWDA', 'Diesel', 77, 1499, 5);
+            INSERT INTO vehicles (id, generation_id, engine_id, hsn, tsn, owner_id) VALUES (40, 40, 30, '8566', 'AXX', 5), (50, 30, 30, '8566', 'AYY', 1);
+            INSERT INTO sources (id, title, source_type, owner_id) VALUES (3, 'Recall list', 'recall_database', 5);
+            INSERT INTO reliability_items (id, generation_id, component, issue, severity, part, is_recall, source_id) VALUES
+              (1, 40, 'Recall: airbag', 'Production 02/2015-03/2015', 'HIGH IF APPLICABLE', 'ELECTRICS', 1, 3),
+              (2, 40, 'Door seal leaks (pre-facelift)', 'water ingress', 'LOW', 'CHASSIS', 0, 3);
+            INSERT INTO reliability_items (id, engine_id, component, issue, severity, part, is_recall, source_id) VALUES
+              (3, 30, 'Injector', 'leaks', 'MEDIUM', 'ENGINE', 0, 3);
+        """)
+        c.commit(); c.close()
+        catalogue_promote.run(self.db, apply=True)
+        self.assertEqual(self.q("SELECT id, name, start_year, end_year, facelift_year FROM generations WHERE make='Ford'"),
+                         [(40, 'Focus III (DYB)', 2010, 2018, 2014)])
+        self.assertEqual(self.q('SELECT id, applies_from, applies_to FROM reliability_items ORDER BY id'),
+                         [(1, '2015-02', '2016-03'), (2, None, '2014'), (3, None, None)])
+        self.assertEqual(self.q('SELECT owner_id, generation_id, engine_id FROM sources WHERE title=\'Recall list\' ORDER BY id'),
+                         [(None, None, 30), (None, 40, None)])   # never level-free: each copy only for accounts with that car
+        self.assertEqual(self.q('SELECT count(DISTINCT source_id) FROM reliability_items'), [(2,)])
+        self.assertEqual(self.q('PRAGMA foreign_key_check'), [])
+
 
 if __name__ == '__main__':
     unittest.main()

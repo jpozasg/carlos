@@ -10,11 +10,18 @@ merges duplicate generations, engines and variants. Generic rules, no ids:
   notes speak of the listing, seller, photos or "this car", rows citing a listing or user-reported source.
 - A row that moved with a merged level is archived when the kept level already has the same thing (job, component,
   part, metric, task, tax or tyre row), so nothing is counted twice; archived rows stay restorable.
-- Sources on a promoted level, or cited by its shared rows, become shared (listing and user-reported ones never).
+- Sources on a promoted level, or cited by its shared rows, become shared and attached to that level, so only accounts
+  with a car of it see them (#144, owner 2026-11-06); a source cited from several levels gets one copy per level.
+  Listing and user-reported sources are never shared.
+- A generation is the whole production run (#153): merged generations take the widest years, the name of the row
+  spanning them and the facelift year from a phase row named after it; generations of one model that share a code in
+  their names ("Polo V (6R/6C)" and "Polo V (6R), facelift 6C") are one generation. Rows that name their phase get a
+  first-registration window instead of being lost: "pre-facelift" up to the facelift year, "facelift" from it, and a
+  recall's stated build range (registration up to 12 months after the last build month).
 
 Dry run by default: works on a copy and prints the report; --apply backs up and changes the given database.
 Usage: python catalogue_promote.py <cars.sqlite> [--apply] [--out <copy path>]"""
-import json, sqlite3, sys, tempfile
+import json, re, sqlite3, sys, tempfile
 from pathlib import Path
 from migrate import backup
 
@@ -31,6 +38,56 @@ SKIP_FIELDS = {'id', 'owner_id', 'notes'}
 KEY = {'maintenance_items': lambda r: r['job'], 'repair_risks': lambda r: r['job'], 'reliability_items': lambda r: 'all',
        'tax_data': lambda r: 'all', 'tyre_data': lambda r: 'all', 'observations': lambda r: r['metric'],
        'research_checks': lambda r: r['task'], 'insurance_data': lambda r: 'typklassen'}
+
+
+CODE_TOKEN = re.compile(r'[A-Za-z0-9]+')
+TEXT = {'maintenance_items': ('item', 'notes'), 'repair_risks': ('component', 'evidence', 'notes'),
+        'reliability_items': ('component', 'issue', 'evidence', 'inspection_action')}
+# "built 02/2014-09/2014", "production 12/2013 - 08/2015", "built 06/2015", "built 2006-2017"
+BUILD = re.compile(r'(?:built|production|produced|build period)\D{0,12}?((?:\d{2}/)?\d{4})(?:\s*[-\u2013]\s*((?:\d{2}/)?\d{4}))?', re.I)
+
+
+def codes(name):
+    """The model codes in a generation name: roman numerals and tokens with a digit ("III", "6R", "E150")."""
+    return {t.upper() for t in CODE_TOKEN.findall(name or '') if re.fullmatch(r'[IVX]{1,4}', t) or re.search(r'\d', t)}
+
+
+def whole_name(name):
+    """A generation name without its phase: top-level ", ..." segments naming a facelift or phase are dropped
+    ("Ibiza IV (6J), first facelift (6J FL)" -> "Ibiza IV (6J)"); the rest, brackets included, is kept."""
+    parts, depth, cur = [], 0, ''
+    for ch in name or '':
+        depth += (ch == '(') - (ch == ')')
+        if ch == ',' and depth == 0:
+            parts.append(cur); cur = ''
+        else:
+            cur += ch
+    parts.append(cur)
+    keep = [p for i, p in enumerate(parts) if i == 0 or not re.search(r'facelift|phase', p, re.I)]
+    return ','.join(keep).strip()
+
+
+def ym(s, months=0):
+    """'MM/YYYY' or 'YYYY' as 'YYYY-MM' / 'YYYY', shifted by `months` (only with a month)."""
+    if '/' not in s:
+        return str(int(s) + (1 if months else 0)) if months else s
+    m, y = (int(x) for x in s.split('/'))
+    t = y * 12 + m - 1 + months
+    return f'{t // 12:04d}-{t % 12 + 1:02d}'
+
+
+def window_of(t, r, facelift):
+    """The first-registration window a row names, or None: a recall's build range, or its pre-facelift / facelift phase."""
+    text = ' '.join(str(r[k] or '') for k in TEXT[t])
+    if t == 'reliability_items' and r['is_recall']:
+        m = BUILD.search(text)
+        if m:  # a car is registered up to about a year after it was built: never drop an affected car by its registration
+            return ym(m.group(1)), ym(m.group(2) or m.group(1), 12)
+    if facelift and re.search(r'pre[- ]facelift', text, re.I):
+        return None, str(facelift)
+    if facelift and re.search(r'\bfacelift\b', text, re.I) and not re.search(r'pre[- ]facelift|no facelift', text, re.I):
+        return str(facelift), None
+    return None
 
 
 def private_reason(t, r, src_type):
@@ -51,7 +108,8 @@ def private_reason(t, r, src_type):
 def promote(c):
     c.row_factory = sqlite3.Row
     rep = {'promoted': {}, 'merged': [], 'conflicts': [], 'not_merged': [], 'private': {}, 'archived': {}, 'sources': {},
-           'private_variants': [], 'possible_duplicates': []}
+           'private_variants': [], 'possible_duplicates': [], 'widened': [], 'windows': [],
+           'source_copies': 0}
     log = []
 
     def upd(t, rid, **f):
@@ -81,6 +139,7 @@ def promote(c):
             'engines': lambda r: ((r['code'] or '').strip().upper(), r['fuel_type'], r['power_kw']),
             'vehicles': lambda r: ((r['hsn'] or '').strip().upper(), (r['tsn'] or '').strip().upper())}
     moved = {t: set() for t in KNOW}
+    widened = set()
     col_of = {t: col for col, t in LEVELS}
 
     def merge(t, keep, d):
@@ -88,6 +147,23 @@ def promote(c):
         keep = dict(c.execute(f'SELECT * FROM {t} WHERE id=?', (keep,)).fetchone())
         d = dict(c.execute(f'SELECT * FROM {t} WHERE id=?', (d,)).fetchone())
         fill = {k: v for k, v in d.items() if k not in SKIP_FIELDS and keep.get(k) is None and v is not None}
+        if t == 'generations':  # the whole production run (#153): widest years, the spanning row's name, the phase's facelift
+            ys = [x for x in (keep['start_year'], d['start_year']) if x], [x for x in (keep['end_year'], d['end_year']) if x]
+            whole = {'start_year': min(ys[0]) if ys[0] else None, 'end_year': max(ys[1]) if ys[1] else None}
+            phase = max((keep, d), key=lambda g: g['start_year'] or 0) if keep['start_year'] != d['start_year'] else None
+            span = lambda g: (g['end_year'] or 9999) - (g['start_year'] or 0)
+            if span(d) > span(keep):
+                whole['name'] = d['name']
+            if phase and 'facelift' in (phase['name'] or '').lower() and not (keep['facelift_year'] or d['facelift_year']):
+                whole['facelift_year'] = phase['start_year']
+            if whole_name(whole.get('name', keep['name'])) != keep['name']:
+                whole['name'] = whole_name(whole.get('name', keep['name']))
+            whole = {k: v for k, v in whole.items() if v != keep[k]}
+            if whole:
+                rep['widened'].append(f"generations {keep['id']} ({keep['name']!r}, {keep['start_year']}–{keep['end_year']}) + {d['id']} "
+                                      f"({d['name']!r}, {d['start_year']}–{d['end_year']}) → {whole}")
+                fill.update(whole)
+                widened.add(keep['id'])
         for k, v in d.items():
             if k not in SKIP_FIELDS and k not in fill and keep.get(k) is not None and v is not None and v != keep[k]:
                 rep['conflicts'].append(f'{t} {keep["id"]} (kept) vs {d["id"]}: {k} {keep[k]!r} vs {v!r}')
@@ -126,6 +202,29 @@ def promote(c):
         for i in cat[t]:
             if c.execute(f'SELECT owner_id FROM {t} WHERE id=?', (i,)).fetchone()[0] is not None:
                 upd(t, i, owner_id=None); rep['promoted'][t] = rep['promoted'].get(t, 0) + 1
+
+    # 2b. one model under two generation names sharing a code (owner approved merging them, 2026-11-06)
+    while True:
+        gens = [dict(r) for r in c.execute('SELECT * FROM generations ORDER BY id DESC') if r['id'] in cat['generations']]
+        pair = next(((a, b) for i, a in enumerate(gens) for b in gens[i + 1:] if (a['make'], a['model']) == (b['make'], b['model'])
+                     and (a['start_year'] or 0) <= (b['end_year'] or 9999) and (b['start_year'] or 0) <= (a['end_year'] or 9999)
+                     and codes(a['name']) & codes(b['name'])), None)
+        if not pair:
+            break
+        merge('generations', pair[0]['id'], pair[1]['id'])
+
+    # 2c. rows that name their phase or a recall's build range get a first-registration window (#153)
+    for t in TEXT:
+        for r in c.execute(f'SELECT * FROM {t} WHERE applies_from IS NULL AND applies_to IS NULL AND archived=0').fetchall():
+            col, lid = level_of(r)
+            if lid not in cat[tab[col]]:
+                continue
+            gid = lid if col == 'generation_id' else None
+            fl = c.execute('SELECT facelift_year FROM generations WHERE id=?', (gid,)).fetchone()[0] if gid in widened else None
+            w = window_of(t, r, fl)
+            if w and (w[0] or w[1]):
+                upd(t, r['id'], applies_from=w[0], applies_to=w[1])
+                rep['windows'].append(f"{t} {r['id']} ({(r['component'] if 'component' in r.keys() else r['item'])!r}): {w[0] or '…'}–{w[1] or '…'}")
 
     # 3. rows on catalogue levels: shared unless they belong to one account
     src_type = {r['id']: r['source_type'] for r in c.execute('SELECT id, source_type FROM sources')}
@@ -177,8 +276,19 @@ def promote(c):
             if len(citers) == 1:  # attached to its only level, so only accounts seeing that level see it
                 (col, lid), = citers
                 upd('sources', s['id'], owner_id=None, **{col: lid}); key = 'cited by one shared level (attached to it)'
-            else:  # shortcut: cited from several levels stays level-free, so every account can see it; split it if that matters
-                upd('sources', s['id'], owner_id=None); key = 'cited by several shared levels (global)'
+            else:  # one copy per level, so each copy is seen only by the accounts with a car of that level
+                (col, lid), *others = sorted(citers)
+                upd('sources', s['id'], owner_id=None, **{col: lid})
+                fields = [k for k in s.keys() if k not in ('id', 'owner_id', 'vehicle_id', 'engine_id', 'generation_id')]
+                for ocol, olid in others:
+                    new = c.execute(f'INSERT INTO sources ({", ".join(fields)}, {ocol}) VALUES ({", ".join("?" * (len(fields) + 1))})',
+                                    [s[k] for k in fields] + [olid]).lastrowid
+                    log.append(('sources', new, 'insert', None, json.dumps({'copy_of': s['id'], ocol: olid})))
+                    for t in KNOW:
+                        for (rid,) in c.execute(f'SELECT id FROM {t} WHERE source_id=? AND owner_id IS NULL AND {ocol}=?', (s['id'], olid)).fetchall():
+                            upd(t, rid, source_id=new)
+                    rep['source_copies'] += 1
+                key = 'cited by several shared levels (one copy attached to each)'
             rep['sources'][key] = rep['sources'].get(key, 0) + 1
 
     # 6. every account with a listing on a catalogue variant keeps seeing it
