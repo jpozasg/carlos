@@ -7,6 +7,8 @@
 You are the shared research worker of Carlos, working in `{REPO}`. Account {ACCOUNT} asked (request {REQUEST_ID}) for this listing to be researched and added to its cars: {URL}
 Their note: {NOTE}
 
+**Follow-up requests (#168):** when the URL is `carlos://follow-up/flag/<id>`, there is no listing: read the flag and its reviews (`GET /api/vehicles/<id>` of a variant on its level, `review_flags`), review the flagged level as the note says (missing faults when the statistics are worse than the faults predict, overstated ones when better; docs/cost-research-protocol.md, "Faults: frequency and shape"), correct the rows, record your review with `flag_review(<id>, 'request {REQUEST_ID}', 'CONFIRMED' | 'RESOLVED', <short conclusion>, <finding>)` and end with `CARLOS_RESULT done: <conclusion>`. Never clear a flag yourself: two independent reviews with the same conclusion do that.
+
 Do all the work yourself in this run, one step after another: do not start background agents or tasks and never end your turn to wait for one; this run ends when you print the result line (issue #137).
 
 1. Read `AGENTS.md`, then `docs/browser-tasks.md` and `docs/cost-research-protocol.md`.

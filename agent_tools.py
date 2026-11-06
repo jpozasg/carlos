@@ -119,7 +119,8 @@ def log(listing_id, kind, text, source_id=None):
 
 
 # ---------------------------------------------------------------- data levels (issue #44)
-LEVEL_COLUMNS = {'variant': 'vehicle_id', 'engine': 'engine_id', 'generation': 'generation_id'}
+LEVEL_COLUMNS = {'variant': 'vehicle_id', 'engine': 'engine_id', 'generation': 'generation_id', 'engine_family': 'engine_family_id',
+                 'gearbox': 'gearbox_id', 'gearbox_family': 'gearbox_family_id', 'body_style': 'body_style_id'}  # levels, #174
 
 
 def scope(v, level='variant'):
@@ -229,6 +230,28 @@ def risk(v, component, km_from, km_to, probability, parts, labor, diy, hours, so
                                  'probability': probability, 'parts_eur': parts, 'labor_eur': labor, 'diy': 1 if diy else 0,
                                  'diy_hours': hours, 'status': 'ESTIMATED', 'evidence': evidence, 'source_id': source_id, 'notes': notes,
                                  'applies_from': applies_from, 'applies_to': applies_to})
+
+
+def fault(v, component, part, consequence, existence, source_id, band=None, shape=None, curve_km=None, curve_age=None,
+          parts=None, labor=None, diy_parts=None, hours=None, level='variant', **more):
+    """A design fault (#168) on one level: a frequency band (systemic, widespread, common, occasional, rare; by 200,000 km
+    or 15 years) with a shape (WEAR_KM, AGE, WINDOW with window_km/onset_km, RANDOM), or an explicit cumulative curve
+    [[km, share], ...]. Every fault gets a price. `more`: issue, mechanism, inspection_action, manufacturer_trace (needed
+    for 'systemic'), fixed_fault_id, warranty_km/years/share, applies_from/to, quote, probability_basis, usage_flags, notes."""
+    if parts is None and labor is None and diy_parts is None:
+        raise ValueError(f'{component}: every fault needs a price; estimate one and say how in notes')
+    return post('faults', {**scope(v, level), 'component': component, 'part': part, 'consequence': consequence,
+                           'existence': existence, 'source_id': source_id, 'frequency_band': band, 'shape': shape,
+                           'curve_km': curve_km, 'curve_age': curve_age, 'parts_eur': parts, 'labor_eur': labor,
+                           'diy_parts_eur': diy_parts, 'diy_hours': hours, **more})
+
+
+def flag_review(flag_id, worker, outcome, conclusion, finding, source_id=None):
+    """Records one review of a review flag (#168): outcome CONFIRMED (the problem stands) or RESOLVED; `conclusion` is a
+    short fixed wording of the result (e.g. 'faults complete', 'stats outdated'); two different workers resolving it with
+    the same conclusion clear the flag. `worker` names this run (e.g. 'request 42')."""
+    return post('flag_reviews', {'flag_id': flag_id, 'worker': worker, 'review_date': DAY, 'outcome': outcome,
+                                 'conclusion': conclusion, 'finding': finding, 'source_id': source_id})
 
 
 def tyres(v, size, price_per_tyre, source_id, notes, life_km=TYRE_LIFE_KM, fitting=TYRE_FITTING_EUR, level='variant'):

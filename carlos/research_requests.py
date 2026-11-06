@@ -7,7 +7,7 @@ from .auth import digest
 MAX_OPEN = 5             # QUEUED + RUNNING per account: keeps one account from flooding the shared worker
 WORKER_DOWN_SECONDS = 180  # a worker polls every 60 s: no heartbeat for three polls = down (issue #141)
 CLAIM_TIMEOUT_HOURS = 3  # a RUNNING request older than this is taken to be abandoned (worker crashed) and can be claimed again
-COLS = 'id, owner_id, url, note, status, requested_at, claimed_at, finished_at, worker, listing_id, result, requested_by'
+COLS = 'id, owner_id, url, note, status, requested_at, claimed_at, finished_at, worker, listing_id, result, requested_by, kind, flag_id'
 
 
 def clean_url(url):
@@ -32,6 +32,16 @@ def create(c, uid, data, by=None):
             raise ValueError(f'At most {MAX_OPEN} requests can wait at a time; cancel one or wait until the worker finishes one')
         rid = c.execute('INSERT INTO main.research_requests (owner_id, url, note, requested_by) VALUES (?,?,?,?)', (uid, url, note, by)).lastrowid
     return rid
+
+
+def follow_up(c, flag_id, task):
+    """Queues a follow-up research request (#168) for a review flag: an admin's request (the catalogue is shared), its
+    URL names the flag; the worker reviews the flagged level and records a flag review. One open request per flag."""
+    if c.execute("SELECT 1 FROM main.research_requests WHERE flag_id=? AND status IN ('QUEUED','RUNNING')", (flag_id,)).fetchone():
+        return None
+    admin = c.execute("SELECT min(id) FROM main.users WHERE role='admin' AND is_active=1").fetchone()[0]
+    return c.execute("INSERT INTO main.research_requests (owner_id, url, note, kind, flag_id) VALUES (?,?,?,'FOLLOW_UP',?)",
+                     (admin, f'carlos://follow-up/flag/{flag_id}', task[:1000], flag_id)).lastrowid
 
 
 def cancel(c, uid, rid):
@@ -83,7 +93,8 @@ def finish(c, rid, data):
     if req is None or req['status'] != 'RUNNING':
         raise ValueError('Only a RUNNING request can be finished')
     lid = data.get('listing_id')
-    if status == 'DONE':  # the listing must exist and belong to the account that asked
+    follow_up = c.execute('SELECT kind FROM main.research_requests WHERE id=?', (rid,)).fetchone()[0] == 'FOLLOW_UP'
+    if status == 'DONE' and not follow_up:  # the listing must exist and belong to the account that asked
         own = c.execute('SELECT owner_id FROM main.listings WHERE id=?', (lid if isinstance(lid, int) else -1,)).fetchone()
         if own is None or own[0] != req['owner_id']:
             raise ValueError("listing_id: DONE needs the id of the listing written into the requester's account")

@@ -53,16 +53,16 @@ One record per **design fault** (not wear):
 | component, part | ENGINE / GEARBOX / CHASSIS / ELECTRICS (required) |
 | issue, mechanism | what fails and why |
 | how to notice / inspection_action | feeds the viewing checklist |
-| consequence | ENGINE_DAMAGE / STRANDS / SAFETY / COST / COSMETIC |
+| consequence | ENGINE_DAMAGE / STRANDS / SAFETY / UNUSABLE / COST / COSMETIC |
 | price | workshop parts + labour, DIY parts + hours |
 | existence | how sure it is that the fault exists for this level: CONFIRMED (A/B source) / REPORTED (C/D) |
-| probability curve | 2–4 points: km → cumulative share failed (e.g. 100k: 10 %, 200k: 40 %); optional age points (rust, rubber, batteries) |
+| probability | a frequency band with a shape (below), or an explicit curve: 2–4 points km → cumulative share failed (e.g. 100k: 10 %, 200k: 40 %); optional age points (rust, rubber, batteries) |
 | probability_basis | STATISTIC / EXPERT / ESTIMATE — **graded separately from existence** |
 | usage | a multiplier only with a cited source; otherwise a usage-sensitive flag (SHORT_TRIPS, TOWING …) |
 | window | build date from–to; "fixed from X" needs an A/B source, otherwise the fault stays and is marked uncertain |
 | level | exactly one of engine_family, engine, gearbox_family, gearbox, generation, body_style, option, variant |
 
-**Severity is derived, not chosen [review]:** SAFETY or ENGINE_DAMAGE → HIGH; STRANDS or COST ≥ €1,500 → MEDIUM; COST < €1,500 → LOW-MEDIUM; COSMETIC → LOW.
+**Severity is derived, not chosen:** ENGINE_DAMAGE, STRANDS or SAFETY, or a price ≥ €1,500 → HIGH; a price ≥ €500 or UNUSABLE → MEDIUM; otherwise LOW.
 
 **Placement:** engine faults (incl. engine electrics, EV drive unit/HV) → engine or engine family; gearbox and clutch → gearbox or gearbox family; chassis, brakes, rust, suspension → generation (body style or option for convertible roofs, air suspension, 4×4); body electrics/infotainment → generation with phase windows.
 
@@ -71,7 +71,14 @@ One record per **design fault** (not wear):
 **Expected repair cost for one car [review]:** with F(x) the cumulative curve (linear between points),
 `p = (F(km_end) − F(km_now)) / (1 − F(km_now))`, expected cost = p × price. The same with age when an age curve exists; the larger of the two counts, never both. km_end uses the account's km/year at calculation time.
 
-**Reference table for estimates** (so ESTIMATE curves are comparable): "known widespread fault" 30 % by 150k; "common" 15 %; "occasional" 5 %; "rare" 2 %; age faults by 10/15 years on the same scale.
+**Fault probability method (owner, 2026-11-06, #168):**
+- **Word scale** by 200,000 km or 15 years, the central value used and the range stored: systemic 50 % (40–70, needs a manufacturer trace: extended warranty, goodwill, TPI, class action), widespread 25 % (20–40), common 12 % (8–20), occasional 5 % (3–8), rare 1.5 % (0.5–3). One place in the code (`config.FREQUENCY_BANDS`).
+- **Four shapes:** WEAR_KM, AGE, WINDOW (within a km window after an onset), RANDOM; each continues to 300,000 km / 20 years.
+- A documented fix switches the fault to the fixed part's curve (or none); an extended warranty reduces the cost while it applies.
+- A forum-only fault is one band milder, never above common.
+- **Two-way consistency check** against TÜV/ADAC: a generation whose statistics show clearly more trouble than its faults predict (or clearly less) gets a review flag and an automatic follow-up research request; if still inconsistent it stays visible in the Admin panel and the dossier. Nothing is scaled automatically.
+- **Review flags** live on the level of the problem with what and why; every review is recorded (worker, date, finding); a flag clears only when two independent reviews reach the same conclusion.
+- The research procedure is in `docs/cost-research-protocol.md` ("Faults: frequency and shape") and both research prompts.
 
 ### 3.2 Maintenance (incl. wear parts)
 

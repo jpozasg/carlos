@@ -111,7 +111,10 @@ ROWS = {
                              source_id=SRC_HU if src in ('adac', 'tuev') else SRC_GUIDE)
                         for col, lvl, parts in [('engine_id', e, ['ENGINE']) for e in (E_A, E_B, E_REF)] +
                         [('generation_id', g, ['GEARBOX', 'CHASSIS', 'ELECTRICS']) for g in (G1, G2)]
-                        for part in parts for src in ('adac', 'tuev', 'guide') + (('engine_specific',) if part == 'ENGINE' else ())],
+                        for part in parts for src in ('adac', 'tuev', 'guide') + (('engine_specific',) if part == 'ENGINE' else ())] +
+                       # contract 5 (#174): the gearbox-specific source, graded on the variant while it names no gearbox
+                       [dict(vehicle_id=v, task='rel.GEARBOX.gearbox_specific', result='NONE FOUND', contract_version=5, checked_date=TODAY,
+                             source_id=SRC_GUIDE) for v in (V_A, V_B, V_REF, V_B2)],
     'valuations': [
         dict(listing_id=REF, kind='sale_today', expected_eur=2500, status='ESTIMATED', valued_date=TODAY, source_id=SRC_GUIDE),
         dict(listing_id=REF, kind='resale_end', horizon_years=4, expected_eur=1500, status='ESTIMATED', valued_date=TODAY, source_id=SRC_GUIDE),

@@ -26,7 +26,9 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'listings.lease_kind': config.LEASE_KINDS, 'gearboxes.type': config.GEARBOX_TYPES,
                'faults.part': config.RELIABILITY_PARTS, 'faults.consequence': config.FAULT_CONSEQUENCES,
                'faults.existence': ['CONFIRMED', 'REPORTED'], 'faults.frequency_band': list(config.FREQUENCY_BANDS),
-               'faults.shape': config.FAULT_SHAPES, 'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
+               'faults.shape': config.FAULT_SHAPES,
+               'review_flags.kind': ['STATS_MISMATCH', 'SOURCES_DISAGREE', 'FIX_UNCERTAIN', 'OTHER'],
+               'review_flags.status': ['OPEN', 'CLEARED'], 'flag_reviews.outcome': ['CONFIRMED', 'RESOLVED'], 'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
                'recalls.part': config.RELIABILITY_PARTS, 'reliability_stats.kind': ['TUEV', 'ADAC'],
                'maintenance_items.kind': ['JOB', 'WEAR'], 'listing_history.status': ['DONE', 'PRESENT', 'OPEN', 'NOT AFFECTED'],
                'listing_history.evidence': ['DOCUMENTED', 'SELLER CLAIM', 'OBSERVED', 'VIN CHECK'],
@@ -37,7 +39,8 @@ AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'ob
                 'listing_snapshots', 'repair_risks', 'tyre_data', 'maintenance_resets', 'research_checks',
                 # target design (#174): levels, knowledge, listing facts
                 'engine_families', 'gearbox_families', 'gearboxes', 'body_styles', 'options', 'faults', 'recalls',
-                'reliability_stats', 'market_models', 'listing_history', 'listing_quotes', 'listing_options'}
+                'reliability_stats', 'market_models', 'listing_history', 'listing_quotes', 'listing_options',
+                'review_flags', 'flag_reviews'}
 SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
                    'reliability_items', 'valuations', 'unit_costs', 'listing_snapshots', 'repair_risks', 'tyre_data',
                    'maintenance_resets', 'research_checks', 'faults', 'recalls', 'reliability_stats', 'market_models', 'listing_quotes'}
@@ -93,6 +96,15 @@ def curve_points(raw):
     return pts
 
 
+def clear_if_agreed(c, flag_id):
+    """A flag is cleared only when two independent reviews (different workers or runs) resolve it with the same conclusion
+    (owner, 2026-11-06, #168); a CONFIRMED review or a lone resolution keeps it open."""
+    rows_ = c.execute("SELECT conclusion, count(DISTINCT worker) FROM main.flag_reviews WHERE flag_id=? AND outcome='RESOLVED' "
+                      "GROUP BY conclusion", (flag_id,)).fetchall()
+    if any(n >= 2 for _, n in rows_):
+        c.execute("UPDATE main.review_flags SET status='CLEARED', cleared_at=datetime('now') WHERE id=? AND status='OPEN'", (flag_id,))
+
+
 def fault_checks(c, out):
     """The fault probability method (#168): valid curves; a band fills its central range; 'systemic' needs a manufacturer
     trace; a fault whose source is a forum (quality D) is never above 'common'."""
@@ -111,6 +123,11 @@ def fault_checks(c, out):
             q = c.execute('SELECT quality FROM sources WHERE id=?', (out['source_id'],)).fetchone()
             if q and q[0] == 'D':
                 raise ValueError(f"a forum-only fault (source quality D) is never above '{config.FORUM_MAX_BAND}'")
+    # a "fixed from" / build window needs an A/B source; otherwise the fault stays, marked uncertain (#168)
+    if (out.get('applies_from') or out.get('applies_to')) and out.get('source_id') is not None:
+        q = c.execute('SELECT quality FROM sources WHERE id=?', (out['source_id'],)).fetchone()
+        if not q or q[0] not in ('A', 'B'):
+            out['window_uncertain'] = 1
 
 
 def clean_row(c, table, data, insert):
@@ -169,7 +186,7 @@ def clean_row(c, table, data, insert):
     return out
 
 
-ADMIN_TABLES = set(MODEL) | set(_KNOW) | {'listings'}  # research and listings: the shared worker (admin) only (#109)
+ADMIN_TABLES = set(MODEL) | set(_KNOW) | {'listings', 'flag_reviews'}  # research and listings: the shared worker (admin) only (#109)
 
 
 def check_writable(c, table, row_id, data):
@@ -268,6 +285,13 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
             link(c, user_id, data['vehicle_id'])
         c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
                   (table, row_id, 'update' if old else 'insert', old, json.dumps(data, ensure_ascii=False), actor or user_id))
+        if table == 'flag_reviews':
+            clear_if_agreed(c, c.execute('SELECT flag_id FROM main.flag_reviews WHERE id=?', (row_id,)).fetchone()[0])
+        if table == 'review_flags' and data.get('status') == 'CLEARED':
+            raise ValueError('a flag is cleared only by two independent reviews reaching the same conclusion (flag_reviews)')
+    if table in ('faults', 'reliability_stats'):
+        from . import consistency
+        consistency.check(c)
     return row_id
 
 

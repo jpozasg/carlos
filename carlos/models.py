@@ -42,6 +42,14 @@ def model_tree(c):
     return {'makes': out, 'levels': list(config.LEVELS.values())}
 
 
+def with_reviews(c, flags):
+    """Review flags with their recorded reviews (who, when, outcome, conclusion, finding), open ones first (#168)."""
+    out = []
+    for f in sorted(flags, key=lambda f: (f['status'] != 'OPEN', -f['id'])):
+        out.append({**f, 'reviews': rows(c, 'SELECT * FROM flag_reviews WHERE flag_id=? ORDER BY id', (f['id'],))})
+    return out
+
+
 def variant_detail(c, vehicle_id):
     """One variant with its engine, generation, every knowledge row (with its level) and its listings."""
     vs = variants(c, 'WHERE v.id=?', (vehicle_id,))
@@ -52,6 +60,7 @@ def variant_detail(c, vehicle_id):
     v.update({t: know.of(t, v) for t in config.SCOPED_TABLES})
     contract = research.Contract(c, know)
     v['research'] = research.levels(contract.resolved(v['id']))
+    v['review_flags'] = with_reviews(c, v['review_flags'])
     v['engine_row'] = rows(c, 'SELECT * FROM engines WHERE id=?', (v['engine_id'],))[0]
     v['generation_row'] = rows(c, 'SELECT * FROM generations WHERE id=?', (v['generation_id'],))[0]
     v['siblings'] = {'same_engine': [x['id'] for x in variants(c, 'WHERE v.engine_id=? AND v.id<>?', (v['engine_id'], v['id']))],

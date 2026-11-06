@@ -12,11 +12,14 @@ from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 4  # 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
+CONTRACT_VERSION = 5  # 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
-LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id'}
-REL_SOURCES = {'adac': 'B', 'tuev': 'B', 'guide': 'C', 'engine_specific': 'C'}  # the same sources for every car, minimum quality
+LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id', 'engine_family': 'engine_family_id',
+             'gearbox': 'gearbox_id', 'gearbox_family': 'gearbox_family_id', 'body_style': 'body_style_id'}
+# the same sources for every car with their minimum quality: ADAC, TÜV and a buying guide on the generation for all four parts,
+# an engine-specific source on the engine family and a gearbox-specific one on the gearbox family (#168, #174)
+REL_SOURCES = {'adac': 'B', 'tuev': 'B', 'guide': 'C', 'engine_specific': 'C', 'gearbox_specific': 'C'}
 
 
 def _job(*jobs):
@@ -28,9 +31,17 @@ def _job(*jobs):
 
 
 def _risks(ctx):
-    """Priced weak-point risks; one unpriced risk makes the item missing (every risk gets a price, AGENTS.md)."""
-    rs = ctx['rows']('repair_risks')
-    return [] if any(r['parts_eur'] is None and r['labor_eur'] is None for r in rs) else rs
+    """Priced faults (with a curve, or a band and a shape, #168) and old priced risks; one incomplete row makes the item
+    missing (every fault gets a price and a probability)."""
+    rs, fs = ctx['rows']('repair_risks'), ctx['rows']('faults')
+    bad = any(r['parts_eur'] is None and r['labor_eur'] is None for r in rs + fs) or \
+        any(not (f['curve_km'] or f['curve_age'] or f['frequency_band'] and f['shape']) for f in fs)
+    return [] if bad else rs + fs
+
+
+def _stats(ctx):
+    """TÜV/ADAC figures for the generation by age class (the reliability baseline, #174)."""
+    return ctx['rows']('reliability_stats')
 
 
 def _consumption(ctx):
@@ -110,14 +121,26 @@ ITEMS = [
     ('var.tyres', 'variant', 'all-season tyres: size, price, tread life (variant or generation)', _tyres, (), None, always, 1),
     ('var.tax', 'variant', 'annual tax from the BMF Kfz-Steuer-Rechner', _tax, (), 'A', always, 1),
     ('var.gearbox', 'variant', 'automatic gearbox weak points checked for this variant', None, FOUND_OR_NONE, 'C', automatic, 1),
+    # target design (#174): the new levels
+    ('var.gearbox_level', 'variant', 'the variant names its gearbox (code, type)', _fields('gearbox_id'), (), None, always, 5),
+    ('gen.baseline', 'generation', 'TÜV/ADAC figures per age class (or a check: N/A, too new)', _stats, NOT_APPLICABLE, 'B', always, 5),
+    ('fam.risks', 'engine_family', 'engine family faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
+    ('gbx.identity', 'gearbox', 'gearbox code and type', _fields('code', 'type'), (), None, always, 5),
+    ('gbx.service', 'gearbox', 'gearbox oil service: interval and workshop price (or a check: none scheduled)', _job('GEARBOX_OIL'), ('NONE FOUND',), None, always, 5),
+    ('gbx.clutch', 'gearbox', 'clutch: typical life, DIY parts and workshop price (or a check: none)', _job('CLUTCH'), ('NONE FOUND',), None,
+     _is('type', 'MANUAL', 'DCT'), 5),
+    ('gbx.risks', 'gearbox', 'gearbox faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
+    ('gfam.risks', 'gearbox_family', 'gearbox family faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
+    ('bdy.risks', 'body_style', 'body style faults and maintenance (convertible roof …) or a check: none found', _risks, ('NONE FOUND',), None, always, 5),
 ]
 # weak points: the same four sources per part (docs/cost-research-protocol.md, step 2); the engine part on the engine,
 # the rest on the generation (owner decision 2026-11-05: gearbox on the generation, var.gearbox for automatics)
 for _part in config.RELIABILITY_PARTS:
     for _src, _q in REL_SOURCES.items():
-        if _src != 'engine_specific' or _part == 'ENGINE':
-            ITEMS.append((f'rel.{_part}.{_src}', 'engine' if _part == 'ENGINE' else 'generation',
-                          f'{_part.lower()} weak points: {_src.replace("_", "-")} source checked', None, FOUND_OR_NONE, _q, always, 1))
+        lvl = {'engine_specific': 'engine_family', 'gearbox_specific': 'gearbox_family'}.get(_src, 'generation')
+        if lvl == 'generation' or (_src, _part) in (('engine_specific', 'ENGINE'), ('gearbox_specific', 'GEARBOX')):
+            ITEMS.append((f'rel.{_part}.{_src}', lvl, f'{_part.lower()} weak points: {_src.replace("_", "-")} source checked',
+                          None, FOUND_OR_NONE, _q, always, 5 if _src == 'gearbox_specific' else 1))
 ITEM = {i[0]: i for i in ITEMS}
 TASKS = set(ITEM)
 
@@ -168,11 +191,12 @@ class Contract:
 
     def __init__(self, c, know):
         self.sources = {r['id']: r for r in rows(c, 'SELECT id, quality, source_type FROM sources')}
-        self.rows = {t: {r['id']: r for r in rows(c, f'SELECT * FROM {t}')} for t in ('vehicles', 'engines', 'generations')}
+        self.rows = {t: {r['id']: r for r in rows(c, f'SELECT * FROM {t}')}
+                     for t in ('vehicles', 'engines', 'generations', 'gearboxes', 'engine_families', 'gearbox_families', 'body_styles')}
         self.index = {}
         for table, rs in know.t.items():
             for r in rs:
-                for col in config.SCOPE_COLUMNS:
+                for col in config.LEVEL_COLUMNS:
                     if r.get(col) is not None:
                         self.index.setdefault((col, r[col]), {}).setdefault(table, []).append(r)
         self.cache = {}
@@ -196,17 +220,32 @@ class Contract:
         return self.cache[key]
 
     def resolved(self, vehicle_id):
-        """A variant with its engine and generation. An item missing on its level but present one level lower (e.g. an
-        engine job stored on the variant) counts as ACCEPTED at most, with a hint to move the row up."""
+        """A variant with every level above it: generation, engine and its family, gearbox and its family, body style
+        (#174). A family item is graded on the engine (or gearbox) when there is no family, and a gearbox item on the
+        variant when it names no gearbox. An item missing on its level but present one level lower (e.g. an engine job
+        stored on the variant, an ADAC check stored on the engine) counts as ACCEPTED at most, with a hint to move it up."""
         v = self.rows['vehicles'][vehicle_id]
         engine, generation = self.rows['engines'][v['engine_id']], self.rows['generations'][v['generation_id']]
+        gearbox = self.rows['gearboxes'].get(v.get('gearbox_id'))
+        efam = self.rows['engine_families'].get(engine.get('family_id'))
+        gfam = self.rows['gearbox_families'].get((gearbox or {}).get('family_id'))
+        body = self.rows['body_styles'].get(v.get('body_style_id'))
         out = []
-        # only the variant counts as "too low": an engine row is the engine's research, not the generation's
-        lower = {'generation': [('vehicle_id', v['id'])], 'engine': [('vehicle_id', v['id'])], 'variant': []}
-        for level, row in (('generation', generation), ('engine', engine), ('variant', v)):
+        lower = {'generation': [('vehicle_id', v['id']), ('engine_id', v['engine_id'])], 'engine': [('vehicle_id', v['id'])], 'variant': []}
+        # (level, row, the keys its items are graded on): a missing family or gearbox falls back to the level below
+        plan = [('generation', generation, None), ('engine', engine, None),
+                ('engine_family', efam or engine, None if efam else [('engine_id', engine['id'])]),
+                ('gearbox', gearbox or {**v, 'code': None, 'type': None}, None if gearbox else [('vehicle_id', v['id'])]),
+                ('gearbox_family', gfam or gearbox or v, None if gfam else [('gearbox_id', gearbox['id'])] if gearbox else [('vehicle_id', v['id'])]),
+                ('variant', v, None)] + ([('body_style', body, None)] if body else [])
+        for level, row, keys in plan:
+            if keys is not None:  # graded on the fallback level's rows
+                for i in evaluate(level, row, self._rows(keys), self.sources):
+                    out.append({**i, 'hint': f'no {level.replace("_", " ")} yet: graded on the level below'})
+                continue
             below = None
             for i in self.level(level, row):
-                if i['grade'] == 'MISSING' and lower[level]:
+                if i['grade'] == 'MISSING' and lower.get(level):
                     below = below or {x['id']: x['grade'] for x in evaluate(level, row, self._rows(lower[level]), self.sources)}
                     if below.get(i['id'], 'MISSING') != 'MISSING':
                         i = {**i, 'grade': 'ACCEPTED', 'hint': f'found on a lower level: move it to the {level}'}
@@ -273,7 +312,7 @@ def published():
 
 def levels(items):
     """Summary per level (generation, engine, variant, listing) of resolved items, for the UI."""
-    return {lvl: summary([i for i in items if i['level'] == lvl]) for lvl in ('generation', 'engine', 'variant', 'listing')
+    return {lvl: summary([i for i in items if i['level'] == lvl]) for lvl in ('generation', 'engine_family', 'engine', 'gearbox_family', 'gearbox', 'body_style', 'variant', 'listing')
             if any(i['level'] == lvl for i in items)}
 
 
