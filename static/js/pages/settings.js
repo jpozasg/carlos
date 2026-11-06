@@ -1,6 +1,6 @@
 // Settings: calculation parameters (with live preview), insurance profile, appearance (theme, light/dark, language),
 // account (password, agent token).
-import { S, THEMES, applyTheme, loadAll, renderShell } from '../app.js';
+import { S, applyTheme, loadAll, renderShell } from '../app.js';
 import { post, get } from '../api.js';
 import * as i18n from '../i18n.js';
 import { t } from '../i18n.js';
@@ -14,8 +14,6 @@ const OPTS = { insurance_cover: ['Haftpflicht', 'Teilkasko', 'Vollkasko'], sf_cl
 let root, previewTimer;
 const val = k => { const e = $(k); return e.type === 'number' ? (e.value === '' ? null : Number(e.value)) : e.value; };
 const dirty = () => KEYS.some(k => String(val(k) ?? '').replace(/\.0$/, '') !== String(S.saved[k] ?? '').replace(/\.0$/, ''));
-const THEME_SW = { friendly: ['#f5f7fb', '#2f6fed', '#1f2933'], garage: ['#0e0e0e', '#f5d60a', '#f4f4f0'], cluster: ['#0b0d10', '#f5a524', '#f2f3f5'], retro: ['#f3e7cf', '#d35400', '#5f7d2a'],
-  olive: ['#efe9d8', '#5c6b2a', '#b08a3a'], terminal: ['#000000', '#9cff9c', '#ffb000'], kawaii: ['#fff0f6', '#ff6fa5', '#5fd6b4'], circuit: ['#0b2b1e', '#b87333', '#e0a24a'], arcade: ['#000000', '#2121de', '#ffe100'], hyrule: ['#ece2c4', '#2e6b2f', '#c9a227'] };
 
 function form() {
   const p = S.saved, f = (k, label, extra = '') => `<div class="field"><label for="${k}">${label}</label>${extra}</div>`;
@@ -66,9 +64,8 @@ async function preview() {
   renderShell(); paramUi();
 }
 function appearance() {
-  const theme = store.get('theme', 'cluster'), mode = store.get('mode', 'auto');
+  const mode = store.get('mode', 'auto');
   return `<div class="card"><h3>${t('appearance')}</h3><p class="small muted" style="margin-top:0">${t('appearance_hint')}</p>
-    <div class="theme-grid">${THEMES.map(k => `<button type="button" data-theme-pick="${k}" aria-pressed="${k === theme}"><div class="sw-row">${THEME_SW[k].map(c => `<i style="background:${c}"></i>`).join('')}</div><b>${t('theme_' + k)}</b><div class="small muted">${t('theme_' + k + '_hint')}</div></button>`).join('')}</div>
     <div class="row" style="margin-top:12px"><span class="small">${t('mode')}:</span><div class="seg" role="group">${['auto', 'light', 'dark'].map(m => `<button type="button" data-mode-pick="${m}" aria-pressed="${m === mode}">${t('mode_' + m)}</button>`).join('')}</div>
       <span class="small" style="margin-left:12px">${t('language')}:</span><div class="seg" role="group">${Object.keys(i18n.LANGS).map(l => `<button type="button" data-lang="${l}" aria-pressed="${l === i18n.current()}">${l.toUpperCase()}</button>`).join('')}</div></div></div>`;
 }
@@ -96,8 +93,7 @@ function bind() {
   root.addEventListener('click', async e => {
     if (e.target.id === 'fuelToday') { $('fuel_price_date').value = new Date().toISOString().slice(0, 10); paramUi(); return; }
     if (e.target.id === 'discardParams') { await loadAll(); renderShell(); draw(); return; }
-    const th = e.target.closest('[data-theme-pick]'); if (th) { applyTheme(th.dataset.themePick, store.get('mode', 'auto')); draw(); return; }
-    const md = e.target.closest('[data-mode-pick]'); if (md) { applyTheme(store.get('theme', 'cluster'), md.dataset.modePick); draw(); return; }
+    const md = e.target.closest('[data-mode-pick]'); if (md) { applyTheme(md.dataset.modePick); draw(); return; }
     if (e.target.closest('[data-token]')) { try { const r = await post('/api/account/token', {}); $('tokenOut').innerHTML = `<p class="small">${t('token_shown_once')}</p><div class="token-box">${esc(r.token)}</div>`; S.me.has_token = true; } catch (err) { toast(err.message, true); } } });
   root.addEventListener('submit', async e => {
     e.preventDefault();

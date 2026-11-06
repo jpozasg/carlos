@@ -29,7 +29,7 @@ It was built and tested with German data (the official BMF road-tax calculator, 
 | **Dossier** (click a car) | Photos, listing facts and seller claims, the ranking explanation with the evidence behind it, the maintenance plan and repair risks (each row tagged with the level it comes from: variant, engine or generation), checklist, valuations, own costs, watch points, listing archive, log, sources. *Viewing mode* on a phone: tick the checklist, add notes and photos while looking at the car. |
 | **Models** | Make → model → generation → engine → variant with filters; each variant shows its listings and inherits the rows of its engine and generation. |
 | **Sources** | Every source with its quality A–D, what it supports and its limitations. |
-| **Settings** | The assumptions (km per year, years, fuel prices, budget), the insurance profile, theme, light/dark mode, language, password, agent token (admins). |
+| **Settings** | The assumptions (km per year, years, fuel prices, budget), the insurance profile, light/dark mode, language, password, agent token (admins). |
 | **Accounts** (admin) | Create accounts and invite links, deactivate, change roles. |
 
 ## How the numbers are built

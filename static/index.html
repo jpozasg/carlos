@@ -10,7 +10,7 @@
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="stylesheet" href="/static/css/tokens.css">
 <link rel="stylesheet" href="/static/css/app.css">
-<script>try{var th=JSON.parse(localStorage.getItem('carlos.theme')||'"cluster"'),md=JSON.parse(localStorage.getItem('carlos.mode')||'"auto"');document.documentElement.dataset.theme=th;if(md!=='auto')document.documentElement.dataset.mode=md;if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('os-dark')}catch(e){}</script>
+<script>try{var md=JSON.parse(localStorage.getItem('carlos.mode')||'"auto"');if(md!=='auto')document.documentElement.dataset.mode=md;if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('os-dark')}catch(e){}</script>
 </head>
 <body>
 <header class="top"><div class="wrap" id="hdr"></div></header>
