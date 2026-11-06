@@ -454,7 +454,9 @@ def tco_rows(c, p):
         if not u['is_reference'] and u.get('lease_monthly_eur') is not None:  # a lease offer (#129)
             l_parts, l_det, l_ins = lease_costs(u, p, running, know.insurance_vollkasko(v), wallbox)
             offers['lease'] = offer_summary(l_parts, u['lease_term_months'])
-            mode, buy = p.get('acquisition_mode') or 'buy', offers['purchase']
+            # second-hand purchases only (#165): a stored acquisition_mode no longer picks the lease; the lease path stays
+            # dormant for legacy listings captured before #165 (a lease-only one has no purchase to compare)
+            mode, buy = 'buy', offers['purchase']
             # compare both: the cheaper complete way; a lease-only ad is always costed as a lease
             if buy is None or mode == 'lease' or mode == 'both' and offers['lease']['complete'] and (
                     not buy['complete'] or offers['lease']['cost_month'] < buy['cost_month']):

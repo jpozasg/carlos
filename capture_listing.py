@@ -10,7 +10,7 @@ Format: see CAPTURE_FORMAT below (also printed with --help).
 import argparse, json, os, sys, urllib.error, urllib.request
 from pathlib import Path
 from urllib.parse import urlencode
-from carlos import config  # the controlled lease codes, checked here before any write
+from carlos import config  # NEW_CAR_MAX_KM: a new car is refused before any write (#165)
 
 ROOT = Path(__file__).resolve().parent
 MAX_IMAGE_BYTES = 1_500_000  # same limit as app.py: capture the ~1024 px version, not the original
@@ -19,12 +19,10 @@ IMAGE_TYPES = {b'\xff\xd8\xff': 'image/jpeg', b'\x89PNG': 'image/png', b'RIFF': 
 USER_AGENT = 'carlos/capture_listing.py (personal archive)'
 # Optional listings columns copied as-is from the capture (seller claims stay in the *_claim columns).
 LISTING_FIELDS = ('first_registration', 'seller', 'location', 'seller_address', 'accident_free_claim', 'owners_claim',
-                  'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes', 'battery_soh_claim',
-                  # one lease offer as the ad states it (#127); NULL = not stated, never 0
-                  'lease_kind', 'lease_monthly_eur', 'lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur',
-                  'lease_fees_eur', 'lease_extra_km_eur', 'lease_fewer_km_eur', 'lease_includes')
-LEASE_NUMBERS = {'lease_monthly_eur': 0, 'lease_term_months': 0, 'lease_km_per_year': 0,  # value: the lowest allowed is above it
-                 'lease_down_payment_eur': -1, 'lease_fees_eur': -1, 'lease_extra_km_eur': -1, 'lease_fewer_km_eur': -1}
+                  'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes', 'battery_soh_claim')
+# lease columns (#127) stay in the schema for listings captured before #165, but a capture never writes them
+LEASE_FIELDS = ('lease_kind', 'lease_monthly_eur', 'lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur',
+                'lease_fees_eur', 'lease_extra_km_eur', 'lease_fewer_km_eur', 'lease_includes')
 # electric cars (#125): the battery is the costliest part; every electric listing gets this checklist item
 SOH_CHECK = ('Battery state of health: ask for a SoH certificate (method, date, km) no older than 3 months; ADAC guide '
              '>= 88 % at 100,000 km; check the remaining battery warranty (usually 8 years / 160,000 km / 70 %)')
@@ -40,11 +38,8 @@ CAPTURE_FORMAT = '''Capture JSON (null = unknown, never 0):
   "listing": {"first_registration": "2014-05", "seller": "...", "location": "...",
               "accident_free_claim": 1, "owners_claim": 2, "hu_claim": "05/2027",
               "service_history_claim": "...", "equipment": "...", "listing_date": "...",
-              "battery_soh_claim": 94,                                electric: battery health % as claimed
-              "lease_kind": "km", "lease_monthly_eur": 224, "lease_term_months": 48,   a lease offer (km | residual | abo)
-              "lease_km_per_year": 10000, "lease_down_payment_eur": 0, "lease_fees_eur": null,
-              "lease_extra_km_eur": null, "lease_fewer_km_eur": null,
-              "lease_includes": "insurance,tax"},                    what the rate covers: insurance,tax,maintenance,repairs,tyres,gap
+              "battery_soh_claim": 94},                               electric: battery health % as claimed
+  (second-hand purchases only, #165: no lease fields; a new car or a lease-only ad is refused)
   "description": "verbatim seller text, original language",
   "attributes": {"Kilometerstand": "85.000 km", "...": "every feature exactly as shown"},
   "photos": [{"url": "https://img.../1024.jpg"}, {"file": "photos/1.jpg", "url": "original url"}],
@@ -99,9 +94,9 @@ def validate(cap):
     if not isinstance(cap.get('vehicle_id'), int) or isinstance(cap.get('vehicle_id'), bool):
         raise ValueError('vehicle_id is required: register the model in vehicles first')
     for k in ('price_eur', 'mileage_km'):
-        v = cap.get(k)  # a new car's mileage is 0 (issue #150); a price is never 0
+        v = cap.get(k)  # a price is never 0; 0 km is refused below as a new car (#165)
         if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0 or v == 0 and k == 'price_eur'):
-            raise ValueError(f'{k} must be a positive number or null (unknown); only a new car\'s mileage may be 0')
+            raise ValueError(f'{k} must be a positive number or null (unknown)')
     if not isinstance(cap.get('attributes', {}), dict):
         raise ValueError('attributes must be an object with every feature exactly as shown')
     if not isinstance(cap.get('listing', {}), dict):
@@ -110,16 +105,14 @@ def validate(cap):
     if soh is not None and (isinstance(soh, bool) or not isinstance(soh, (int, float)) or not 0 < soh <= 100):
         raise ValueError('battery_soh_claim must be a percentage (0–100] or null (unknown)')
     lst = cap.get('listing', {})
-    for k, low in LEASE_NUMBERS.items():
-        v = lst.get(k)
-        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= low
-                              or k in ('lease_term_months', 'lease_km_per_year') and v != int(v)):
-            raise ValueError(f'{k} must be a {"positive" if low == 0 else "non-negative"} number or null (not stated)')
-    if lst.get('lease_kind') is not None and lst['lease_kind'] not in config.LEASE_KINDS:
-        raise ValueError(f'lease_kind must be one of {config.LEASE_KINDS}')
-    inc = lst.get('lease_includes')
-    if inc is not None and (not isinstance(inc, str) or not set(inc.split(',')) <= set(config.LEASE_INCLUDES)):
-        raise ValueError(f'lease_includes must be a comma list of {config.LEASE_INCLUDES} without spaces, or null')
+    # Carlos compares second-hand purchases only (issue #165): a used ad that also shows a lease offer is captured as a
+    # purchase (leave the lease out); a lease-only ad and a new car are not captured
+    if any(lst.get(k) is not None for k in LEASE_FIELDS):
+        raise ValueError('lease fields are not captured: Carlos compares second-hand purchases only (#165); capture the '
+                         'purchase price and leave the lease offer out (a lease-only ad is not supported)')
+    if lst.get('first_registration') is None and cap.get('mileage_km') is not None and cap['mileage_km'] < config.NEW_CAR_MAX_KM:
+        raise ValueError('a new car (no first registration, under '
+                         f'{config.NEW_CAR_MAX_KM} km) is not captured: Carlos compares second-hand cars only (#165)')
     extra = set(cap.get('listing', {})) - set(LISTING_FIELDS)
     if extra:
         raise ValueError(f'listing fields not allowed: {sorted(extra)} (allowed: {LISTING_FIELDS})')

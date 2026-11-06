@@ -26,7 +26,7 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 8. purchase/sale defaults and resale;
 9. listing checks, warnings and a final `verification` log entry.
 
-**Drivetrain and offer: which branch applies.** Read `fuel_type` (a fixed code) and the listing (new? lease?) first; several branches can apply (a new electric car, a leased petrol car).
+**Drivetrain and offer: which branch applies.** Read `fuel_type` (a fixed code) first. Carlos compares second-hand purchases only (#165): a new car or a lease-only ad is not researched, and a lease offer in a used ad is ignored.
 
 | Branch | Identify | Consumption (step 3) | Maintenance and risks (steps 4–5) | Also |
 |---|---|---|---|---|
@@ -34,8 +34,7 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 | **Full hybrid** (`Hybrid`) | as petrol; note the hybrid system in `notes` | autokostencheck, as petrol | as petrol; hybrid battery and inverter as priced risks when a source names them | costed as petrol; never record it as `Petrol` (the code exists) |
 | **Plug-in hybrid** (`Plug-in hybrid`) | as petrol + usable battery kWh | autokostencheck if any; the energy cost is not supported yet (stays unknown, to-do) | as petrol + HV battery warranty check | say in the report that its fuel cost stays unknown |
 | **Electric** (`Electric`) | motor code, usable battery kWh, AC/DC charging kW (no aspiration, injection, timing drive) | ev-database.org real consumption of the exact variant and battery (Wh/km ÷ 10 = kWh/100 km), `consumption(..., electric=True)`; ADAC Ecotest as a cross-check row when one exists; never Spritmonitor | no oil, filters, plugs or timing drive; `DRIVE_COOLANT`, `REDUCTION_GEAR_OIL` (or `NONE FOUND` checks), brake fluid, cabin filter, 12 V battery, HU | battery warranty check `eng.hv_battery` + one priced HV battery risk on the engine; seller's battery health in `battery_soh_claim` and the SoH-certificate checklist item; resale without comparables `resale_rule_of_thumb(L, electric=True)` |
-| **New car** (no first registration, 0 km) | as its drivetrain | as its drivetrain (a new model may have few reports: report the count) | schedule from 0 km; HU item with `job='HU'` (first HU at 36 months is the calculation's) | `purchase_sale_defaults()` (no pre-purchase check) and `resale_rule_of_thumb()` apply the new-car rules; a source that does not cover the model yet is `N/A`, never `NONE FOUND` (the part then stays unknown) |
-| **Lease / Auto-Abo** | the model research is the same | as its drivetrain | as its drivetrain | the lease fields are the main agent's capture; report whether the rate includes insurance (a lease without it needs a **Vollkasko + GAP** quote) and whether the ad's total matches rate × term + down payment + fees (a mismatch is a `warning`) |
+| **New car / lease-only ad** | out of scope (#165): not researched; the capture refuses it | – |
 
 Write everything through the helpers in `agent_tools.py` from a script in your scratchpad: `import sys; sys.path.insert(0, '{REPO}'); from agent_tools import *`. Register each source with `src(...)` (attach it to the level it describes: `vehicle_id`, `engine_id` or `generation_id`) before using it; reuse shared sources through the helpers. Pass `level='engine'` or `level='generation'` to the helpers for rows that belong to the engine or the generation; rows inherited from them already exist in `variant()`: do not write them again.
 

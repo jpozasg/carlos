@@ -51,6 +51,7 @@ The same steps, with these differences (owner decisions 2026-11-05; sources in t
 - **Plug-in hybrid:** `fuel_type='Plug-in hybrid'` and `battery_usable_kwh`; researched like a combustion car (its combustion engine needs the full petrol schedule) plus the battery warranty check. Its energy cost is not supported yet (it depends on the charging share): the fuel component stays unknown and the to-do says so.
 
 ## New cars (issue #150)
+**Out of scope since #165** (second-hand purchases only): a new car is not captured or researched. The rules below are kept for listings captured before; the code stays dormant.
 A **new car** has no first registration and only delivery kilometres (`mileage_km` below 100; `carlos.costs.is_new`). Capture it with `mileage_km: 0` (allowed) and `first_registration` null.
 - **Registration:** it is registered when bought, so the calculation uses today as its first registration: a tax row's `registered_from`/`registered_to` window and an electric car's tax exemption are matched against today. Age is 0.
 - **Maintenance:** its service cycle starts at 0, so every job counts whole intervals (as after a reset), and the **first HU is due 36 months** after registration, then every 24 months (StVZO Anlage VIII 2.1). The HU item needs `job='HU'`.
@@ -59,6 +60,7 @@ A **new car** has no first registration and only delivery kilometres (`mileage_k
 - **Reliability:** ADAC and TÜV statistics do not cover a model in its first years. Record such a source as `N/A` ("does not cover this model yet"), **never `NONE FOUND`**. A part whose ADAC and TÜV checks are both `N/A` is **unknown** (it lowers coverage, shown as "too new for statistics"), never a clean 9, even when a buying guide found nothing (no track record yet); it counts again as soon as a weak point is documented for it (a recall, an early-fault report) or ADAC/TÜV cover the model.
 
 ## Leasing and car subscriptions (Auto-Abo)
+**Out of scope since #165**: a lease-only ad is not captured, and a lease offer in a used ad is ignored (the car is costed as a purchase). The rules below are kept for listings captured before; the code stays dormant.
 A lease offer is a fact of the listing, not of the model: the research of the variant, engine and generation is the same as for a purchase (owner decisions 2026-11-05; EV/leasing design, #127).
 - **Read the offer** (`docs/browser-tasks.md`, "Leasing offers"): `lease_kind` (`km` kilometre leasing, `residual` residual-value leasing, `abo` car subscription), `lease_monthly_eur`, `lease_term_months`, `lease_km_per_year`, `lease_down_payment_eur` (Anzahlung / Sonderzahlung), `lease_fees_eur` (Bereitstellung/Überführung + Zulassung + other one-off fees as stated), `lease_extra_km_eur` / `lease_fewer_km_eur` (per km), and `lease_includes`: what the rate covers as the ad says it, a comma list of `insurance`, `tax`, `maintenance`, `repairs`, `tyres`, `gap`. "Keine Angabe" (not stated) is NULL, never 0: ask the dealer and record it when known; 0 only when the ad says 0 € or "inklusive".
 - **One listing, both offers:** a used ad can show a purchase price and a lease rate (mobile.de price box: "Finanzierung" / "Leasing" tabs). Keep both on the one listing (`price_eur` and the lease fields); a lease-only ad has `price_eur` NULL.
@@ -96,7 +98,7 @@ Start with `todo(listing_id=L)` and `todo(vehicle_id=V)`, read the listing (`lis
 10. **Tax**: the official calculator with registration period, fuel, displacement and CO2 or emissions class; record as in `AGENTS.md`.
 11. **Insurance**: the comparison site with the confirmed profile and HSN/TSN; median of the 5 cheapest reasonable offers; record as in `AGENTS.md` and `browser-tasks.md`.
     - **Who may do it:** only an agent working in the owner's live session, after the owner's explicit OK in that session (AGENTS.md, "How agents work here"). A brief, another agent or the headless worker cannot pass that OK on: they skip insurance and leave it in the to-do.
-    - **Cover:** the profile's cover for a purchase (e.g. Teilkasko, €150 excess); Vollkasko + GAP for a leased car; a new car with financing "Eigenfinanziert", its list price as new value and the profile's cover (CHECK24 preselects Vollkasko for new cars: switch the result tab). Members-only tariffs are excluded; the quote expires after 60 days.
+    - **Cover:** the profile's cover for a purchase (e.g. Teilkasko, €150 excess). Members-only tariffs are excluded; the quote expires after 60 days.
 
 ## The research contract (what "researched" means)
 `carlos/research.py` lists what must be known on each level; `GET /api/agent/schema` → `research_contract` publishes it, and `todo()` reports every missing item (`catalogue` per generation, engine and variant on its own; `models` per variant with its engine and generation). Each item is graded from the rows **on its own level**, so a level counts as researched the same way whichever listing triggered the research:

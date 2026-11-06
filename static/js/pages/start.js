@@ -28,7 +28,7 @@ const PERSON = { gender: ['female', 'male', 'diverse'], licence_country: ['germa
   relationship: ['partner', 'child', 'other'], yesno: ['yes', 'no'] };
 const DISCOUNTS = ['homeowner', 'children', 'transit_pass', 'bahncard', 'club', 'liability', 'household', 'legal', 'accident', 'other_policy'];
 const PARAM_CHOICE = { purchase_mode: ['cash', 'financing'], insurance_cover: ['Haftpflicht', 'Teilkasko', 'Vollkasko'],
-  home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'], acquisition_mode: ['buy', 'lease', 'both'] };  // home_charging: electric cars (#121); acquisition_mode: leasing (#127)
+  home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'] };  // home_charging: electric cars (#121); leasing was removed: second-hand purchases only (#165)
 const DIY = { oil: 'oil and filters', plugs: 'spark plugs', service: 'yearly service', brakes: 'brake pads and discs', battery: 'battery',
   bulbs: 'bulbs', wipers: 'wipers', coolant: 'coolant', timing: 'timing belt or chain', clutch: 'clutch' };
 const DIY_DEFAULT = ['oil', 'plugs', 'service', 'brakes', 'battery', 'bulbs', 'wipers'];  // docs/cost-research-protocol.md
@@ -92,9 +92,6 @@ const VIEWS = {
       ${field('budget_max_eur', t('p_budget_max'), number('budget_max_eur', P('budget_max_eur'), 'min="1" step="100"'), t('h_budget_max'))}</div>
     ${group('purchase_mode', t('p_purchase'), choice('purchase_mode', PARAM_CHOICE.purchase_mode.map(v => [v, v]), P('purchase_mode'), c => 'pm_' + c))}
     <div class="fields two">
-      ${group('acquisition_mode', t('p_acquisition'), choice('acquisition_mode', PARAM_CHOICE.acquisition_mode.map(v => [v, v]), P('acquisition_mode'), c => 'am_' + c), t('h_acquisition'))}
-      ${field('lease_rate_max_eur', t('p_lease_rate_max'), number('lease_rate_max_eur', P('lease_rate_max_eur'), 'min="1" step="10"'), t('h_lease_rate_max'))}</div>
-    <div class="fields two">
       ${field('fuel_price_eur_l', t('p_fuel_price'), number('fuel_price_eur_l', P('fuel_price_eur_l'), 'step=".01" min="0.01" inputmode="decimal"'))}
       ${field('diesel_price_eur_l', t('p_diesel_price'), number('diesel_price_eur_l', P('diesel_price_eur_l'), 'step=".01" min="0.01" inputmode="decimal"'))}</div>
     <p class="hint">${t('h_fuel')}</p>`,
@@ -147,7 +144,7 @@ function collect(name) {
   const num_ = id => { const v = val(id); return v === '' || v == null ? null : Number(v); };
   if (name === 'drive') { params.annual_km = num_('annual_km'); params.ownership_years = num_('ownership_years'); pr.driving_mix = radio('driving_mix'); pr.current_car = val('current_car'); }
   if (name === 'money') { const today = new Date().toISOString().slice(0, 10);
-    Object.assign(params, { budget_ideal_eur: num_('budget_ideal_eur'), budget_max_eur: num_('budget_max_eur'), purchase_mode: radio('purchase_mode'), acquisition_mode: radio('acquisition_mode'), lease_rate_max_eur: num_('lease_rate_max_eur'), fuel_price_eur_l: num_('fuel_price_eur_l'), diesel_price_eur_l: num_('diesel_price_eur_l') });
+    Object.assign(params, { budget_ideal_eur: num_('budget_ideal_eur'), budget_max_eur: num_('budget_max_eur'), purchase_mode: radio('purchase_mode'), fuel_price_eur_l: num_('fuel_price_eur_l'), diesel_price_eur_l: num_('diesel_price_eur_l') });
     if (String(params.fuel_price_eur_l) !== P('fuel_price_eur_l')) params.fuel_price_date = today;
     if (params.diesel_price_eur_l != null && String(params.diesel_price_eur_l) !== P('diesel_price_eur_l')) params.diesel_price_date = today; }
   if (name === 'search') Object.assign(pr, { search_center: val('search_center'), search_radius: val('search_radius'), preferred_fuel: radio('preferred_fuel'), preferred_transmission: radio('preferred_transmission') });
@@ -201,7 +198,7 @@ const diyShown = () => prefs.diy_jobs == null ? null : prefs.diy_jobs.split(',')
 function summary() {
   const p = S.saved, yes = v => v == null || v === '' ? `<span class="pending">${t('pending')}</span>` : esc(v);
   const rows = [[t('step_drive'), [[t('p_annual_km'), p.annual_km && num(p.annual_km, 0) + ' km'], [t('p_ownership_years'), p.ownership_years], [t('p_driving_mix'), shown('driving_mix')], [t('p_current_car'), prefs.current_car]]],
-    [t('step_money'), [[t('p_budget_ideal'), p.budget_ideal_eur && euro(p.budget_ideal_eur)], [t('p_budget_max'), p.budget_max_eur && euro(p.budget_max_eur)], [t('p_purchase'), p.purchase_mode && t('pm_' + p.purchase_mode)], [t('p_acquisition'), p.acquisition_mode && t('am_' + p.acquisition_mode)], [t('p_lease_rate_max'), p.lease_rate_max_eur && euro(p.lease_rate_max_eur)]]],
+    [t('step_money'), [[t('p_budget_ideal'), p.budget_ideal_eur && euro(p.budget_ideal_eur)], [t('p_budget_max'), p.budget_max_eur && euro(p.budget_max_eur)], [t('p_purchase'), p.purchase_mode && t('pm_' + p.purchase_mode)]]],
     [t('step_search'), [[t('p_search_center'), prefs.search_center], [t('p_search_radius'), /^\d+$/.test(prefs.search_radius ?? '') ? prefs.search_radius + ' km' : prefs.search_radius === 'Any' ? t('o_any_distance') : prefs.search_radius], [t('p_pref_fuel'), shown('preferred_fuel')], [t('p_pref_gearbox'), shown('preferred_transmission')]]],
     [t('step_drivers'), [[t('p_postal'), p.postal_code], [t('holder_title'), [prefs.insurance_holder_gender && t('o_gender_' + prefs.insurance_holder_gender), prefs.insurance_holder_birth_date && ageOn(prefs.insurance_holder_birth_date) + ' ' + t('years_old'), prefs.insurance_holder_occupation && t('o_occ_' + prefs.insurance_holder_occupation)].filter(Boolean).join(', ')], [t('p_drivers'), p.drivers_count], [t('p_age'), p.driver_age]]],
     [t('step_insurance'), [[t('p_sf'), p.sf_class], [t('p_cover'), p.insurance_cover && t('cover_' + p.insurance_cover)], [t('p_deductible'), p.insurance_deductible_eur != null ? euro(p.insurance_deductible_eur) : null], [t('p_claims'), shown('insurance_claims_3y')], [t('p_usage'), shown('insurance_usage')], [t('p_parking'), shown('insurance_parking')], [t('p_discounts'), prefs.insurance_discounts && prefs.insurance_discounts !== 'none' ? prefs.insurance_discounts.split(',').map(x => t('disc_' + x.trim())).join(', ') : prefs.insurance_discounts && t('none_word')]]],

@@ -7,11 +7,10 @@ import { t } from '../i18n.js';
 import { $, esc, num, store, toast } from '../ui.js';
 
 const KEYS = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'fuel_price_date', 'diesel_price_eur_l', 'diesel_price_date', 'budget_ideal_eur', 'budget_max_eur', 'postal_code', 'drivers_count', 'driver_age', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'purchase_mode',
-  'home_charging', 'home_charging_pct', 'electricity_home_eur_kwh', 'electricity_home_date', 'electricity_public_eur_kwh', 'electricity_public_date', 'wallbox_cost_eur',
-  'acquisition_mode', 'lease_rate_max_eur'];
-const CALC = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'diesel_price_eur_l', 'budget_ideal_eur', 'budget_max_eur', 'electricity_home_eur_kwh', 'electricity_public_eur_kwh', 'home_charging_pct', 'wallbox_cost_eur', 'lease_rate_max_eur'];
+  'home_charging', 'home_charging_pct', 'electricity_home_eur_kwh', 'electricity_home_date', 'electricity_public_eur_kwh', 'electricity_public_date', 'wallbox_cost_eur'];
+const CALC = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'diesel_price_eur_l', 'budget_ideal_eur', 'budget_max_eur', 'electricity_home_eur_kwh', 'electricity_public_eur_kwh', 'home_charging_pct', 'wallbox_cost_eur'];
 const OPTS = { insurance_cover: ['Haftpflicht', 'Teilkasko', 'Vollkasko'], sf_class: ['SF 0', 'SF 1/2', ...Array.from({ length: 35 }, (_, i) => 'SF ' + (i + 1)), 'M', 'S'],
-  insurance_deductible_eur: ['0', '150', '300', '500', '1000'], purchase_mode: ['cash', 'financing'], home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'], acquisition_mode: ['buy', 'lease', 'both'] };
+  insurance_deductible_eur: ['0', '150', '300', '500', '1000'], purchase_mode: ['cash', 'financing'], home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'] };
 let root, previewTimer;
 const val = k => { const e = $(k); return e.type === 'number' ? (e.value === '' ? null : Number(e.value)) : e.value; };
 const dirty = () => KEYS.some(k => String(val(k) ?? '').replace(/\.0$/, '') !== String(S.saved[k] ?? '').replace(/\.0$/, ''));
@@ -22,7 +21,7 @@ function form() {
   const p = S.saved, f = (k, label, extra = '') => `<div class="field"><label for="${k}">${label}</label>${extra}</div>`;
   const inp = (k, type, attrs = '') => `<input id="${k}" type="${type}" ${attrs} value="${p[k] == null ? '' : esc(String(p[k]).replace(/\.0$/, ''))}">`;
   const sel = k => { const cur = p[k] == null ? '' : String(p[k]).replace(/\.0$/, ''); const vals = [...new Set(['', ...OPTS[k], ...(cur && !OPTS[k].includes(cur) ? [cur] : [])])];
-    return `<select id="${k}">${vals.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v === '' ? '—' : k === 'purchase_mode' ? t('pm_' + v) : k === 'home_charging' ? t('hc_' + v) : k === 'acquisition_mode' ? t('am_' + v) : k === 'insurance_deductible_eur' ? v + ' €' : esc(v)}</option>`).join('')}</select>`; };
+    return `<select id="${k}">${vals.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v === '' ? '—' : k === 'purchase_mode' ? t('pm_' + v) : k === 'home_charging' ? t('hc_' + v) : k === 'insurance_deductible_eur' ? v + ' €' : esc(v)}</option>`).join('')}</select>`; };
   return `<form id="paramForm" novalidate>
     <fieldset><legend>${t('calc_group')}</legend><p class="small muted" style="margin:0 0 10px">${t('calc_group_hint')}</p><div class="fields">
       ${f('annual_km', t('p_annual_km'), `<div class="pair"><input id="annual_km_range" type="range" min="5000" max="40000" step="1000" value="${p.annual_km}" aria-hidden="true" tabindex="-1">${inp('annual_km', 'number', 'min="1" step="500" inputmode="numeric"')}</div>`)}
@@ -38,7 +37,7 @@ function form() {
       ${f('insurance_cover', t('p_cover'), sel('insurance_cover'))}${f('sf_class', 'SF-Klasse', sel('sf_class'))}${f('insurance_deductible_eur', t('p_deductible'), sel('insurance_deductible_eur'))}
       ${f('drivers_count', t('p_drivers'), inp('drivers_count', 'number', 'min="1" max="9" readonly'))}${f('driver_age', t('p_age'), inp('driver_age', 'number', 'min="17" max="99" readonly') + `<p class="hint"><a href="#/start?step=3">${t('from_drivers_step')}</a></p>`)}
       ${f('postal_code', t('p_postal'), inp('postal_code', 'text', 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5"'))}${f('purchase_mode', t('p_purchase'), sel('purchase_mode'))}
-      ${f('acquisition_mode', t('p_acquisition'), sel('acquisition_mode'))}${f('lease_rate_max_eur', t('p_lease_rate_max'), inp('lease_rate_max_eur', 'number', 'step="10" min="1" inputmode="numeric"'))}
+
     </div></fieldset>
     <fieldset><legend>${t('step_charging')}</legend><p class="small muted" style="margin:0 0 10px">${t('sl_charging')}</p><div class="fields">
       ${f('home_charging', t('p_home_charging'), sel('home_charging'))}${f('home_charging_pct', t('p_home_pct'), inp('home_charging_pct', 'number', 'min="0" max="100" step="5" inputmode="numeric"'))}
