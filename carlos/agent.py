@@ -25,7 +25,8 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'maintenance_items.job': config.JOBS, 'repair_risks.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A'],
                'listings.lease_kind': config.LEASE_KINDS, 'gearboxes.type': config.GEARBOX_TYPES,
                'faults.part': config.RELIABILITY_PARTS, 'faults.consequence': config.FAULT_CONSEQUENCES,
-               'faults.existence': ['CONFIRMED', 'REPORTED'], 'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
+               'faults.existence': ['CONFIRMED', 'REPORTED'], 'faults.frequency_band': list(config.FREQUENCY_BANDS),
+               'faults.shape': config.FAULT_SHAPES, 'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
                'recalls.part': config.RELIABILITY_PARTS, 'reliability_stats.kind': ['TUEV', 'ADAC'],
                'maintenance_items.kind': ['JOB', 'WEAR'], 'listing_history.status': ['DONE', 'PRESENT', 'OPEN', 'NOT AFFECTED'],
                'listing_history.evidence': ['DOCUMENTED', 'SELLER CLAIM', 'OBSERVED', 'VIN CHECK'],
@@ -92,10 +93,24 @@ def curve_points(raw):
     return pts
 
 
-def fault_checks(out):
+def fault_checks(c, out):
+    """The fault probability method (#168): valid curves; a band fills its central range; 'systemic' needs a manufacturer
+    trace; a fault whose source is a forum (quality D) is never above 'common'."""
     for col in ('curve_km', 'curve_age'):
         if out.get(col) is not None:
             curve_points(out[col])
+    band = out.get('frequency_band')
+    if band in config.FREQUENCY_BANDS:
+        _, lo, hi = config.FREQUENCY_BANDS[band]
+        out.setdefault('share_low', lo)
+        out.setdefault('share_high', hi)
+        if band == 'systemic' and not out.get('manufacturer_trace'):
+            raise ValueError("frequency_band 'systemic' needs manufacturer_trace (extended warranty, Kulanz, TPI or class action)")
+        bands = list(config.FREQUENCY_BANDS)
+        if out.get('source_id') is not None and bands.index(band) < bands.index(config.FORUM_MAX_BAND):
+            q = c.execute('SELECT quality FROM sources WHERE id=?', (out['source_id'],)).fetchone()
+            if q and q[0] == 'D':
+                raise ValueError(f"a forum-only fault (source quality D) is never above '{config.FORUM_MAX_BAND}'")
 
 
 def clean_row(c, table, data, insert):
@@ -150,7 +165,7 @@ def clean_row(c, table, data, insert):
     if insert and table == 'sources' and levels > 1:
         raise ValueError(f'sources attach to at most one level: {", ".join(config.LEVEL_COLUMNS)} (none = shared)')
     if table == 'faults':
-        fault_checks(out)
+        fault_checks(c, out)
     return out
 
 

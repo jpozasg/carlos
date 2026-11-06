@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=28). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=29). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -350,7 +350,7 @@ CREATE TABLE faults (
  usage_source_id INTEGER REFERENCES sources(id),
  applies_from TEXT, applies_to TEXT, window_uncertain INTEGER NOT NULL DEFAULT 0 CHECK (window_uncertain IN (0, 1)),
  source_id INTEGER NOT NULL REFERENCES sources(id), notes TEXT,
- archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id),
+ archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), frequency_band TEXT CHECK (frequency_band IS NULL OR frequency_band IN ('systemic', 'widespread', 'common', 'occasional', 'rare')), share_low REAL CHECK (share_low IS NULL OR (share_low >= 0 AND share_low <= 1)), share_high REAL CHECK (share_high IS NULL OR (share_high >= 0 AND share_high <= 1)), shape TEXT CHECK (shape IS NULL OR shape IN ('WEAR_KM', 'AGE', 'WINDOW', 'RANDOM')), window_km INTEGER CHECK (window_km IS NULL OR window_km > 0), onset_km INTEGER CHECK (onset_km IS NULL OR onset_km >= 0), manufacturer_trace TEXT, fixed_fault_id INTEGER REFERENCES faults(id), warranty_km INTEGER CHECK (warranty_km IS NULL OR warranty_km > 0), warranty_years REAL CHECK (warranty_years IS NULL OR warranty_years > 0), warranty_share REAL CHECK (warranty_share IS NULL OR (warranty_share > 0 AND warranty_share <= 1)), quote TEXT,
  CHECK (usage_multiplier IS NULL OR usage_source_id IS NOT NULL),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL)
       + (engine_family_id IS NOT NULL) + (gearbox_family_id IS NOT NULL) + (body_style_id IS NOT NULL) + (option_id IS NOT NULL) = 1));

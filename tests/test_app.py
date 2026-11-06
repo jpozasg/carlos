@@ -213,6 +213,63 @@ class AppTest(unittest.TestCase):
         finally:
             c.close()
 
+    def test_fault_costs_174(self):
+        """Step 2 (#174, method #168): a fault's expected cost is the conditional chance over the owner's km × its price; a
+        documented fix switches to the fixed part's curve (or none); extended warranty pays its share; a band and shape
+        give a curve continuing to the end limits; systemic needs a manufacturer trace, a forum source caps the band;
+        the market model gives the end value; a level HU row overrides the global default; the listing's quote counts."""
+        from carlos import costs
+        curve = [[100000, 0.1], [200000, 0.4]]
+        base = {'component': 'Chain', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'CONFIRMED',
+                'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600, 'source_id': SRC_GUIDE, 'engine_id': E_A}
+        f1 = self.agent('POST', 'faults', {**base, 'curve_km': curve})[1]['id']
+        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        km, period = a['mileage_km'], a['period_km']
+        plan = {x['id']: x for x in a['fault_plan']}
+        self.assertEqual(plan[f1]['severity'], 'HIGH')                               # engine damage → HIGH, derived
+        self.assertAlmostEqual(plan[f1]['expected_eur'], round(costs.conditional(curve, km, km + period, 300000) * 1000, 2), places=2)
+        # extended warranty for the whole period pays half
+        self.assertEqual(self.agent('PATCH', f'faults/{f1}', {'warranty_km': 900000, 'warranty_years': 40, 'warranty_share': 0.5})[0], 200)
+        half = {x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[f1]['expected_eur']
+        self.assertAlmostEqual(half, plan[f1]['expected_eur'] / 2, delta=0.02)
+        self.assertEqual(self.agent('PATCH', f'faults/{f1}', {'warranty_share': None, 'warranty_km': None, 'warranty_years': None})[0], 200)
+        # documented fix at today's km without a fixed-part curve: no risk left; with one: that curve from the repair
+        src = self.agent('POST', 'sources', {'title': 'Invoice', 'source_type': 'listing'})[1]['id']
+        self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'fault_id': f1, 'item': 'New chain', 'status': 'DONE',
+                                                                'km': km, 'evidence': 'DOCUMENTED', 'source_id': src})[0], 201)
+        fixed = lambda: {x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[f1]
+        self.assertEqual(fixed()['expected_eur'], 0)
+        f2 = self.agent('POST', 'faults', {**base, 'component': 'Revised chain', 'curve_km': [[200000, 0.05]]})[1]['id']
+        self.assertEqual(self.agent('PATCH', f'faults/{f1}', {'fixed_fault_id': f2})[0], 200)
+        self.assertAlmostEqual(fixed()['probability'], round(costs.conditional([[200000, 0.05]], 0, period, 300000), 4), places=4)
+        # shapes: every shape gives a rising curve that reaches the end limit
+        for shape in ('WEAR_KM', 'AGE', 'WINDOW', 'RANDOM'):
+            km_c, age_c = costs.shape_curves({'frequency_band': 'common', 'shape': shape})
+            pts = km_c or age_c
+            self.assertEqual(pts[-1][0], 300000 if km_c else 20, shape)
+            self.assertTrue(all(b[1] >= a_[1] for a_, b in zip(pts, pts[1:])), shape)
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'frequency_band': 'systemic', 'shape': 'WEAR_KM'})[0], 400)  # no trace
+        forum = self.agent('POST', 'sources', {'title': 'Forum', 'quality': 'D', 'engine_id': E_A})[1]['id']
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'frequency_band': 'widespread', 'shape': 'WEAR_KM', 'source_id': forum})[0], 400)
+        st, f3 = self.agent('POST', 'faults', {**base, 'frequency_band': 'common', 'shape': 'RANDOM', 'source_id': forum})
+        self.assertEqual(st, 201)
+        self.assertGreater({x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[f3['id']]['probability'], 0)
+        # market model: depreciation = price − the end value at the owner's end age and km, less the private-sale discount
+        m = {'generation_id': G1, 'engine_id': E_A, 'value_ref_eur': 6000, 'ref_age_years': 10, 'ref_km': 150000, 'rate_year': 0.08,
+             'rate_10k_km': 0.02, 'band_counts': [5, 6, 7], 'sample_date': datetime.date.today().isoformat(), 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'market_models', m)[0], 201)
+        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        years = a['period_months'] / 12
+        end = round(costs.market_value(m, a['metrics']['age'] + years, km + period) * (1 - config.PRIVATE_SALE_DISCOUNT), -1)
+        self.assertAlmostEqual(a['components']['depreciation'], a['price_eur'] - end, places=2)
+        # a global HU default is overridden by the generation's HU row; the listing's own quote is the insurance
+        self.assertEqual(self.agent('POST', 'maintenance_items', {'item': 'HU (global)', 'job': 'HU', 'interval_months': 24, 'schedule': 'ITEM',
+                                                                  'reference_cost_eur': 999, 'status': 'ESTIMATED', 'source_id': fx.SRC_HU})[0], 201)
+        self.assertNotIn('HU (global)', [x['item'] for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['maintenance_plan']])
+        self.assertEqual(self.agent('POST', 'listing_quotes', {'listing_id': CAR_A, 'annual_premium_eur': 777, 'premium_status': 'QUOTE',
+                                                               'quote_date': datetime.date.today().isoformat(), 'source_id': SRC_QUOTE})[0], 201)
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['annual_insurance'], 777)
+
     def test_scoped_rows_need_exactly_one_level(self):
         base = {'item': 'x', 'interval_km': 10000, 'schedule': 'ITEM', 'diy': 0, 'reference_cost_eur': 10, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE}
         self.assertEqual(self.agent('POST', 'repair_risks', {'component': 'x', 'km_from': 0, 'km_to': 1, 'probability': 0.1,
