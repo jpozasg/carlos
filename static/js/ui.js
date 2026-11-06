@@ -69,8 +69,8 @@ export function flagsCard(flags) {
   if (!flags || !flags.length) return '';
   const open = f => f.status === 'OPEN';
   return `<div class="card span2"><h3>${t('flags_title')} <span class="muted small">${flags.filter(open).length}</span></h3><p class="small muted" style="margin-top:0">${t('flags_lead')}</p>
-    <ul class="check">${flags.map(f => `<li><span class="ico ${open(f) ? 'pend' : 'ok'}" aria-hidden="true">${open(f) ? '!' : '✓'}</span><div><b>${esc(f.what)}</b> <span class="tag ${open(f) ? 'warn' : 'good'}">${esc(f.status)}</span> <span class="tag">${esc(f.kind)}</span> ${lvlTag(f.level)}
-      <div class="small muted">${esc(f.why)}</div>${(f.reviews || []).length ? `<ul class="small" style="margin:4px 0 0;padding-left:18px">${f.reviews.map(r => `<li>${esc(r.review_date)} · ${esc(r.worker)} · <b>${esc(r.outcome)}</b>: ${esc(r.conclusion)} — ${esc(r.finding)}</li>`).join('')}</ul>` : `<div class="small muted">${t('flag_no_reviews')}</div>`}</div></li>`).join('')}</ul></div>`;
+    <ul class="check">${flags.map(f => `<li><span class="ico ${open(f) ? 'pend' : 'ok'}" aria-hidden="true">${open(f) ? '!' : '✓'}</span><div><b>${esc(f.what)}</b> <span class="tag ${open(f) ? 'warn' : 'good'}">${esc(tv(f.status))}</span> <span class="tag">${esc(tv(f.kind))}</span> ${lvlTag(f.level)}
+      <div class="small muted">${esc(f.why)}</div>${(f.reviews || []).length ? `<ul class="small" style="margin:4px 0 0;padding-left:18px">${f.reviews.map(r => `<li>${esc(r.review_date)} · ${esc(r.worker)} · <b>${esc(tv(r.outcome))}</b>: ${esc(r.conclusion)} — ${esc(r.finding)}</li>`).join('')}</ul>` : `<div class="small muted">${t('flag_no_reviews')}</div>`}</div></li>`).join('')}</ul></div>`;
 }
 // a fault's probability as the sources put it: a frequency band with its shape, or a sourced curve (#168)
-export const faultProb = f => f.frequency_band ? `${esc(f.frequency_band)}${f.shape ? ' · ' + esc(f.shape) : ''}` : (f.curve_km || f.curve_age ? t('f_curve') : '—');
+export const faultProb = f => f.frequency_band ? `${esc(tv(f.frequency_band))}${f.shape ? ' · ' + esc(tv(f.shape)) : ''}` : (f.curve_km || f.curve_age ? t('f_curve') : '—');
