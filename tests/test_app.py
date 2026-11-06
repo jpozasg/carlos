@@ -591,7 +591,7 @@ class AppTest(unittest.TestCase):
         # the worker side is for admin tokens only
         self.assertEqual(self.req('POST', '/api/worker/claim', {'worker': 'x'}, token=None, cookie=t2)[0], 403)
         # claims hand out the oldest first, each request once, then nothing
-        got = [self.req('POST', '/api/worker/claim', {'worker': 'desk'})[1]['request'] for _ in range(5)]
+        got = [self.req('POST', '/api/worker/claim', {'worker': f'desk{i}'})[1]['request'] for i in range(5)]  # one worker each: a worker's new claim releases its previous one (#160)
         self.assertEqual([g['url'][-1] for g in got[:4]], ['1', '2', '3', '4'])
         self.assertIsNone(got[4])
         self.assertEqual({g['status'] for g in got[:4]}, {'RUNNING'})
@@ -613,7 +613,7 @@ class AppTest(unittest.TestCase):
         for i in range(3):
             self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{i}'})
         out = []
-        threads = [threading.Thread(target=lambda: out.append(self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request'])) for _ in range(8)]
+        threads = [threading.Thread(target=lambda i=i: out.append(self.req('POST', '/api/worker/claim', {'worker': f'w{i}'})[1]['request'])) for i in range(8)]
         [t.start() for t in threads]; [t.join() for t in threads]
         ids = [r['id'] for r in out if r]
         self.assertEqual((len(out), len(ids), len(set(ids))), (8, 3, 3))
@@ -658,6 +658,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('POST', '/api/worker/heartbeat', {'state': 'idle'}, token=wt)[0], 401)
         self.assertEqual(self.req('POST', '/api/worker/heartbeat', {'state': 'error', 'error': 'site down'}, token=new)[0], 200)
         self.assertEqual((status()['status'], status()['last_error']), ('error', 'site down'))
+
         self.sql_write("UPDATE workers SET last_seen=datetime('now', '-1 hour')")
         self.assertEqual(status()['status'], 'down')
         self.assertEqual(self.req('GET', '/api/admin/workers', token=new)[0], 403)      # a worker is no admin
@@ -672,6 +673,23 @@ class AppTest(unittest.TestCase):
         self.assertIn('acct=none', log)
         self.assertNotIn(new, log)
         self.assertNotIn('tok= ', log)
+
+    def test_worker_restart_releases_its_request_160(self):
+        """Issue #160: a worker runs one request at a time, so its new claim puts the request it still holds (an interrupted
+        run) back in the queue and revokes that request's token; another worker's RUNNING request is untouched."""
+        wt = self.req('POST', '/api/admin/workers', {'name': 'desk'})[1]['token']
+        for i in range(3):
+            self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/16{i}'})
+        a = self.req('POST', '/api/worker/claim', {}, token=wt)[1]['request']
+        other = self.req('POST', '/api/worker/claim', {'worker': 'elsewhere'})[1]['request']
+        again = self.req('POST', '/api/worker/claim', {}, token=wt)[1]['request']   # the restarted worker claims again
+        self.assertEqual(again['id'], a['id'])           # oldest first: the released request comes straight back, with a new token
+        self.assertIn('Released: worker desk', again['result'])
+        self.assertEqual(self.req('GET', '/api/tco', token=a['request_token'])[0], 401)   # the interrupted run's token is dead
+        self.assertEqual(self.req('GET', '/api/tco', token=again['request_token'])[0], 200)
+        rows = dict(self.sql('SELECT id, status FROM research_requests WHERE id IN (?,?)', (a['id'], other['id'])))
+        self.assertEqual(rows, {a['id']: 'RUNNING', other['id']: 'RUNNING'})
+        self.assertEqual({x['name']: x for x in self.req('GET', '/api/admin/workers')[1]}['desk']['request_id'], a['id'])
 
     def test_admin_agent_token_reaches_every_account_143(self):
         """Issue #143: the admin agent token reads every account's rows and writes a row of another account as that account."""

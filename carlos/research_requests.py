@@ -56,6 +56,10 @@ def claim(c, worker, worker_id=None):
     c.isolation_level = None  # manual transaction: BEGIN IMMEDIATE takes the write lock before reading, so two workers never get the same row
     try:
         c.execute('BEGIN IMMEDIATE')
+        # a worker runs one request at a time: one it still holds was interrupted (e.g. restarted), so queue it again (#160)
+        c.execute("UPDATE main.research_requests SET status='QUEUED', claimed_at=NULL, worker=NULL, request_token_hash=NULL, "
+                  "result=COALESCE(result || char(10), '') || ? WHERE status='RUNNING' AND worker=?",
+                  (f'Released: worker {worker} claimed a new request; the previous run was interrupted', worker))
         row = c.execute(f"SELECT id FROM main.research_requests WHERE status='QUEUED' OR status='RUNNING' AND claimed_at < "
                         f"datetime('now', '-{CLAIM_TIMEOUT_HOURS} hours') ORDER BY id LIMIT 1").fetchone()
         if row:
