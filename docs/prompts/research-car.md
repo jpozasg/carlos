@@ -18,7 +18,7 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 **Do:** steps 1–9 of the protocol for this car:
 1. identification of generation, engine (aspiration, injection, timing drive; an electric motor instead: usable battery kWh, AC/DC charging kW) and variant (HSN/TSN);
 2. reliability items at the right level, each with its `part` (ENGINE / GEARBOX / CHASSIS / ELECTRICS: research all four) and every manufacturer recall as its own row with `recall=True`, then the checklist; record every source consulted with `check(level, id, task, source_id, result)` (`rel.<PART>.<source>`, `gen.recalls`, `gen.facelift`, …), `NONE FOUND` when it lists nothing;
-3. consumption: the autokostencheck average of the exact variant; for an electric car the Spritmonitor average in kWh/100 km (`consumption(..., electric=True)`);
+3. consumption: the autokostencheck average of the exact variant; for an electric car the ev-database.org real consumption of the exact variant and battery in kWh/100 km (`consumption(v, value, None, None, None, source_id, electric=True)`; ADAC Ecotest, when one exists, as a cross-check row; never Spritmonitor);
 4. item maintenance schedule at the right level, with HU: every job with its `job=` code and, for a job an owner may do (`config.DIYABLE_JOBS`), both the DIY parts and the workshop price (the research is shared; each account's DIY choice picks one);
 5. repair risks at the right level for the window {MILEAGE_KM} → {MILEAGE_KM} + {PERIOD_KM} km;
 6. certain one-off costs of this car: scheduled jobs due at purchase as `maintenance` (timing belt by age, overdue fluids: never `repairs`), present faults as `repairs`, each named in `item`;

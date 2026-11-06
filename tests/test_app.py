@@ -313,10 +313,10 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('PATCH', f"listings/{l['id']}", {'battery_soh_claim': 94})[0], 200)
         self.assertFalse(any('charging answers' in x or 'battery state' in x for x in todo()))
         from carlos.costs import electricity_price
-        self.assertEqual(electricity_price({'home_charging': 'none', 'electricity_public_eur_kwh': 0.5}), (0.5, []))
-        self.assertAlmostEqual(electricity_price({'home_charging': 'socket', 'home_charging_pct': 100, 'electricity_home_eur_kwh': 0.4})[0], 0.44)
+        self.assertEqual(electricity_price({'home_charging': 'none', 'electricity_public_eur_kwh': 0.5}), (0.5 * (1 + config.EV_CHARGING_LOSS), []))   # losses on every kWh (#154)
+        self.assertAlmostEqual(electricity_price({'home_charging': 'socket', 'home_charging_pct': 100, 'electricity_home_eur_kwh': 0.4})[0], 0.44 * (1 + config.EV_CHARGING_LOSS))   # the socket's extra over a wallbox, once
         self.assertAlmostEqual(electricity_price({'home_charging': 'wallbox', 'home_charging_pct': 50, 'electricity_home_eur_kwh': 0.4,
-                                                  'electricity_public_eur_kwh': 0.6})[0], 0.5)
+                                                  'electricity_public_eur_kwh': 0.6})[0], 0.5 * (1 + config.EV_CHARGING_LOSS))
 
     def test_electric_costs_121(self):
         import datetime
@@ -329,7 +329,7 @@ class AppTest(unittest.TestCase):
         self.agent('POST', 'unit_costs', {'listing_id': l['id'], 'category': 'purchase_sale', 'item': 'registration', 'parts_eur': 0,
                                           'labor_eur': 100, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})
         u = self.units()[l['id']]
-        self.assertAlmostEqual(u['components']['fuel'], 16.0 * 40000 / 100 * 0.40)
+        self.assertAlmostEqual(u['components']['fuel'], 16.0 * 40000 / 100 * 0.40 * (1 + config.EV_CHARGING_LOSS))
         self.assertEqual(u['consumption_unit'], 'kWh/100 km')
         self.assertEqual(u['components']['tax'], 0)               # first registered 2020-11: exempt for the whole period, no row
         self.assertEqual(u['components']['purchase_sale'], 1600)  # registration + the planned wallbox
@@ -447,8 +447,7 @@ class AppTest(unittest.TestCase):
         self.assertFalse({'eng.identity', 'eng.oil', 'eng.air_filter', 'eng.spark_plugs', 'eng.timing_belt', 'eng.coolant'} & ids())
         self.agent('PATCH', f"engines/{e['id']}", {'ac_charge_kw': 22})
         self.agent('POST', 'observations', {'vehicle_id': v['id'], 'category': 'consumption', 'metric': config.PRIMARY_CONSUMPTION_EV,
-                                            'value_num': 16.5, 'unit': 'kWh/100 km', 'sample_count': 40, 'min_value': 12.1, 'max_value': 22.0,
-                                            'status': 'PRIMARY', 'source_id': SRC_GUIDE})
+                                            'value_num': 16.5, 'unit': 'kWh/100 km', 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})  # EVDB: no sample (#154)
         self.agent('POST', 'research_checks', {'engine_id': e['id'], 'task': 'eng.drive_coolant', 'result': 'NONE FOUND', 'source_id': SRC_GUIDE})
         self.assertFalse({'eng.identity_ev', 'var.consumption', 'eng.drive_coolant'} & ids())
         import capture_listing

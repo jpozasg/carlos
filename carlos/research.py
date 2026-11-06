@@ -12,7 +12,7 @@ from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 3  # 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125)
+CONTRACT_VERSION = 4  # 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
 LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id'}
@@ -35,8 +35,9 @@ def _risks(ctx):
 
 def _consumption(ctx):
     """The primary real-world consumption of the variant: one source per drivetrain (kWh for an electric car)."""
-    metric = config.PRIMARY_CONSUMPTION_EV if electric(ctx) else config.PRIMARY_CONSUMPTION
-    return [r for r in ctx['rows']('observations') if r['metric'] == metric and None not in
+    if electric(ctx):  # a modelled figure per variant (EVDB, #154): no owner reports, so no sample size or range
+        return [r for r in ctx['rows']('observations') if r['metric'] == config.PRIMARY_CONSUMPTION_EV and r['value_num'] is not None]
+    return [r for r in ctx['rows']('observations') if r['metric'] == config.PRIMARY_CONSUMPTION and None not in
             (r['value_num'], r['sample_count'], r['min_value'], r['max_value'])]
 
 
@@ -104,7 +105,7 @@ ITEMS = [
     ('eng.risks', 'engine', 'engine repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
     ('var.identity', 'variant', 'HSN/TSN, gearbox, body, emissions class, CO2', _fields(
         'hsn', 'tsn', 'transmission', 'body_style', 'emissions_standard', 'co2_g_km', status='technical_status'), (), None, always, 1),
-    ('var.consumption', 'variant', f'{config.PRIMARY_CONSUMPTION} (electric: {config.PRIMARY_CONSUMPTION_EV}, kWh) with sample size, min and max',
+    ('var.consumption', 'variant', f'{config.PRIMARY_CONSUMPTION} with sample size, min and max (electric: {config.PRIMARY_CONSUMPTION_EV}, kWh/100 km of the exact variant and battery)',
      _consumption, (), 'C', always, 1),
     ('var.tyres', 'variant', 'all-season tyres: size, price, tread life (variant or generation)', _tyres, (), None, always, 1),
     ('var.tax', 'variant', 'annual tax from the BMF Kfz-Steuer-Rechner', _tax, (), 'A', always, 1),

@@ -20,7 +20,7 @@ API_BASE = os.environ.get('CAR_API', 'http://127.0.0.1:8000')
 api = Api(API_BASE, load_token())
 DAY = datetime.date.today().isoformat()
 PRIMARY_CONSUMPTION = 'Autokostencheck average'
-PRIMARY_CONSUMPTION_EV = 'Spritmonitor average'  # electric cars, kWh/100 km (config.PRIMARY_CONSUMPTION_EV)
+PRIMARY_CONSUMPTION_EV = 'EVDB real consumption'  # electric cars, kWh/100 km (config.PRIMARY_CONSUMPTION_EV, #154)
 
 # Shared conventions (the same for every car so totals stay comparable). Regional figures: adjust them to the
 # account's region from an official fee table and register that table as a shared source with the title prefix used here.
@@ -150,9 +150,11 @@ def generation(**row):
 # ---------------------------------------------------------------- model data
 def consumption(v, value, n, lo, hi, source_id, notes='', level='variant', electric=False):
     """Primary real-world consumption: autokostencheck.de average of the exact HSN/TSN variant in l/100 km; for an
-    electric car the Spritmonitor average in kWh/100 km (one source per drivetrain, owner decision 2026-11-05)."""
+    electric car ev-database.org's real consumption of the exact variant and battery in kWh/100 km (Wh/km ÷ 10;
+    vehicle side, without charging losses: the cost adds them; n, lo, hi None; #154)."""
     return post('observations', {**scope(v, level), 'category': 'consumption', 'metric': PRIMARY_CONSUMPTION_EV if electric else PRIMARY_CONSUMPTION,
-                                 'value_num': value, 'unit': 'kWh/100 km' if electric else 'l/100 km', 'sample_count': n, 'min_value': lo, 'max_value': hi, 'status': 'PRIMARY',
+                                 'value_num': value, 'unit': 'kWh/100 km' if electric else 'l/100 km', 'sample_count': n, 'min_value': lo, 'max_value': hi,
+                                 'status': 'ESTIMATED' if electric else 'PRIMARY',
                                  'evidence_quality': 'C', 'observed_date': DAY, 'source_id': source_id,
                                  'notes': ('Primary consumption figure (same source for all cars, user decision 2026-11-03). ' + notes).strip()})
 

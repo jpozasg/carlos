@@ -173,7 +173,7 @@ SOCKET_EXTRA_LOSS = 0.10  # ADAC: charging losses 13–24 % at a household socke
 
 def electricity_price(p):
     """€ per kWh an electric car pays (#121): the home and public prices weighted by the share charged at home, a household
-    socket's extra loss on the home part. Returns (price, missing parameters); a price only weighted 0 is not needed."""
+    socket's extra loss on the home part, all of it raised by the wallbox-level charging loss (#154). Returns (price, missing parameters); a price only weighted 0 is not needed."""
     hc = p.get('home_charging')
     if hc is None:
         return None, ['home_charging']
@@ -185,7 +185,8 @@ def electricity_price(p):
     if need:
         return None, need
     home = s * p['electricity_home_eur_kwh'] * (1 + (SOCKET_EXTRA_LOSS if hc == 'socket' else 0)) if s else 0
-    return home + ((1 - s) * p['electricity_public_eur_kwh'] if s < 1 else 0), []
+    # € per kWh in the battery: the consumption source excludes charging losses (#154)
+    return (home + ((1 - s) * p['electricity_public_eur_kwh'] if s < 1 else 0)) * (1 + config.EV_CHARGING_LOSS), []
 
 
 def ev_tax_months(first_registration, today, months):
