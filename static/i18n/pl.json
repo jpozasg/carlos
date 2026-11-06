@@ -552,7 +552,12 @@
   "RUNNING": "W trakcie",
   "DONE": "Gotowe",
   "FAILED": "Nieudane",
-  "CANCELLED": "Anulowane"
+  "CANCELLED": "Anulowane",
+  "engine_family": "rodzina silników",
+  "gearbox": "skrzynia biegów",
+  "gearbox_family": "rodzina skrzyń",
+  "body_style": "nadwozie",
+  "option": "opcja"
  },
  "cv_ruler": "Na pierwszy rzut oka",
  "versus_title": "Zostawić czy zmienić?",
@@ -886,5 +891,23 @@
  "ch_table": "Tabela",
  "ch_action": "Akcja",
  "ch_when": "Kiedy",
- "ch_older": "Starsze"
+ "ch_older": "Starsze",
+ "flags_title": "Flagi do weryfikacji",
+ "flags_lead": "Problemy, które agent musi ponownie sprawdzić na tym poziomie. Flaga znika dopiero, gdy dwie niezależne weryfikacje dojdą do tego samego wniosku.",
+ "flag_no_reviews": "Jeszcze nie sprawdzono",
+ "faults_title": "Usterki",
+ "faults_lead": "Znane wady konstrukcyjne: szansa w okresie użytkowania (z częstości i kształtu lub krzywej ze źródła), cena i oczekiwany koszt.",
+ "f_band": "Częstość",
+ "f_consequence": "Skutek",
+ "f_curve": "krzywa ze źródła",
+ "f_fixed": "naprawione",
+ "f_window_uncertain": "okres niepewny",
+ "recalls_title": "Akcje serwisowe",
+ "stats_title": "Dane TÜV/ADAC",
+ "stats_age": "Wiek (lata)",
+ "stats_class": "Średnia klasy",
+ "history_title": "Znana historia",
+ "quotes_title": "Oferty ubezpieczenia",
+ "engine_family": "Rodzina silników",
+ "gearbox_family": "Rodzina skrzyń"
 }

@@ -70,9 +70,11 @@ VARIANT_SQL = '''SELECT v.id, v.generation_id, v.engine_id, v.gearbox_id, v.body
   g.make, g.model, g.name generation, g.start_year generation_start_year, g.end_year generation_end_year,
   g.facelift_year, g.status generation_status,
   e.code engine_code, e.family engine_family, e.description engine_description, e.fuel_type, e.displacement_cc,
-  e.cylinders, e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive, e.status engine_status
+  e.cylinders, e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive, e.status engine_status,
+  ef.name engine_family_name, gf.name gearbox_family_name, bs.name body_style_name
 FROM vehicles v JOIN generations g ON g.id=v.generation_id JOIN engines e ON e.id=v.engine_id
-LEFT JOIN gearboxes gb ON gb.id=v.gearbox_id'''
+LEFT JOIN gearboxes gb ON gb.id=v.gearbox_id LEFT JOIN engine_families ef ON ef.id=e.family_id
+LEFT JOIN gearbox_families gf ON gf.id=gb.family_id LEFT JOIN body_styles bs ON bs.id=v.body_style_id'''
 
 
 def variants(c, where='', args=()):

@@ -550,7 +550,12 @@
   "RUNNING": "Wird recherchiert",
   "DONE": "Erledigt",
   "FAILED": "Fehlgeschlagen",
-  "CANCELLED": "Abgebrochen"
+  "CANCELLED": "Abgebrochen",
+  "engine_family": "Motorfamilie",
+  "gearbox": "Getriebe",
+  "gearbox_family": "Getriebefamilie",
+  "body_style": "Karosserie",
+  "option": "Ausstattung"
  },
  "cv_ruler": "Auf einen Blick",
  "versus_title": "Behalten oder wechseln?",
@@ -884,5 +889,23 @@
  "ch_table": "Tabelle",
  "ch_action": "Aktion",
  "ch_when": "Wann",
- "ch_older": "Ältere"
+ "ch_older": "Ältere",
+ "flags_title": "Prüfhinweise",
+ "flags_lead": "Probleme, die ein Agent auf dieser Ebene erneut prüfen muss. Ein Hinweis wird erst geschlossen, wenn zwei unabhängige Prüfungen zum selben Ergebnis kommen.",
+ "flag_no_reviews": "Noch nicht geprüft",
+ "faults_title": "Schwachstellen",
+ "faults_lead": "Bekannte Konstruktionsfehler: die Wahrscheinlichkeit in deiner Haltedauer (aus Häufigkeit und Verlauf oder einer belegten Kurve), der Preis und die erwarteten Kosten.",
+ "f_band": "Häufigkeit",
+ "f_consequence": "Folge",
+ "f_curve": "belegte Kurve",
+ "f_fixed": "behoben",
+ "f_window_uncertain": "Zeitraum unsicher",
+ "recalls_title": "Rückrufe",
+ "stats_title": "TÜV/ADAC-Zahlen",
+ "stats_age": "Alter (Jahre)",
+ "stats_class": "Klassendurchschnitt",
+ "history_title": "Bekannte Historie",
+ "quotes_title": "Versicherungsangebote",
+ "engine_family": "Motorfamilie",
+ "gearbox_family": "Getriebefamilie"
 }

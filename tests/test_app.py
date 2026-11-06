@@ -248,6 +248,8 @@ class AppTest(unittest.TestCase):
         flags = [x for x in self.req('GET', f'/api/vehicles/{V_A}')[1]['review_flags'] if x['kind'] == 'STATS_MISMATCH']
         self.assertEqual(len(flags), 1)
         self.assertIn('missing faults', flags[0]['why'])
+        v = self.req('GET', f'/api/vehicles/{V_A}')[1]   # what the Models page shows for the new levels
+        self.assertEqual(([x['component'] for x in v['faults']], len(v['reliability_stats']), v['gearbox_family_name']), (['Trim'], 1, None))
         self.agent('POST', 'reliability_stats', {**stat, 'generation_id': G1, 'value': 21, 'age_from': 8, 'age_to': 9})
         with sqlite3.connect(config.DB) as c:
             reqs = c.execute("SELECT id, url FROM research_requests WHERE kind='FOLLOW_UP'").fetchall()
