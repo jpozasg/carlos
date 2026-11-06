@@ -1,14 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=31). Changes: add migrations/NNN_*.sql.
-CREATE TABLE listings (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
- source_id INTEGER,
- listing_id TEXT, platform TEXT, url TEXT,
- price_eur REAL, mileage_km INTEGER, seller TEXT, location TEXT,
- seller_address TEXT, accident_free_claim INTEGER, owners_claim INTEGER,
- hu_claim TEXT, service_history_claim TEXT, equipment TEXT,
- listing_date TEXT, last_checked TEXT, listing_status TEXT, notes TEXT
-, is_reference INTEGER NOT NULL DEFAULT 0 CHECK (is_reference IN (0, 1)), first_registration TEXT, verdict TEXT, owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id), battery_soh_claim REAL CHECK (battery_soh_claim IS NULL OR (battery_soh_claim > 0 AND battery_soh_claim <= 100)), lease_kind TEXT CHECK (lease_kind IS NULL OR lease_kind IN ('km', 'residual', 'abo')), lease_monthly_eur REAL CHECK (lease_monthly_eur IS NULL OR lease_monthly_eur > 0), lease_term_months INTEGER CHECK (lease_term_months IS NULL OR lease_term_months > 0), lease_km_per_year INTEGER CHECK (lease_km_per_year IS NULL OR lease_km_per_year > 0), lease_down_payment_eur REAL CHECK (lease_down_payment_eur IS NULL OR lease_down_payment_eur >= 0), lease_fees_eur REAL CHECK (lease_fees_eur IS NULL OR lease_fees_eur >= 0), lease_extra_km_eur REAL CHECK (lease_extra_km_eur IS NULL OR lease_extra_km_eur >= 0), lease_fewer_km_eur REAL CHECK (lease_fewer_km_eur IS NULL OR lease_fewer_km_eur >= 0), lease_includes TEXT, build_date TEXT, engine_code_seen TEXT, hsn TEXT, tsn TEXT, trim TEXT, distance_km REAL CHECK (distance_km IS NULL OR distance_km >= 0));
+-- Reference schema generated from the database (PRAGMA user_version=33). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -447,10 +437,19 @@ CREATE TABLE flag_reviews (
  outcome TEXT NOT NULL CHECK (outcome IN ('CONFIRMED', 'RESOLVED')),
  conclusion TEXT NOT NULL, finding TEXT NOT NULL, source_id INTEGER REFERENCES sources(id),
  UNIQUE (flag_id, worker, conclusion));
+CREATE TABLE "listings" (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ vehicle_id INTEGER REFERENCES vehicles(id),
+ source_id INTEGER,
+ listing_id TEXT, platform TEXT, url TEXT,
+ price_eur REAL, mileage_km INTEGER, seller TEXT, location TEXT,
+ seller_address TEXT, accident_free_claim INTEGER, owners_claim INTEGER,
+ hu_claim TEXT, service_history_claim TEXT, equipment TEXT,
+ listing_date TEXT, last_checked TEXT, listing_status TEXT, notes TEXT
+, is_reference INTEGER NOT NULL DEFAULT 0 CHECK (is_reference IN (0, 1)), first_registration TEXT, verdict TEXT, owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id), battery_soh_claim REAL CHECK (battery_soh_claim IS NULL OR (battery_soh_claim > 0 AND battery_soh_claim <= 100)), lease_kind TEXT CHECK (lease_kind IS NULL OR lease_kind IN ('km', 'residual', 'abo')), lease_monthly_eur REAL CHECK (lease_monthly_eur IS NULL OR lease_monthly_eur > 0), lease_term_months INTEGER CHECK (lease_term_months IS NULL OR lease_term_months > 0), lease_km_per_year INTEGER CHECK (lease_km_per_year IS NULL OR lease_km_per_year > 0), lease_down_payment_eur REAL CHECK (lease_down_payment_eur IS NULL OR lease_down_payment_eur >= 0), lease_fees_eur REAL CHECK (lease_fees_eur IS NULL OR lease_fees_eur >= 0), lease_extra_km_eur REAL CHECK (lease_extra_km_eur IS NULL OR lease_extra_km_eur >= 0), lease_fewer_km_eur REAL CHECK (lease_fewer_km_eur IS NULL OR lease_fewer_km_eur >= 0), lease_includes TEXT, build_date TEXT, engine_code_seen TEXT, hsn TEXT, tsn TEXT, trim TEXT, distance_km REAL CHECK (distance_km IS NULL OR distance_km >= 0));
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_risks_scope ON repair_risks (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_reliability_scope ON reliability_items (vehicle_id, engine_id, generation_id);
-CREATE INDEX idx_listings_vehicle ON listings (vehicle_id);
 CREATE INDEX idx_catalogue_links_owner ON catalogue_links (owner_id);
 CREATE INDEX idx_vehicles_hsn_tsn ON vehicles (hsn, tsn);
 CREATE INDEX research_requests_owner ON research_requests (owner_id, status);
@@ -466,3 +465,7 @@ CREATE INDEX idx_research_checks_task ON research_checks (task);
 CREATE INDEX idx_faults_scope ON faults (vehicle_id, engine_id, generation_id, gearbox_id, engine_family_id);
 CREATE INDEX idx_listing_history ON listing_history (listing_id);
 CREATE INDEX idx_listing_quotes ON listing_quotes (listing_id);
+CREATE INDEX idx_listings_vehicle ON listings (vehicle_id);
+CREATE UNIQUE INDEX ux_generations_key ON generations (make, model, name) WHERE owner_id IS NULL;
+CREATE UNIQUE INDEX ux_engines_key ON engines (code, power_kw) WHERE owner_id IS NULL;
+CREATE UNIQUE INDEX ux_vehicles_key ON vehicles (hsn, tsn, engine_id) WHERE owner_id IS NULL AND hsn IS NOT NULL;

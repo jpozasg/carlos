@@ -1527,6 +1527,34 @@ class AppTest(unittest.TestCase):
         finally:
             config.ENV = env
 
+    def test_research_reset_194(self):
+        """#167/#194: the reset empties the research, keeps one account's listings (variant cleared, still readable),
+        deletes the other accounts' listings with their photo files, and a second run finds nothing to do."""
+        import research_reset
+        c = sqlite3.connect(config.DB)
+        c.execute("INSERT INTO users (id, username, role) VALUES (2, 'other', 'user')")
+        c.execute('UPDATE listings SET owner_id=2 WHERE id=?', (CAR_B,))
+        (config.MEDIA_DIR / 'x').mkdir(parents=True, exist_ok=True); (config.MEDIA_DIR / 'x' / 'b.jpg').write_bytes(b'jpg')
+        c.execute("INSERT INTO listing_media (listing_id, captured_at, file_path, mime, bytes, sha256) "
+                  "VALUES (?, '2026-11-06', 'x/b.jpg', 'image/jpeg', 3, 'h')", (CAR_B,))
+        c.commit(); c.close()
+        self.assertTrue(research_reset.run(config.DB, apply=False, keep=1))   # dry run changes nothing
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['vehicle_id'], V_A)
+        done = research_reset.run(config.DB, apply=True, keep=1)
+        self.assertIn('vehicles: emptied', done)
+        c = sqlite3.connect(config.DB)
+        for t in ('vehicles', 'engines', 'generations', 'maintenance_items', 'reliability_items', 'research_checks'):
+            self.assertEqual(c.execute(f'SELECT count(*) FROM {t}').fetchone()[0], 0, t)
+        self.assertEqual(c.execute('SELECT count(*) FROM listings WHERE owner_id=2').fetchone()[0], 0)
+        self.assertEqual(c.execute('SELECT count(*) FROM listings WHERE vehicle_id IS NOT NULL').fetchone()[0], 0)
+        self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(), [])
+        c.close()
+        self.assertFalse((config.MEDIA_DIR / 'x' / 'b.jpg').exists())
+        st, d = self.req('GET', f'/api/listings/{CAR_A}')   # a listing awaiting research stays readable
+        self.assertEqual((st, d['vehicle_id'], d['research_levels']['variant']['state']), (200, None, 'incomplete'))
+        self.assertEqual(self.req('GET', '/api/tco')[0], 200)
+        self.assertEqual(research_reset.run(config.DB, apply=True, keep=1), {})   # idempotent
+
 
 if __name__ == '__main__':
     unittest.main()

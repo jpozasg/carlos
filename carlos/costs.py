@@ -336,7 +336,8 @@ UNITS_SQL = '''SELECT l.*, v.generation_id, v.engine_id, v.gearbox_id, v.body_st
   g.ncap_stars, g.ncap_year, v.esp,
   e.code engine_code, e.family engine_family, e.description engine_description, e.fuel_type, e.displacement_cc, e.cylinders,
   e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive, e.battery_usable_kwh, e.ac_charge_kw, e.dc_charge_kw
-FROM listings l JOIN vehicles v ON v.id=l.vehicle_id JOIN generations g ON g.id=v.generation_id JOIN engines e ON e.id=v.engine_id
+FROM listings l LEFT JOIN vehicles v ON v.id=l.vehicle_id LEFT JOIN generations g ON g.id=v.generation_id
+LEFT JOIN engines e ON e.id=v.engine_id
 LEFT JOIN gearboxes gb ON gb.id=v.gearbox_id
 ORDER BY l.is_reference DESC, l.id'''
 
@@ -844,8 +845,9 @@ def listing_detail(c, listing_id, p, ranked):
              reliability=know.of('reliability_items', v, reg), maintenance=know.of('maintenance_items', v, reg),
              insurance=know.of('insurance_data', v), tax=know.of('tax_data', v), observations=know.of('observations', v),
              tyres=know.of('tyre_data', v),
-             engine_row=rows(c, 'SELECT * FROM engines WHERE id=?', (v['engine_id'],))[0],
-             generation_row=rows(c, 'SELECT * FROM generations WHERE id=?', (v['generation_id'],))[0],
+             # a listing awaiting research has no variant, engine or generation yet (#194)
+             engine_row=next(iter(rows(c, 'SELECT * FROM engines WHERE id=?', (v['engine_id'],))), None),
+             generation_row=next(iter(rows(c, 'SELECT * FROM generations WHERE id=?', (v['generation_id'],))), None),
              sources=rows(c, 'SELECT * FROM sources WHERE vehicle_id=? OR engine_id=? OR generation_id=? '
                              'OR id IN (SELECT source_id FROM listing_events WHERE listing_id=?) OR id=? ORDER BY id',
                           (v['id'], v['engine_id'], v['generation_id'], listing_id, u['source_id'])))
