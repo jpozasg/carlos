@@ -30,6 +30,8 @@ h3{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
 
 /* header */
 header.top{background:var(--surface);border-bottom:var(--border-w) solid var(--border);position:sticky;top:0;z-index:20}
+/* header chips and segmented controls use the page's rounded corners, not pill ends (issue #182) */
+header.top .chip,header.top .seg{border-radius:var(--radius-s)}
 .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0}
 .brand{display:flex;align-items:center;gap:10px;margin-right:auto;text-decoration:none;color:var(--text)}
 .brand svg{width:34px;height:34px;display:block}
