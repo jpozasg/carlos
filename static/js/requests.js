@@ -2,7 +2,7 @@
 // Shown at the top of Compare; the admins' whole queue is on the Accounts page (pages/admin.js).
 import { get, post, patch } from './api.js';
 import { t, tv } from './i18n.js';
-import { esc, safeUrl, toast } from './ui.js';
+import { esc, safeUrl, store, toast } from './ui.js';
 
 let REQS = [];
 const TAG = { QUEUED: 'warn', RUNNING: 'warn', DONE: 'good', FAILED: 'bad', CANCELLED: '' };
@@ -10,7 +10,7 @@ export const statusTag = s => `<span class="tag ${TAG[s] ?? ''}">${esc(tv(s))}</
 export async function loadRequests() { try { REQS = await get('/api/requests'); } catch { REQS = []; } }
 
 export function requestsPanel() {
-  const open = REQS.some(r => r.status === 'QUEUED' || r.status === 'RUNNING');
+  const open = store.get('reqsOpen', false);  // collapsed by default, remembered per browser (issue #180)
   const list = REQS.slice(0, 10).map(r => `<li><a href="${safeUrl(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a> ${statusTag(r.status)}
     <span class="small muted">${esc(r.requested_at)}</span>${r.status === 'QUEUED' ? ` <button class="btn ghost sm" type="button" data-reqcancel="${r.id}">${t('req_cancel')}</button>` : ''}
     ${r.listing_id ? ` <a class="btn ghost sm" href="#/listing/${r.listing_id}">${t('req_open_car')}</a>` : ''}${r.status === 'FAILED' && r.result ? `<div class="small muted">${esc(r.result.split('\n')[0])}</div>` : ''}</li>`).join('');
@@ -22,6 +22,7 @@ export function requestsPanel() {
 
 // delegated on the page root; redraw() repaints the page after the list changed
 export function bindRequests(root, redraw) {
+  root.addEventListener('toggle', e => { if (e.target.matches?.('details.reqs')) store.set('reqsOpen', e.target.open); }, true);  // toggle doesn't bubble
   root.addEventListener('submit', async e => { const f = e.target.closest('[data-reqform]'); if (!f) return; e.preventDefault();
     try { await post('/api/requests', { url: f.querySelector('#req_url').value.trim(), note: f.querySelector('#req_note').value.trim() }); toast(t('req_sent')); await loadRequests(); redraw(); }
     catch (err) { toast(err.message, true); } });
