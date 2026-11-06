@@ -366,7 +366,7 @@ class Handler(BaseHTTPRequestHandler):
                                 'source_required_on_insert': sorted(SOURCE_REQUIRED),
                                 'code_formats': {f'{t}.{col}': pat for (t, col), pat in CODE_FORMATS.items()},
                                 'fixed_codes': FIXED_CODES, 'scoped_tables': list(config.SCOPED_TABLES),
-                                'scope_columns': list(config.SCOPE_COLUMNS), 'rules': RULES,
+                                'scope_columns': list(config.LEVEL_COLUMNS), 'rules': RULES,
                                 'research_contract': research.published()})
             else:
                 self.send_json({'error': 'Endpoint not found'}, 404)

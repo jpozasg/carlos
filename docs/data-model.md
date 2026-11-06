@@ -40,6 +40,13 @@ SQLite, one file (`cars.sqlite` in the data directory). `schema.sql` is the exec
 
 `sources` (`title`, `url`, `source_type`, `quality` A–D, `accessed_date`, `supports`, `limitations`, `owner_id`) may attach to one level or to none (shared sources such as fee tables).
 
+## Target design levels and knowledge (migration 028, #174)
+Being built from `docs/target-design.md`; the old tables (`reliability_items`, `repair_risks`, premium rows of `insurance_data`, `maintenance_resets`, `unit_costs`) stay until the research reset (#167) drops them.
+- **Levels** (shared catalogue, `owner_id` NULL, written by admins): `engine_families` (engines.`family_id`), `gearbox_families` → `gearboxes` (code, type `MANUAL`/`DCT`/`AT`/`CVT`/`SINGLE-SPEED`, gears; vehicles.`gearbox_id`), `body_styles` (per generation; vehicles.`body_style_id`), `options` (convertible roof, sunroof, xenon, air suspension, 4×4; a listing's options in `listing_options`). Unique by name/code.
+- **Knowledge on any level** (`vehicle_id`, `engine_id`, `generation_id`, `gearbox_id`, `engine_family_id`, `gearbox_family_id`, `body_style_id`, `option_id`; exactly one): `faults` (component, part, consequence `ENGINE_DAMAGE`/`STRANDS`/`SAFETY`/`UNUSABLE`/`COST`/`COSMETIC`, prices, existence `CONFIRMED`/`REPORTED`, cumulative curves `curve_km`/`curve_age` as `[[x, share], …]`, `probability_basis`, `usage_flags`, `usage_multiplier` only with `usage_source_id`, build window), `recalls` (code, defect, remedy, safety, build window or `window_known` 0), `research_checks`; `maintenance_items` gains every level, `kind` `JOB`/`WEAR` (wear parts with their typical life as interval) and heavy-use intervals; a maintenance row **without a level is a global default** (HU, brake fluid, labour rate) that a level row with the same job overrides. `reliability_stats`: TÜV/ADAC figures per generation and age class. `market_models`: per generation + engine (+ gearbox), the value at a reference age/km and the share lost per year and per 10,000 km, with the three band counts and the sample date.
+- **Listing facts** (private, survive the reset): `listings.build_date`, `engine_code_seen`, `hsn`, `tsn`, `trim` (copied from the current variant); `listing_quotes` (insurance quotes, copied from the account's premium rows); `listing_history` (a job, fault or recall: `DONE`, `PRESENT` (a certain cost), `OPEN`, `NOT AFFECTED`; evidence `DOCUMENTED`/`SELLER CLAIM`/`OBSERVED`/`VIN CHECK`).
+- Visibility follows the levels: an account sees a family, gearbox or body style through the variants of its listings, an option through its generation; knowledge rows when their level is visible.
+
 ## Listings (a specific car)
 | Table | Purpose |
 |---|---|

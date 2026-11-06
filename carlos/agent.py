@@ -12,6 +12,7 @@ CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_eve
                 ('insurance_data', 'premium_status'): r'[A-Z][A-Z /-]*', ('repair_risks', 'status'): r'[A-Z][A-Z /-]*',
                 ('tyre_data', 'status'): r'[A-Z][A-Z /-]*', ('tyre_data', 'tyre_type'): r'[A-Z][A-Z /-]*',
                 **{(t, col): r'\d{4}(-(0[1-9]|1[0-2]))?' for t in config.WINDOWED_TABLES for col in ('applies_from', 'applies_to')},
+                ('listings', 'build_date'): r'\d{4}(-(0[1-9]|1[0-2]))?', ('faults', 'usage_flags'): r'[A-Z_]+(,[A-Z_]+)*',
                 # what a lease rate includes (#127): a comma list without spaces, e.g. 'insurance,tax,gap'
                 ('listings', 'lease_includes'): '({0})(,({0}))*'.format('|'.join(config.LEASE_INCLUDES))}
 FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.category': config.UNIT_COST_CATEGORIES,
@@ -22,17 +23,28 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED'],
                'reliability_items.part': config.RELIABILITY_PARTS,
                'maintenance_items.job': config.JOBS, 'repair_risks.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A'],
-               'listings.lease_kind': config.LEASE_KINDS}
+               'listings.lease_kind': config.LEASE_KINDS, 'gearboxes.type': config.GEARBOX_TYPES,
+               'faults.part': config.RELIABILITY_PARTS, 'faults.consequence': config.FAULT_CONSEQUENCES,
+               'faults.existence': ['CONFIRMED', 'REPORTED'], 'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
+               'recalls.part': config.RELIABILITY_PARTS, 'reliability_stats.kind': ['TUEV', 'ADAC'],
+               'maintenance_items.kind': ['JOB', 'WEAR'], 'listing_history.status': ['DONE', 'PRESENT', 'OPEN', 'NOT AFFECTED'],
+               'listing_history.evidence': ['DOCUMENTED', 'SELLER CLAIM', 'OBSERVED', 'VIN CHECK'],
+               'listing_history.category': ['maintenance', 'repairs'], 'listing_history.job': config.JOBS}
 # Tables the agent may write. Those in the second set require source_id on insert.
 AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
                 'maintenance_items', 'reliability_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',
-                'listing_snapshots', 'repair_risks', 'tyre_data', 'maintenance_resets', 'research_checks'}
+                'listing_snapshots', 'repair_risks', 'tyre_data', 'maintenance_resets', 'research_checks',
+                # target design (#174): levels, knowledge, listing facts
+                'engine_families', 'gearbox_families', 'gearboxes', 'body_styles', 'options', 'faults', 'recalls',
+                'reliability_stats', 'market_models', 'listing_history', 'listing_quotes', 'listing_options'}
 SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
                    'reliability_items', 'valuations', 'unit_costs', 'listing_snapshots', 'repair_risks', 'tyre_data',
-                   'maintenance_resets', 'research_checks'}
-JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'))
+                   'maintenance_resets', 'research_checks', 'faults', 'recalls', 'reliability_stats', 'market_models', 'listing_quotes'}
+JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'), ('listing_quotes', 'quote_profile'),
+                ('faults', 'curve_km'), ('faults', 'curve_age'), ('market_models', 'band_counts'), ('market_models', 'sample_json'))
 RULES = ('null = unknown (never 0); archive outdated rows with PATCH archived=1 (listings: listing_status WITHDRAWN); DELETE only after the owner confirmed it; source quality A–D; free text '
-         'in English; knowledge rows attach to exactly one level: vehicle_id (variant), engine_id or generation_id; see AGENTS.md')
+         'in English; knowledge rows attach to exactly one level (vehicle_id, engine_id, generation_id, gearbox_id, engine_family_id, '
+         'gearbox_family_id, body_style_id or option_id; a maintenance row without one is a global default); see AGENTS.md')
 
 
 class UnsupportedMediaType(Exception):
@@ -69,6 +81,23 @@ def check_parents(c, table, data):
             raise ValueError(f"source_id={data['source_id']}: no such sources row in this account")
 
 
+def curve_points(raw):
+    """A fault's cumulative probability curve (#174): JSON [[x, share], …] with x (km or years) rising and the share
+    0–1 never falling. Returns the points; ValueError otherwise."""
+    pts = json.loads(raw) if isinstance(raw, str) else raw
+    ok = isinstance(pts, list) and pts and all(isinstance(p, list) and len(p) == 2 and all(isinstance(v, (int, float)) for v in p) for p in pts)
+    if not ok or any(not 0 <= p[1] <= 1 or p[0] < 0 for p in pts) or \
+            any(b[0] <= a[0] or b[1] < a[1] for a, b in zip(pts, pts[1:])):
+        raise ValueError('a curve is [[x, share], …]: x (km or years) rising, share between 0 and 1 and never falling')
+    return pts
+
+
+def fault_checks(out):
+    for col in ('curve_km', 'curve_age'):
+        if out.get(col) is not None:
+            curve_points(out[col])
+
+
 def clean_row(c, table, data, insert):
     """Validates an agent row against the real schema: known columns, types, '' → NULL, source required, one level."""
     if not isinstance(data, dict) or not data:
@@ -78,7 +107,7 @@ def clean_row(c, table, data, insert):
     cols = table_columns(c, table)
     out = {}
     for tbl, col in JSON_COLUMNS:
-        if table == tbl and isinstance(data.get(col), dict):
+        if table == tbl and isinstance(data.get(col), (dict, list)):
             data = {**data, col: json.dumps(data[col], ensure_ascii=False)}
     for k, v in data.items():
         if k == 'id' or k not in cols:
@@ -114,10 +143,14 @@ def clean_row(c, table, data, insert):
         out['contract_version'] = research.CONTRACT_VERSION
     if insert and table == 'reliability_items' and out.get('part') is None:
         raise ValueError(f"reliability_items requires part: one of {config.RELIABILITY_PARTS} (docs/cost-research-protocol.md, step 2)")
-    if insert and table in config.SCOPED_TABLES and sum(out.get(k) is not None for k in config.SCOPE_COLUMNS) != 1:
-        raise ValueError(f'{table} must attach to exactly one level: vehicle_id (variant), engine_id or generation_id')
-    if insert and table == 'sources' and sum(out.get(k) is not None for k in config.SCOPE_COLUMNS) > 1:
-        raise ValueError('sources attach to at most one level: vehicle_id, engine_id or generation_id (none = shared)')
+    levels = sum(out.get(k) is not None for k in config.LEVEL_COLUMNS)
+    if insert and table in config.SCOPED_TABLES and (levels > 1 or levels == 0 and table not in config.GLOBAL_LEVEL_TABLES):
+        raise ValueError(f'{table} must attach to exactly one level: {", ".join(config.LEVEL_COLUMNS)}'
+                         + (' (none = a global default)' if table in config.GLOBAL_LEVEL_TABLES else ''))
+    if insert and table == 'sources' and levels > 1:
+        raise ValueError(f'sources attach to at most one level: {", ".join(config.LEVEL_COLUMNS)} (none = shared)')
+    if table == 'faults':
+        fault_checks(out)
     return out
 
 
@@ -127,7 +160,7 @@ ADMIN_TABLES = set(MODEL) | set(_KNOW) | {'listings'}  # research and listings: 
 def check_writable(c, table, row_id, data):
     """A non-admin agent token writes only its own listing rows and level-free sources; research belongs to the shared
     catalogue, written by admins (issue #109). The UI's own writes (viewing, checklist, decisions) do not pass here."""
-    level = any(data.get(k) is not None for k in config.SCOPE_COLUMNS) if isinstance(data, dict) else False
+    level = any(data.get(k) is not None for k in config.LEVEL_COLUMNS) if isinstance(data, dict) else False
     shared = row_id is not None and table == 'sources' and \
         (c.execute('SELECT owner_id FROM sources WHERE id=?', (row_id,)).fetchone() or [0])[0] is None
     if table in ADMIN_TABLES or (table == 'sources' and (level or shared)):
@@ -150,11 +183,13 @@ def row_owner(c, table, row_id, data):
 
 
 def resolve_variant(c, data, owner_id):
-    """A catalogue variant with the same HSN/TSN is reused instead of duplicated; the account gets a link to it."""
+    """A catalogue variant with the same HSN/TSN (and engine, when given: one HSN/TSN can cover several engine codes,
+    #174) is reused instead of duplicated; the account gets a link to it."""
     if not isinstance(data, dict) or not data.get('hsn') or not data.get('tsn'):
         return None
     row = c.execute('SELECT min(id) FROM main.vehicles WHERE owner_id IS NULL AND upper(trim(hsn))=upper(trim(?)) '
-                    'AND upper(trim(tsn))=upper(trim(?))', (str(data['hsn']), str(data['tsn']))).fetchone()
+                    'AND upper(trim(tsn))=upper(trim(?)) AND (? IS NULL OR engine_id=?)',
+                    (str(data['hsn']), str(data['tsn']), data.get('engine_id'), data.get('engine_id'))).fetchone()
     if row[0] is not None:
         with c:
             link(c, owner_id, row[0])
@@ -167,18 +202,28 @@ def link(c, owner_id, vehicle_id):
               'AND NOT EXISTS (SELECT 1 FROM main.catalogue_links WHERE owner_id=? AND vehicle_id=?)', (owner_id, vehicle_id, owner_id, vehicle_id))
 
 
+# a listing reaches every level through its variant (engine → family, gearbox → family, body style) and its options
+_LISTING_LEVELS = ('SELECT DISTINCT l.owner_id FROM main.listings l JOIN main.vehicles v ON v.id=l.vehicle_id '
+                   'JOIN main.engines e ON e.id=v.engine_id LEFT JOIN main.gearboxes gb ON gb.id=v.gearbox_id '
+                   'WHERE v.id=:vehicle_id OR v.engine_id=:engine_id OR v.generation_id=:generation_id OR v.gearbox_id=:gearbox_id '
+                   'OR e.family_id=:engine_family_id OR gb.family_id=:gearbox_family_id OR v.body_style_id=:body_style_id '
+                   'OR l.id IN (SELECT listing_id FROM main.listing_options WHERE option_id=:option_id)')
+_MODEL_LEVEL = {'vehicles': 'vehicle_id', 'engines': 'engine_id', 'generations': 'generation_id', 'gearboxes': 'gearbox_id',
+                'engine_families': 'engine_family_id', 'gearbox_families': 'gearbox_family_id', 'body_styles': 'body_style_id',
+                'options': 'option_id'}
+
+
 def linked_accounts(c, table, row_id):
     """Accounts with a listing on the level this row belongs to (their dossiers show it)."""
+    lv = dict.fromkeys(config.LEVEL_COLUMNS)
     if table in MODEL:
-        lv = {{'vehicles': 'vehicle_id', 'engines': 'engine_id', 'generations': 'generation_id'}[table]: row_id}
+        lv[_MODEL_LEVEL[table]] = row_id
     elif table in _KNOW or table == 'sources':
-        r = c.execute(f'SELECT vehicle_id, engine_id, generation_id FROM main.{table} WHERE id=?', (row_id,)).fetchone()
-        lv = dict(r) if r else {}
+        r = c.execute(f'SELECT * FROM main.{table} WHERE id=?', (row_id,)).fetchone()
+        lv.update({k: r[k] for k in r.keys() if k in lv} if r else {})
     else:
         return []
-    return [o for (o,) in c.execute('SELECT DISTINCT l.owner_id FROM main.listings l JOIN main.vehicles v ON v.id=l.vehicle_id '
-                                    'WHERE v.id=? OR v.engine_id=? OR v.generation_id=?',
-                                    (lv.get('vehicle_id'), lv.get('engine_id'), lv.get('generation_id')))]
+    return [o for (o,) in c.execute(_LISTING_LEVELS, lv)]
 
 
 def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
@@ -191,7 +236,7 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
     with c:
         if row_id is None:
             if table in OWNED:
-                catalogue = admin and (table in MODEL or table == 'sources' and any(data.get(k) is not None for k in config.SCOPE_COLUMNS))
+                catalogue = admin and (table in MODEL or table == 'sources' and any(data.get(k) is not None for k in config.LEVEL_COLUMNS))
                 data['owner_id'] = None if catalogue else user_id
             elif table in _KNOW and ('USER DATA' in (data.get('status'), data.get('premium_status')) or data.get('annual_premium_eur') is not None):
                 data['owner_id'] = user_id
