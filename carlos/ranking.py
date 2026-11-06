@@ -22,19 +22,19 @@ SEVERITY_POINTS = {'HIGH': 3, 'HIGH IF APPLICABLE': 1.5, 'MEDIUM': 2, 'LOW-MEDIU
 STATUS_POINTS = {'VERIFIED': 1, 'OFFICIAL FEE LEVEL': 1, 'PRIMARY': 1, 'USER DATA': 1, 'QUOTE': 1, 'ESTIMATED': 0.5}
 MAX_WEIGHT = 5
 
-# The questionnaire (issues #19, #54, #64): eight best–worst tasks. Each shows four cars of the same model, equal in
+# The questionnaire (issues #19, #54, #64; shortened in #169): best–worst tasks of SIX cars of the same model, equal in
 # everything except one advantage each; the person picks the car they would buy first and the one they would buy last.
-# Criterion i is the point with the binary digits of i in the affine space AG(3,2); each task is a plane
-# {x : n·x = b}. The four normals n = 1, 2, 3, 4 give four parallel classes (two complementary planes each): every
-# criterion appears in exactly four tasks and every pair of criteria meets at least once (12 pairs once, 12 twice,
-# 4 three times; the full 14-task design meets every pair three times but was too long for the owner).
-# New task ids (r…) retire earlier answers. Score per criterion: (times first − times last) ÷ times answered, −1…+1,
-# mapped to 1–5; never answered = neutral. Reasoning: docs/ranking.md.
-_KEYS = ['cost_month', 'budget', 'mileage', 'age', 'reliability', 'inspection', 'power', 'safety']  # 8 = the AG(3,2) design
-TASKS = [{'id': f's{2 * i + b + 1}', 'criteria': [_KEYS[x] for x in range(8) if bin(n & x).count('1') % 2 == b]}
-         for i, n in enumerate((1, 2, 3, 4)) for b in (0, 1)]
+# The nine criteria sit on a 3 × 3 grid; each task leaves out one row or one column (AG(2,3)), so six tasks show every
+# criterion four times and every pair of criteria together at least twice. The three row tasks come first: when their
+# answers are already consistent (no criterion picked both first and last) the questionnaire may stop after three
+# screens; a final screen shows the weights to confirm or adjust. New task ids (u…) retire earlier answers.
+# Score per criterion: (times first − times last) ÷ times answered, −1…+1, mapped to 1–5; never answered = neutral.
+# Simulated in tests: the true favourite always gets 5 and the least important 1.
+_KEYS = ['cost_month', 'budget', 'mileage', 'age', 'reliability', 'inspection', 'power', 'safety', 'distance']
+TASKS = ([{'id': f'u{r + 1}', 'criteria': [_KEYS[i] for i in range(9) if i // 3 != r]} for r in range(3)]
+         + [{'id': f'u{c + 4}', 'criteria': [_KEYS[i] for i in range(9) if i % 3 != c]} for c in range(3)])
+EARLY_STOP_AFTER = 3  # the row tasks
 NEUTRAL_WEIGHT = 3  # a criterion never answered counts the same as any other
-NOT_ASKED = {'distance': 0}  # not in the questionnaire yet: 0 until set by hand (it needs the distance of every car)
 MIN_DERIVED = 1  # answers never remove a criterion entirely (simulation: zeros came from noise); by hand 0 is allowed
 _T = {x['id']: x['criteria'] for x in TASKS}
 
@@ -69,7 +69,7 @@ def weights_from_answers(answers):
     """Weight 1–5 per criterion: (first − last) ÷ shown, from −1 to +1, mapped linearly (half up) to 0–5, floor 1."""
     w = {k: max(MIN_DERIVED, int(MAX_WEIGHT * ((x['best'] - x['worst']) / x['shown'] + 1) / 2 + 0.5)) if x['shown'] else NEUTRAL_WEIGHT
          for k, x in tally(answers).items()}
-    return {k: w.get(k, NOT_ASKED.get(k, NEUTRAL_WEIGHT)) for k in CRITERIA}
+    return {k: w.get(k, NEUTRAL_WEIGHT) for k in CRITERIA}
 
 
 def check_answers(answers):

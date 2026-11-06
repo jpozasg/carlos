@@ -11,17 +11,21 @@ const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { cons
 export function attributes(p = {}) {
   const y = new Date().getFullYear(), price = Math.max(2000, Math.round((p.budget_ideal_eur || 8000) / 100) * 100);
   return {
-    cost_month: [euro(330) + t('per_month'), euro(290) + t('per_month')], budget: [euro(price), euro(price - 1500)],
+    cost_month: [t('bw_cost_ord'), t('bw_cost_less', { p: 12 })], budget: [euro(price), euro(price - 1500)],
     mileage: [num(150000, 0) + ' km', num(100000, 0) + ' km'], age: [String(y - 13), String(y - 9)], power: ['75 PS', '115 PS'],
     reliability: [t('bw_rel_base'), t('bw_rel_adv')], inspection: [t('bw_insp_base'), t('bw_insp_adv')],
-    safety: ['3 ★ Euro NCAP', '5 ★ Euro NCAP'],
+    safety: ['3 ★ Euro NCAP', '5 ★ Euro NCAP'], distance: ['150 km', '20 km'],
   };
 }
 
-// tasks: [{id, criteria: [4 keys]}] from the API; answers: {taskId: 'best>worst'}
+// tasks: [{id, criteria: [6 keys]}] from the API, the three row tasks (u1–u3) first; answers: {taskId: 'best>worst'}
+// After the row tasks the questionnaire stops when the answers are consistent: no criterion picked both first and last (#169).
+const EARLY = 3;
+const consistent = (ans, tasks) => { const seen = {}; for (const x of tasks) { const a = ans[x.id]; if (!a) return false; const [b, w] = a.split('>');
+  if (seen[b] === 'w' || seen[w] === 'b') return false; seen[b] = 'b'; seen[w] = 'w'; } return true; };
 export function quiz(el, { tasks, answers = {}, params = {}, onDone, onCancel, doneLabel }) {
-  const ans = { ...answers }, A = attributes(params), years = params.ownership_years || 4;
-  const order = shuffle(tasks).map(x => ({ ...x, cars: shuffle(x.criteria) }));  // cars[n] = the criterion car n is better on
+  const ans = { ...answers }, A = attributes(params);
+  const order = [...shuffle(tasks.slice(0, EARLY)), ...shuffle(tasks.slice(EARLY))].map(x => ({ ...x, cars: shuffle(x.criteria) }));  // cars[n] = the criterion car n is better on
   let i = Math.max(0, order.findIndex(x => !ans[x.id])), pick = null, advance;
   const draw = focus => {
     const x = order[i], [best, worst] = (ans[x.id] || '').split('>'), last = i === order.length - 1, done = !!ans[x.id];
@@ -35,21 +39,23 @@ export function quiz(el, { tasks, answers = {}, params = {}, onDone, onCancel, d
       <h3 class="qz-title" aria-live="polite">${t('bw_ask_' + phase)}</h3>
       <div class="bw" role="group" aria-label="${esc(t('bw_cars'))}">${x.cars.map((k, n) => { const b = badge(k);
         return `<button type="button" class="bw-car${k === best || k === pick ? ' first' : k === worst ? ' last' : ''}" data-car="${k}" aria-pressed="${!!b}">
-          <span class="bw-h"><b>${t('car_letter', { l: 'ABCD'[n] })}</b>${b ? `<span class="bw-badge">${b}</span>` : `<span class="k num" aria-hidden="true">${n + 1}</span>`}</span>
+          <span class="bw-h"><b>${t('car_letter', { l: 'ABCDEF'[n] })}</b>${b ? `<span class="bw-badge">${b}</span>` : `<span class="k num" aria-hidden="true">${n + 1}</span>`}</span>
           ${x.criteria.map(c => `<span class="bw-row${c === k ? ' adv' : ''}"><small>${esc(t('bw_row_' + c))}</small><span>${esc(A[c][c === k ? 1 : 0])}</span></span>`).join('')}</button>`; }).join('')}</div>
-      <p class="small muted bw-note">${x.criteria.includes('cost_month') ? esc(t('bw_month_note', { v: euro(40 * 12 * years), y: years })) + ' ' : ''}${t('bw_equal')}</p>
+      <p class="small muted bw-note">${t('bw_equal')}</p>
       <div class="qz-nav"><button class="btn ghost" type="button" data-qz-back ${i ? '' : 'disabled'}>${t('back')}</button>
         <button class="linkbtn" type="button" data-qz-skip>${t('bw_skip')}</button><span class="spacer"></span>
         <button class="btn" type="button" data-qz-next ${done ? '' : 'disabled'}>${last ? esc(doneLabel || t('quiz_finish')) : t('next')}</button></div></div>`;
     if (focus) el.querySelector(phase === 'worst' ? '.bw-car:not(.first)' : '.bw-car')?.focus({ preventScroll: true });
   };
-  const go = d => { clearTimeout(advance); pick = null; i += d; if (i >= order.length) { i = order.length - 1; onDone(ans); return; } draw(true); };
+  const go = d => { clearTimeout(advance); pick = null; i += d;
+    if (i >= order.length || d > 0 && i === EARLY && consistent(ans, order.slice(0, EARLY))) { i = Math.min(i, order.length - 1); onDone(ans); return; }
+    draw(true); };
   const choose = k => {
     const x = order[i];
     if (ans[x.id] || k === pick) { delete ans[x.id]; pick = null; draw(true); return; }  // tapping again starts the task over
     if (!pick) { pick = k; draw(true); return; }
     ans[x.id] = `${pick}>${k}`; pick = null; draw(false);
-    if (i < order.length - 1) advance = setTimeout(() => go(1), 650);  // a moment to see the full order before moving on
+    advance = setTimeout(() => go(1), 650);  // a moment to see the full order before moving on (or finishing early)
   };
   el.onclick = e => {
     const car = e.target.closest('[data-car]'); if (car) { choose(car.dataset.car); return; }

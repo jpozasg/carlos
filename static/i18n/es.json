@@ -181,7 +181,7 @@
  "need_two": "El ranking necesita al menos dos coches en venta con datos en los criterios ponderados.",
  "missing_criteria": "sin valor para {l}",
  "quiz_title": "¿Qué coche comprarías?",
- "quiz_lead": "Ocho elecciones rápidas entre cuatro coches. Cada vez son el mismo modelo e iguales en todo salvo una ventaja cada uno. Toca el que comprarías y luego el que comprarías el último. No hay respuestas correctas; Carlos cuenta lo que eliges y después te muestra la cuenta.",
+ "quiz_lead": "De tres a seis elecciones rápidas entre seis coches. Cada vez son el mismo modelo e iguales en todo salvo una ventaja cada uno. Toca el que comprarías y luego el que comprarías el último. No hay respuestas correctas; Carlos cuenta lo que eliges y después te muestra la cuenta.",
  "weights": "Pesos (0 = ignorar)",
  "weights_lead": "Mueve un control para sustituir las respuestas. El ranking indicará entonces que los pesos se ajustaron a mano, y puedes volver a las respuestas en cualquier momento.",
  "weights_manual": "editado a mano",
@@ -639,7 +639,7 @@
  "quiz_start": "Empezar las elecciones",
  "quiz_retake": "Hacer las elecciones de nuevo",
  "quiz_later": "Saltar, decidir más tarde",
- "quiz_method": "Cómo las elecciones se convierten en pesos: cada ventaja aparece en exactamente cuatro de las ocho elecciones y cada par de ventajas coincide al menos una vez. Para cada una, Carlos cuenta cuántas veces elegiste su coche el primero y cuántas el último: (primero − último) ÷ veces mostrada da de −1 a +1, que se convierte en 0–5, nunca por debajo de 1 (solo tú puedes desactivar un criterio, a mano). Una ventaja que no viste cuenta 3. Es el escalamiento mejor–peor, un método de encuesta estándar que obliga a elegir en lugar de preguntar cuánto importa cada cosa, porque si se pregunta directamente todo es «importante». Detalles y fuentes: docs/ranking.md.",
+ "quiz_method": "Cómo las elecciones se convierten en pesos: cada ventaja aparece en cuatro de las seis elecciones y cada par de ventajas coincide al menos dos veces; si las tres primeras ya concuerdan (ninguna ventaja elegida primera y última), el cuestionario termina ahí. Para cada una, Carlos cuenta cuántas veces elegiste su coche el primero y cuántas el último: (primero − último) ÷ veces mostrada da de −1 a +1, que se convierte en 0–5, nunca por debajo de 1 (solo tú puedes desactivar un criterio, a mano). Una ventaja que no viste cuenta 3. Es el escalamiento mejor–peor, un método de encuesta estándar que obliga a elegir en lugar de preguntar cuánto importa cada cosa, porque si se pregunta directamente todo es «importante». Detalles y fuentes: docs/ranking.md.",
  "weight_of": "Peso {w} de 5",
  "prio_title": "Tus prioridades",
  "prio_lead": "Cuánto cuenta cada criterio en la puntuación, de 0 a 5, y las respuestas que lo explican.",
@@ -982,5 +982,10 @@
  "fv_hu_months_18": "al menos 18 meses",
  "excluded_filter": "excluido por tu filtro: {f}",
  "filtered_n": "{n} coches no se clasifican por tus filtros.",
- "osm_credit": "Distancias por código postal: © colaboradores de <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a> (ODbL)"
+ "osm_credit": "Distancias por código postal: © colaboradores de <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a> (ODbL)",
+ "bw_cost_ord": "coste mensual habitual",
+ "bw_cost_less": "{p} % menos al mes",
+ "bw_row_budget": "Precio",
+ "bw_row_safety": "Seguridad",
+ "bw_row_distance": "Distancia"
 }

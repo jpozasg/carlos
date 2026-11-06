@@ -1089,34 +1089,41 @@ class AppTest(unittest.TestCase):
         self.assertEqual(costs.stats_ratio([{'value': 6, 'class_average': 4, 'age_from': 6, 'age_to': 7}], 7.5), 1.5)
 
     def test_questionnaire_weights(self):
+        """#169: six tasks of six cars on a 3 × 3 grid; every criterion four times, every pair at least twice; simulated
+        respondents get their favourite at 5 and their least important criterion at 1."""
+        import itertools, random
         C, T = ranking._KEYS, ranking.TASKS
-        self.assertEqual({k: v for k, v in ranking.weights_from_answers({}).items() if k in C}, {k: ranking.NEUTRAL_WEIGHT for k in C})   # no answers: neutral
-        self.assertEqual(ranking.weights_from_answers({})['distance'], 0)               # not asked yet
-        seen = {k: sum(k in x['criteria'] for x in T) for k in C}
-        self.assertEqual((len(C), len(T), set(len(x['criteria']) for x in T)), (8, 8, {4}))
-        self.assertEqual(set(seen.values()), {4})                         # every criterion in exactly four tasks
-        pairs = [frozenset(p) for x in T for p in __import__('itertools').combinations(x['criteria'], 2)]
-        self.assertEqual((len(pairs), len(set(pairs)), set(pairs.count(x) for x in set(pairs))), (48, 28, {1, 2, 3}))   # every pair meets at least once
-        always = {x['id']: f"power>{[k for k in x['criteria'] if k != 'power'][0]}" if 'power' in x['criteria'] else None for x in T}
-        w = ranking.weights_from_answers({k: v for k, v in always.items() if v})
-        self.assertEqual(w['power'], 5)                                   # picked first every time it was shown
-        never = {x['id']: f"{x['criteria'][1] if x['criteria'][0] == 'power' else x['criteria'][0]}>power" for x in T if 'power' in x['criteria']}
-        self.assertEqual(ranking.weights_from_answers(never)['power'], 1)  # picked last every time: floor 1
-        self.assertEqual(ranking.weights_from_answers({'s1': 'cost_month>power'})['mileage'], 3)   # middle once → neutral
-        self.assertEqual(ranking.known_answers({'cash': 'tight', 's1': 'power>mileage', 's2': 'power>age', 'r1': 'power>mileage', 't1': 'power>age'}), {'s1': 'power>mileage'})   # r…, t…: retired
+        self.assertEqual(set(C), set(ranking.CRITERIA))
+        self.assertEqual(set(ranking.weights_from_answers({}).values()), {ranking.NEUTRAL_WEIGHT})   # no answers: neutral
+        self.assertEqual((len(C), len(T), set(len(x['criteria']) for x in T)), (9, 6, {6}))
+        self.assertEqual({k: sum(k in x['criteria'] for x in T) for k in C}, {k: 4 for k in C})
+        pairs = [frozenset(p) for x in T for p in itertools.combinations(x['criteria'], 2)]
+        self.assertEqual((len(set(pairs)), min(pairs.count(x) for x in set(pairs))), (36, 2))      # every pair at least twice
+        self.assertEqual({k: sum(k in x['criteria'] for x in T[:ranking.EARLY_STOP_AFTER]) for k in C}, {k: 2 for k in C})   # the row tasks
+        rnd, inverted = random.Random(169), 0
+        for _ in range(300):                                     # simulated respondents with true priorities
+            true = dict(zip(C, rnd.sample(range(9), 9)))
+            ans = {x['id']: f"{max(x['criteria'], key=true.get)}>{min(x['criteria'], key=true.get)}" for x in T}
+            w = ranking.weights_from_answers(ans)
+            self.assertEqual((w[max(C, key=true.get)], w[min(C, key=true.get)]), (5, 1))
+            inverted += sum(true[a] > true[b] and w[a] < w[b] for a, b in itertools.permutations(C, 2))
+        self.assertLess(inverted / (300 * 72), 0.01)              # weights follow the true order (< 1 % of pairs inverted)
+        self.assertEqual(ranking.weights_from_answers({'u1': f"{T[0]['criteria'][0]}>{T[0]['criteria'][1]}"})[T[0]['criteria'][2]], 3)   # middle once → neutral
+        self.assertEqual(ranking.known_answers({'cash': 'tight', 'u1': f"{T[0]['criteria'][0]}>{T[0]['criteria'][1]}", 's1': 'power>mileage', 'r1': 'power>mileage'}),
+                         {'u1': f"{T[0]['criteria'][0]}>{T[0]['criteria'][1]}"})   # s…, r…: retired
         with self.assertRaises(ValueError):
-            ranking.check_answers({'s1': 'power>power'})
+            ranking.check_answers({'u1': 'power>power'})
         st, d = self.req('GET', '/api/ranking')
-        self.assertEqual((st, d['answered'], d['manual'], len(d['tasks'])), (200, False, False, 8))
-        st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'s1': 'power>cost_month'}})
+        self.assertEqual((st, d['answered'], d['manual'], len(d['tasks'])), (200, False, False, 6))
+        first, other = T[0]['criteria'][0], T[0]['criteria'][1]
+        st, p = self.req('POST', '/api/parameters', {'ranking_answers': {'u1': f'{first}>{other}'}})
         self.assertEqual(st, 200)
         d = self.req('GET', '/api/ranking')[1]
-        self.assertEqual((d['answered'], d['weights']['power'], d['weights']['cost_month'], d['weights']['age'], d['tally']['power']),
-                         (True, 5, 1, 3, {'shown': 1, 'best': 1, 'worst': 0}))
-        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'s1': 'age>budget'}})[0], 400)
-        self.req('POST', '/api/parameters', {'ranking_weights': {'power': 2}})
+        self.assertEqual((d['answered'], d['weights'][first], d['weights'][other], d['tally'][first]), (True, 5, 1, {'shown': 1, 'best': 1, 'worst': 0}))
+        self.assertEqual(self.req('POST', '/api/parameters', {'ranking_answers': {'u1': 'age>cash_now'}})[0], 400)
+        self.req('POST', '/api/parameters', {'ranking_weights': {first: 2}})
         d = self.req('GET', '/api/ranking')[1]
-        self.assertEqual((d['manual'], d['weights']['power'], d['derived_weights']['power']), (True, 2, 5))
+        self.assertEqual((d['manual'], d['weights'][first], d['derived_weights'][first]), (True, 2, 5))
         self.req('POST', '/api/parameters', {'ranking_weights': None})                 # back to the answers
         self.assertEqual(self.req('GET', '/api/ranking')[1]['manual'], False)
 
