@@ -73,9 +73,28 @@ USER_PREMIUM = 'USER DATA'
 
 # Knowledge tables attach to exactly one level: variant (vehicle_id), engine (engine_id) or generation (generation_id).
 SCOPED_TABLES = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data',
-                 'research_checks')  # research_checks: the contract's recorded source checks (issue #114)
+                 'research_checks',  # research_checks: the contract's recorded source checks (issue #114)
+                 'faults', 'recalls', 'reliability_stats')  # target design (#174): faults, recalls, TÜV/ADAC baseline
 SCOPE_COLUMNS = ('vehicle_id', 'engine_id', 'generation_id')
-LEVELS = {'vehicle_id': 'variant', 'engine_id': 'engine', 'generation_id': 'generation'}
+# Target design levels (docs/target-design.md §2): the new tables and maintenance/research_checks/sources carry all of them.
+LEVEL_COLUMNS = SCOPE_COLUMNS + ('gearbox_id', 'engine_family_id', 'gearbox_family_id', 'body_style_id', 'option_id')
+LEVELS = {'vehicle_id': 'variant', 'engine_id': 'engine', 'generation_id': 'generation', 'gearbox_id': 'gearbox',
+          'engine_family_id': 'engine_family', 'gearbox_family_id': 'gearbox_family', 'body_style_id': 'body_style',
+          'option_id': 'option'}
+GLOBAL_LEVEL_TABLES = ('maintenance_items',)  # a row without a level is a global default (HU, brake fluid, labour rate)
+GEARBOX_TYPES = ['MANUAL', 'DCT', 'AT', 'CVT', 'SINGLE-SPEED']
+FAULT_CONSEQUENCES = ['ENGINE_DAMAGE', 'STRANDS', 'SAFETY', 'UNUSABLE', 'COST', 'COSMETIC']
+# Severity is derived, never chosen (owner, 2026-11-06, #168): HIGH when it can destroy the engine or gearbox, strand the
+# car or is a safety risk, or costs at least SEVERITY_HIGH_EUR; MEDIUM from SEVERITY_MEDIUM_EUR or when the car is
+# unusable until fixed; LOW below that while the car still drives.
+SEVERITY_HIGH_EUR, SEVERITY_MEDIUM_EUR = 1500, 500
+# PROVISIONAL — to be confirmed by the owner (under independent review, 2026-11-06): the words a source uses for how often
+# a fault happens → cumulative share of cars failed by REFERENCE_KM, used only for ESTIMATE curves when no source gives
+# a number. One place; replace the values here when the review is decided.
+REFERENCE_KM = 200_000
+FREQUENCY_WORDS = {'typical': 0.60, 'very common': 0.35, 'common': 0.20, 'occasional': 0.08, 'rare': 0.02}
+PRIVATE_SALE_DISCOUNT = 0.05  # asking → private sale price (#166): ESTIMATED, range 3–10 %, no primary source found
+MARKET_MIN_PER_BAND, MARKET_MAX_AGE_DAYS = 5, 183  # resale sample (#166): ≥ 5 cars in each of the three bands, 6 months
 
 # knowledge rows that may carry a first-registration window (applies_from/applies_to, issue #153)
-WINDOWED_TABLES = ('maintenance_items', 'repair_risks', 'reliability_items')
+WINDOWED_TABLES = ('maintenance_items', 'repair_risks', 'reliability_items', 'faults', 'recalls')

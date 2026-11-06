@@ -167,16 +167,64 @@ class AppTest(unittest.TestCase):
         self.assertEqual({r['component'] for r in a['repair_risks']}, {'Water pump', 'Rear axle bushings'})
         self.assertIn(SRC_GUIDE, {s['id'] for s in a['sources']})           # engine-level source listed
 
+    def test_target_levels_174(self):
+        """Target design step 1 (#174): families, gearboxes, body styles and options are catalogue levels; faults attach to
+        exactly one level with a valid curve; a maintenance row without a level is a global default; an account sees a
+        level's knowledge only through its own listings."""
+        from carlos import db
+        fam = self.agent('POST', 'engine_families', {'name': 'AM'})[1]['id']
+        self.assertEqual(self.agent('PATCH', f'engines/{E_A}', {'family_id': fam})[0], 200)
+        gf = self.agent('POST', 'gearbox_families', {'name': 'DX7'})[1]['id']
+        gb = self.agent('POST', 'gearboxes', {'code': '0XX', 'family_id': gf, 'type': 'DCT', 'gears': 7})[1]['id']
+        self.assertEqual(self.agent('POST', 'gearboxes', {'code': '0YY', 'type': 'ROBOT'})[0], 400)          # fixed code
+        self.assertEqual(self.agent('PATCH', f'vehicles/{V_A}', {'gearbox_id': gb})[0], 200)
+        fault = {'component': 'Timing chain', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
+                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
+                 'source_id': SRC_GUIDE}
+        st, f = self.agent('POST', 'faults', {**fault, 'engine_family_id': fam})
+        self.assertEqual(st, 201, f)
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'engine_family_id': fam, 'gearbox_id': gb})[0], 400)  # two levels
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'gearbox_id': gb, 'curve_km': [[200000, 0.4], [100000, 0.1]]})[0], 400)
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'gearbox_id': gb, 'usage_multiplier': 1.5})[0], 400)  # needs a source
+        self.assertEqual(self.agent('POST', 'maintenance_items', {'item': 'HU', 'job': 'HU', 'interval_months': 24, 'schedule': 'ITEM',
+                                                                  'reference_cost_eur': 140, 'status': 'OFFICIAL FEE LEVEL',
+                                                                  'source_id': SRC_GUIDE})[0], 201)  # global default
+        uid, _ = self.second_account()
+        c = db.connect()
+        try:
+            auth.scope(c, uid)
+            seen = lambda t: c.execute(f'SELECT count(*) FROM {t}').fetchone()[0]
+            self.assertEqual((seen('faults'), seen('engine_families'), seen('gearboxes')), (0, 0, 0))   # no listing, nothing seen
+            self.assertEqual(c.execute("SELECT count(*) FROM maintenance_items WHERE item='HU' AND engine_id IS NULL AND generation_id IS NULL AND vehicle_id IS NULL").fetchone()[0], 1)
+        finally:
+            c.close()
+        H = {'X-Carlos-Account': str(uid)}
+        src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, headers=H)[1]
+        st, _ = self.agent('POST', 'listings', {'vehicle_id': V_A, 'price_eur': 5000, 'source_id': src['id']}, headers=H)
+        self.assertEqual(st, 201)
+        c = db.connect()
+        try:
+            auth.scope(c, uid)
+            self.assertEqual([r[0] for r in c.execute('SELECT id FROM faults')], [f['id']])        # through V_A → engine → family
+            self.assertEqual(c.execute('SELECT count(*) FROM gearbox_families').fetchone()[0], 1)
+            v = db.variants(c, 'WHERE v.id=?', (V_A,))[0]
+            self.assertEqual((v['engine_family_id'], v['gearbox_family_id'], v['gearbox_type']), (fam, gf, 'DCT'))
+            self.assertEqual(len(db.for_variant(db.scoped(c, 'faults'), v)), 1)
+        finally:
+            c.close()
+
     def test_scoped_rows_need_exactly_one_level(self):
         base = {'item': 'x', 'interval_km': 10000, 'schedule': 'ITEM', 'diy': 0, 'reference_cost_eur': 10, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE}
-        self.assertEqual(self.agent('POST', 'maintenance_items', base)[0], 400)                                  # no level
+        self.assertEqual(self.agent('POST', 'repair_risks', {'component': 'x', 'km_from': 0, 'km_to': 1, 'probability': 0.1,
+                                                            'source_id': SRC_GUIDE})[0], 400)                    # no level
+        self.assertEqual(self.agent('POST', 'maintenance_items', base)[0], 201)        # no level: a global default (#174)
         self.assertEqual(self.agent('POST', 'maintenance_items', {**base, 'vehicle_id': V_A, 'engine_id': E_A})[0], 400)  # two levels
         st, r = self.agent('POST', 'maintenance_items', {**base, 'engine_id': E_A})
         self.assertEqual(st, 201)
         # re-scoping a row from the variant to its engine in one PATCH
         st, _ = self.agent('PATCH', f'maintenance_items/{r["id"]}', {'engine_id': None, 'vehicle_id': V_A})
         self.assertEqual(st, 200)
-        self.assertEqual(self.agent('PATCH', f'maintenance_items/{r["id"]}', {'vehicle_id': None})[0], 400)       # CHECK: zero levels
+        self.assertEqual(self.agent('PATCH', f'maintenance_items/{r["id"]}', {'vehicle_id': None})[0], 200)       # zero levels = global (#174)
         self.assertEqual(self.agent('POST', 'sources', {'title': 's', 'vehicle_id': V_A, 'generation_id': G1})[0], 400)
         self.assertEqual(self.agent('POST', 'sources', {'title': 's', 'generation_id': G1})[0], 201)
         self.assertEqual(self.agent('POST', 'engines', {'code': 'X', 'aspiration': 'JET'})[0], 400)              # fixed code
@@ -1083,7 +1131,8 @@ class AppTest(unittest.TestCase):
         st, s = self.agent('GET', 'schema')
         self.assertEqual(st, 200)
         self.assertIn('engines', s['writable_tables'])
-        self.assertEqual(s['scope_columns'], ['vehicle_id', 'engine_id', 'generation_id'])
+        self.assertEqual(s['scope_columns'], ['vehicle_id', 'engine_id', 'generation_id', 'gearbox_id', 'engine_family_id',
+                                              'gearbox_family_id', 'body_style_id', 'option_id'])
         self.assertEqual(s['code_formats']['listing_events.kind'], '[a-z][a-z_]*')
         self.assertIn('WET BELT', s['fixed_codes']['engines.timing_drive'])
         self.assertEqual(self.agent('POST', 'listing_events', {'listing_id': CAR_A, 'event_date': '2026-11-03', 'kind': 'Decision', 'text': 'x'})[0], 400)
