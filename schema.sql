@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=24). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=25). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -302,7 +302,7 @@ CREATE TABLE research_requests (
  worker TEXT,
  listing_id INTEGER REFERENCES listings(id),
  result TEXT
-);
+, requested_by INTEGER REFERENCES users(id));
 CREATE TABLE research_checks (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER REFERENCES vehicles(id),

@@ -5,7 +5,7 @@ import re
 
 MAX_OPEN = 5             # QUEUED + RUNNING per account: keeps one account from flooding the shared worker
 CLAIM_TIMEOUT_HOURS = 3  # a RUNNING request older than this is taken to be abandoned (worker crashed) and can be claimed again
-COLS = 'id, owner_id, url, note, status, requested_at, claimed_at, finished_at, worker, listing_id, result'
+COLS = 'id, owner_id, url, note, status, requested_at, claimed_at, finished_at, worker, listing_id, result, requested_by'
 
 
 def clean_url(url):
@@ -19,7 +19,8 @@ def mine(c, uid):
     return [dict(r) for r in c.execute(f'SELECT {COLS} FROM main.research_requests WHERE owner_id=? ORDER BY id DESC', (uid,))]
 
 
-def create(c, uid, data):
+def create(c, uid, data, by=None):
+    """by: the admin who queued it for the account (issue #139); None when the account asked itself."""
     url, note = clean_url(data.get('url')), (str(data.get('note') or '').strip()[:1000] or None)
     with c:
         open_urls = [r[0] for r in c.execute("SELECT url FROM main.research_requests WHERE owner_id=? AND status IN ('QUEUED','RUNNING')", (uid,))]
@@ -27,7 +28,7 @@ def create(c, uid, data):
             raise ValueError('This link is already waiting to be researched')
         if len(open_urls) >= MAX_OPEN:
             raise ValueError(f'At most {MAX_OPEN} requests can wait at a time; cancel one or wait until the worker finishes one')
-        rid = c.execute('INSERT INTO main.research_requests (owner_id, url, note) VALUES (?,?,?)', (uid, url, note)).lastrowid
+        rid = c.execute('INSERT INTO main.research_requests (owner_id, url, note, requested_by) VALUES (?,?,?,?)', (uid, url, note, by)).lastrowid
     return rid
 
 

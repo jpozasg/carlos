@@ -168,8 +168,9 @@ class Handler(BaseHTTPRequestHandler):
         if acting:
             if not self.admin or not self.headers.get('Authorization'):
                 raise NotAllowed('X-Carlos-Account needs an admin agent token')
-            if self.command != 'GET' and not urlsplit(self.path).path.startswith('/api/agent/'):
-                raise NotAllowed('X-Carlos-Account works for reads and /api/agent/ writes only (never passwords, tokens or settings)')
+            p = urlsplit(self.path).path  # research requests too: an admin agent may queue one for the account (issue #139)
+            if self.command != 'GET' and not (p.startswith('/api/agent/') or p == '/api/requests' or p.startswith('/api/requests/')):
+                raise NotAllowed('X-Carlos-Account works for reads, /api/agent/ writes and research requests only (never passwords, tokens or settings)')
             row = c.execute('SELECT id FROM main.users WHERE id=? AND is_active=1', (int(acting) if acting.isdigit() else -1,)).fetchone()
             if row is None:
                 raise ValueError(f'X-Carlos-Account={acting}: no such active account')
@@ -342,7 +343,7 @@ class Handler(BaseHTTPRequestHandler):
         ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|media|decision)(?:/(\d+))?', path)
         req = re.fullmatch(r'/api/(?:requests|worker/requests)/(\d+)', path)
         if path == '/api/requests' and method == 'POST':
-            rid = rq.create(c, uid, self.read_json())
+            rid = rq.create(c, uid, self.read_json(), by=self.user['id'] if self.user['id'] != uid else None)
             self.send_json(next(r for r in rq.mine(c, uid) if r['id'] == rid), 201)
         elif req and path.startswith('/api/requests/') and method == 'PATCH':
             if self.read_json() != {'status': 'CANCELLED'}:
