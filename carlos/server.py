@@ -14,6 +14,8 @@ from .models import model_tree, variant_detail
 from .ranking import CRITERIA, TASKS, check_answers, rank, ranking_state, weights_from, weights_from_answers
 from .todo import todo
 
+VIEW_COOKIE = "carlos_view"  # an admin viewing as another account (issue #142); set by the header switcher
+
 # UI-editable parameters: type and whether they must be > 0 (required) or >= 0 (optional).
 PARAM_NUM = {'annual_km': (int, True), 'ownership_years': (int, True), 'fuel_price_eur_l': (float, True),
              'diesel_price_eur_l': (float, False),
@@ -182,17 +184,26 @@ class Handler(BaseHTTPRequestHandler):
         if admin and self.user['role'] != 'admin':
             raise Forbidden('Admin only')
         self.admin, self.uid = self.user['role'] == 'admin', self.user['id']
-        acting = self.headers.get('X-Carlos-Account')
+        acting, p = self.headers.get('X-Carlos-Account'), urlsplit(self.path).path
+        # "view as account" (issue #142): an admin's browser session carries the account in the carlos_view cookie, so
+        # pages and photos (<img> sends no headers) show that account; never for admin pages, non-admins are ignored
+        view = SimpleCookie(self.headers.get('Cookie', '')).get(VIEW_COOKIE)
+        by_cookie = not acting and self.admin and not self.headers.get('Authorization') and view is not None and not p.startswith('/api/admin/')
+        if by_cookie:
+            acting = view.value
         if acting:
-            if not self.admin or not self.headers.get('Authorization'):
+            if not self.admin or not (by_cookie or self.headers.get('Authorization')):
                 raise NotAllowed('X-Carlos-Account needs an admin agent token')
-            p = urlsplit(self.path).path  # research requests too: an admin agent may queue one for the account (issue #139)
-            if self.command != 'GET' and not (p.startswith('/api/agent/') or p == '/api/requests' or p.startswith('/api/requests/')):
-                raise NotAllowed('X-Carlos-Account works for reads, /api/agent/ writes and research requests only (never passwords, tokens or settings)')
+            # research requests too: an admin agent may queue one for the account (issue #139); the viewing admin may
+            # also tap checklists, decisions and photos (/api/ui/)
+            if self.command != 'GET' and not (p.startswith('/api/agent/') or p == '/api/requests' or p.startswith('/api/requests/')
+                                              or by_cookie and p.startswith('/api/ui/')):
+                raise NotAllowed('Viewing as another account: reads, /api/agent/ and /api/ui/ writes and research requests only (never passwords, tokens or settings)')
             row = c.execute('SELECT id FROM main.users WHERE id=? AND is_active=1', (int(acting) if acting.isdigit() else -1,)).fetchone()
-            if row is None:
+            if row is None and not by_cookie:
                 raise ValueError(f'X-Carlos-Account={acting}: no such active account')
-            self.uid = row[0]
+            if row is not None:  # a stale view cookie (account gone) falls back to the admin's own account
+                self.uid = row[0]
         auth.scope(c, self.uid, curator=self.admin)
         return self.user
 
@@ -570,6 +581,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Only is_active (0/1) can be changed')
             rq.set_worker_active(c, int(wk[1]), d['is_active'])
             self.send_json(next(x for x in rq.workers(c) if x['id'] == int(wk[1])))
+        elif path == '/api/admin/changes' and method == 'GET':  # recent writes, newest first, paged by ?before=<id> (issue #142)
+            q = parse_qs(urlsplit(self.path).query)
+            before, limit = int(q.get('before', ['0'])[-1] or 0), min(int(q.get('limit', ['50'])[-1]), 200)
+            self.send_json(rows(c, "SELECT ch.id, ch.changed_at, ch.table_name, ch.row_id, ch.action, w.username AS writer, a.username AS account "
+                                   "FROM main.change_log ch LEFT JOIN main.users w ON w.id=ch.user_id "
+                                   "LEFT JOIN main.users a ON a.id=COALESCE(json_extract(ch.new_json, '$.owner_id'), "
+                                   "(SELECT l.owner_id FROM main.listings l WHERE l.id=json_extract(ch.new_json, '$.listing_id'))) "
+                                   "WHERE ? = 0 OR ch.id < ? ORDER BY ch.id DESC LIMIT ?", (before, before, limit)))
         elif path == '/api/admin/requests' and method == 'GET':
             self.send_json(rq.everything(c))
         elif path == '/api/admin/users' and method == 'GET':

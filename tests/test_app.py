@@ -452,6 +452,24 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('POST', '/api/account/token', {}, token=None, cookie=cookie)[0], 403)
         return uid, cookie
 
+    def test_view_as_account_142(self):
+        """An admin's browser session views any account through the carlos_view cookie (pages and photos); non-admins
+        cannot; settings stay closed while viewing; the change log lists writer and account."""
+        uid2, c2 = self.second_account()
+        st, admin = self.login()
+        mine = self.req('GET', '/api/tco', token=None, cookie=admin)[1]['listings']
+        self.assertTrue(mine)
+        self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=f'{admin}; carlos_view={uid2}')[1]['listings'], [])
+        self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=f'{c2}; carlos_view=1')[1]['listings'], [])  # ignored for her
+        self.assertEqual(self.req('POST', '/api/parameters', {'annual_km': 9000}, token=None, cookie=f'{admin}; carlos_view={uid2}')[0], 403)
+        self.assertEqual(self.req('GET', '/api/admin/users', token=None, cookie=f'{admin}; carlos_view={uid2}')[0], 200)  # admin pages: own view
+        self.assertEqual(len(self.req('GET', '/api/tco', token=None, cookie=f'{admin}; carlos_view=999')[1]['listings']), len(mine))  # stale cookie
+        self.agent('PATCH', f'listings/{CAR_A}', {'notes': 'seen by the admin'}); self.agent('PATCH', f'listings/{CAR_A}', {'notes': 'seen twice'})
+        ch = self.req('GET', '/api/admin/changes?limit=5', token=None, cookie=admin)[1]
+        self.assertEqual((ch[0]['table_name'], ch[0]['writer']), ('listings', 'admin'))
+        self.assertEqual(self.req('GET', f'/api/admin/changes?before={ch[0]["id"]}&limit=1', token=None, cookie=admin)[1][0]['id'], ch[1]['id'])
+        self.assertEqual(self.req('GET', '/api/admin/changes', token=None, cookie=c2)[0], 401)
+
     def test_account_prices_106(self):
         """Part 4 of #106: each account's DIY choice picks the DIY parts or the workshop price of a shared row; a missing
         price for that choice leaves the cost unknown and names the job in the to-do; tax rows have a registration window."""
