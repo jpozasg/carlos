@@ -5,7 +5,7 @@ import { t, tv, comp } from '../i18n.js';
 import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt, critColor, researchLevels } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
-let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true;  // SWEEP: the score needle animates on open, not on quiet refreshes
+let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
 const lb = $('lightbox');
 const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, mileage: v => num(v, 0) + ' km', age: yrs, reliability: v => num(v, 1), inspection: v => num(v, 0),
   power: v => num(v, 0) + ' PS', confidence: v => num(v, 0) + ' %' };
@@ -222,6 +222,17 @@ const ui = (method, path, body, ctype) => send(method, '/api/ui/' + path, body, 
 // item in viewing mode does not jump back to the top
 async function refresh() { const y = window.scrollY; await draw(D.id, true); window.scrollTo(0, y); refreshTco().catch(() => {}); }
 
+// tabs under a fixed top (issue #178): photos, score and spec plate always shown; the tab is kept in the URL (?tab=)
+const TABS = ['overview', 'costs', 'maintenance', 'reliability', 'viewing', 'log'];
+const hid = k => k === TAB ? '' : ' hidden';
+const tabBar = () => `<div class="dtabs" role="tablist" aria-label="${esc(t('dt_label'))}">${TABS.map(k => `<button type="button" role="tab" data-tab-pick="${k}" aria-selected="${k === TAB}">${t('dt_' + k)}</button>`).join('')}</div>`;
+function pickTab(k) {  // switches without redrawing or moving the top; replaceState so the router doesn't re-render
+  TAB = k;
+  root.querySelectorAll('.dtab').forEach(g => { g.hidden = g.dataset.tab !== k; });
+  root.querySelectorAll('[data-tab-pick]').forEach(b => b.setAttribute('aria-selected', b.dataset.tabPick === k));
+  const [path, q] = location.hash.split('?'), sp = new URLSearchParams(q || ''); sp.set('tab', k);
+  history.replaceState(null, '', `${path}?${sp}`);
+}
 async function draw(id, quiet = false) {
   SWEEP = !quiet;
   const label = u => `${unitName(u)} ${u.is_reference ? '(' + t('reference').toLowerCase() + ')' : esc(u.listing_id ?? '')}`;
@@ -230,7 +241,7 @@ async function draw(id, quiet = false) {
   let d; try { d = await get('/api/listings/' + id); } catch (e) { root.innerHTML = picker + `<div class="card err">${t('dossier_failed', { m: esc(e.message) })}</div>`; return; }
   D = d;
   const claim = x => x == null ? PEND() : `${esc(x)} <span class="tag">${t('claimed')}</span>`;
-  root.innerHTML = picker + `<div class="dossier-top">${viewer(d)}<div class="dossier-side">${scoreBox(d)}${plate(d)}</div></div><div class="grid">${viewingPanel()}
+  root.innerHTML = picker + `<div class="dossier-top">${viewer(d)}<div class="dossier-side">${scoreBox(d)}${plate(d)}</div></div>${tabBar()}<div class="grid dtab" data-tab="overview"${hid('overview')}>
     <div class="card span2"><div class="unit-head"><div><div class="unit-name"><a class="carlink" href="#/models/${d.vehicle_id}">${unitName(d)} ${esc(d.trim ?? '')}</a></div><div class="unit-sub">${unitSub(d)} · ${esc(tv(d.listing_status) ?? '')} <a href="#/models/${d.vehicle_id}" style="margin-left:8px">${t('open_model')}</a></div></div>
       <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')}</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
       ${d.is_reference ? '' : decisionBar(d)}
@@ -239,10 +250,15 @@ async function draw(id, quiet = false) {
         [t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a> · ${esc(d.engine_description ?? '')}`], [t('generation'), `<a href="${modelsHref({ make: d.make, model: d.model })}">${esc(d.generation)}</a> ${d.generation_start_year ?? '?'}–${d.generation_end_year ?? '?'}`],
         ...(d.is_reference ? [] : [[t('seller'), d.seller ? esc(d.seller) + (d.location ? ', ' + esc(d.location) : '') : PEND()], ...(sellerRating(d) ? [[t('seller_rating'), sellerRating(d)]] : []), [t('accident_free'), d.accident_free_claim == null ? PEND() : claim(d.accident_free_claim ? t('yes') : t('no'))], [t('owners'), claim(d.owners_claim)],
         [t('hu'), claim(d.hu_claim)], [t('history'), claim(d.service_history_claim)], [t('equipment'), d.equipment ? esc(d.equipment) : PEND()], [t('verdict'), d.verdict ? `<b>${esc(d.verdict)}</b>` : PEND()]]), [t('notes'), d.notes ? esc(d.notes) : PEND()]])}</div></div>
-    ${rankCard(d)}${maintenanceCard(d)}${risksCard(d)}${inspectionCard(d)}
+    ${rankCard(d)}</div>
+    <div class="grid dtab" data-tab="maintenance"${hid('maintenance')}>${maintenanceCard(d)}${risksCard(d)}</div>
+    <div class="grid dtab" data-tab="viewing"${hid('viewing')}>${viewingPanel()}${inspectionCard(d)}</div>
+    <div class="grid dtab" data-tab="costs"${hid('costs')}>
     <div class="card"><h3>${t('valuations')}</h3>${d.valuations.length ? d.valuations.map(valuationRow).join('') : empty(t('no_valuations'))}
       <h3 style="margin-top:16px">${t('own_costs')}</h3>${d.unit_costs.length ? `<div class="tablewrap"><table><thead><tr><th>${t('concept')}</th><th class="n">${t('parts')}</th><th class="n">${t('labour')}</th><th class="n">DIY</th></tr></thead><tbody>${d.unit_costs.map(x => `<tr><td>${esc(x.item)}<div class="small muted">${esc(tv(x.category))} · ${esc(tv(x.status))}</div></td><td class="n">${eP(x.parts_eur)}</td><td class="n">${eP(x.labor_eur)}</td><td class="n">${x.diy_hours == null ? '—' : num(x.diy_hours, 1) + ' h'}</td></tr>`).join('')}</tbody></table></div>` : empty(t('no_own_costs'))}</div>
-    ${reliabilityCard(d)}
+    </div>
+    <div class="grid dtab" data-tab="reliability"${hid('reliability')}>${reliabilityCard(d)}</div>
+    <div class="grid dtab" data-tab="log"${hid('log')}>
     <div class="card"><h3>${t('archive')}</h3>${archive(d)}</div>
     <div class="card"><h3>${t('log')}</h3>${d.events.length ? `<ol class="timeline">${d.events.slice().reverse().map(ev => `<li><time>${esc(ev.event_date)}</time> <span class="tag">${esc(tv(ev.kind))}</span><div>${esc(ev.text)}</div></li>`).join('')}</ol>` : empty(t('no_events'))}</div>
     <div class="card span2"><h3>${t('tab_sources')} <span class="muted small">${d.sources.length}</span></h3><div class="small">${d.sources.map(s => `<div class="src"><div class="src-title">${qTag(s.quality)} <span>${esc(s.title)}</span> ${lvlTag(s.vehicle_id ? 'variant' : s.engine_id ? 'engine' : s.generation_id ? 'generation' : 'shared')}</div>${s.url ? `<a href="${safeUrl(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>` : ''}</div>`).join('')}</div></div></div>`;
@@ -255,7 +271,8 @@ function bind() {
       for (const [i, f] of [...ph.files].entries()) { toast(t('uploading', { i: i + 1, n: ph.files.length })); try { await ui('POST', 'media/' + D.id, await shrink(f), 'image/jpeg'); ok++; } catch (err) { toast(err.message, true); } }
       if (ok) toast(t('photos_added', { n: ok })); await refresh(); } });
   root.addEventListener('click', async e => {
-    if (e.target.closest('[data-viewing]')) { VIEWING = !VIEWING; await draw(D.id); return; }
+    const tp = e.target.closest('[data-tab-pick]'); if (tp) { pickTab(tp.dataset.tabPick); return; }
+    if (e.target.closest('[data-viewing]')) { VIEWING = !VIEWING; if (VIEWING) TAB = 'viewing'; await draw(D.id); return; }
     const dc = e.target.closest('[data-decide]'); if (dc) { const k = dc.dataset.decide;
       if (k === 'reject') { const w = root.querySelector('.decide-why'); w.hidden = false; $('rejectWhy').focus(); return; }
       try { await send('POST', '/api/ui/decision/' + D.id, { decision: k === 'reject-confirm' ? 'reject' : k, reason: k === 'reject-confirm' ? $('rejectWhy').value : '' });
@@ -278,6 +295,7 @@ function decisionBar(d) {
 }
 export async function render(main, r) {
   const id = r.id ?? S.units[0]?.id;
+  if (TABS.includes(r.q?.tab)) TAB = r.q.tab;
   if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="dossier"></div>'; root = main.firstElementChild; bind(); }
   if (id == null) { root.innerHTML = empty(t('no_units')); return; }
   await draw(id);

@@ -204,6 +204,11 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 /* the key figures (Carlos score, cost per month): label highlighted too, value on one line (never broken mid-number) */
 .plate dt.hi{color:var(--text);font-weight:700;align-self:center}.plate dd.hi{overflow-wrap:normal;white-space:nowrap}
 .stamp{display:inline-block;margin-top:12px;padding:4px 10px;border:2px solid var(--accent);color:var(--accent-ink);border-radius:4px;font-weight:700;font-size:13px;transform:rotate(-2deg);max-width:100%;overflow-wrap:anywhere}
+/* dossier tabs (issue #178): a tab bar under the fixed top; each tab at most two columns, wide cards span both */
+.dtabs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 16px;border-bottom:var(--border-w) solid var(--border)}
+.dtabs button{border:0;border-bottom:3px solid transparent;background:none;color:var(--text-2);font:inherit;font-weight:600;padding:8px 12px;cursor:pointer;margin-bottom:-1px}
+.dtabs button[aria-selected=true]{color:var(--text);border-bottom-color:var(--accent)}
+.dtab.grid{grid-template-columns:repeat(auto-fill,minmax(max(290px,calc(50% - 8px)),1fr))}
 .dossier-top{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);gap:16px;margin-bottom:16px}
 @media (max-width:860px){.dossier-top{grid-template-columns:1fr}}
 /* the Carlos score card sits above the spec plate, outside it; the cost per month is a strip at the top of the plate (issue #80) */
