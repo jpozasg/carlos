@@ -23,7 +23,10 @@ function showPhoto(i) {
   if (!PHOTOS.length) return; cur = (i + PHOTOS.length) % PHOTOS.length;
   const m = $('vMain'); if (m) { m.src = media(PHOTOS[cur]); m.alt = t('photo_n', { n: cur + 1 }); $('vCount').textContent = `${cur + 1} / ${PHOTOS.length}`; }
   document.querySelectorAll('.strip [data-photo]').forEach(b => b.setAttribute('aria-current', +b.dataset.photo === cur));
-  document.querySelector(`.strip [data-photo="${cur}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // centre the thumbnail by scrolling the strip itself; scrollIntoView also scrolled the page (issue #179)
+  const th = document.querySelector(`.strip [data-photo="${cur}"]`), st = th?.parentElement;
+  if (th && st) { const r = th.getBoundingClientRect(), sr = st.getBoundingClientRect();
+    if (r.left < sr.left || r.right > sr.right) st.scrollLeft += r.left - sr.left - (sr.width - r.width) / 2; }
   if (lb.open) { lb.querySelector('img').src = media(PHOTOS[cur]); lb.querySelector('.count').textContent = `${cur + 1} / ${PHOTOS.length}`; }
 }
 lb.querySelector('.prev').onclick = () => showPhoto(cur - 1); lb.querySelector('.next').onclick = () => showPhoto(cur + 1); lb.querySelector('.close').onclick = () => lb.close();
