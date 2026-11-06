@@ -34,7 +34,8 @@ export const carShort = u => `${esc(u.model)}${u.displacement_cc ? ' ' + (u.disp
 export const carLabel = u => `${esc(u.make)} ${carShort(u)}${u.offer === 'lease' ? ' · ' + esc(t('via_lease')) : ''}`;  // a lease is labelled (#129)
 export const unitSub = u => u.is_reference ? t('your_car') : `${esc(u.platform ?? '')}${u.listing_id ? ' ' + esc(u.listing_id) : ''}`;
 export const sevTag = s => !s ? PEND() : `<span class="tag ${/HIGH/.test(s) ? 'bad' : /MEDIUM/.test(s) ? 'warn' : 'good'}">${esc(tv(s))}</span>`;
-export const lvlTag = l => l ? `<span class="tag lvl lvl-${esc(l)}" title="${esc(t('level_hint'))}"><i class="dot"></i>${esc(tv(l))}</span>` : '';
+export const lvlTag = (l, r) => (l ? `<span class="tag lvl lvl-${esc(l)}" title="${esc(t('level_hint'))}"><i class="dot"></i>${esc(tv(l))}</span>` : '')
+  + (r && (r.applies_from || r.applies_to) ? ` <span class="tag" title="${esc(t('window_hint'))}">${esc(r.applies_from || '…')}–${esc(r.applies_to || '…')}</span>` : '');  // first-registration window (#153)
 export const qTag = (q, title = '') => { const ql = /^[ABCD]$/.test(q ?? '') ? q : 'X'; return `<span class="q ${ql}" title="${esc(title)}">${esc(q ?? '–')}</span>`; };
 export function statusTags(u) {
   const b = u.budget_status, tags = [];

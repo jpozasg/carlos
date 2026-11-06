@@ -11,6 +11,7 @@ CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_eve
                 ('reliability_items', 'severity'): r'[A-Z][A-Z /-]*', ('reliability_items', 'frequency_status'): r'[A-Z][A-Z /-]*',
                 ('insurance_data', 'premium_status'): r'[A-Z][A-Z /-]*', ('repair_risks', 'status'): r'[A-Z][A-Z /-]*',
                 ('tyre_data', 'status'): r'[A-Z][A-Z /-]*', ('tyre_data', 'tyre_type'): r'[A-Z][A-Z /-]*',
+                **{(t, col): r'\d{4}(-(0[1-9]|1[0-2]))?' for t in config.WINDOWED_TABLES for col in ('applies_from', 'applies_to')},
                 # what a lease rate includes (#127): a comma list without spaces, e.g. 'insurance,tax,gap'
                 ('listings', 'lease_includes'): '({0})(,({0}))*'.format('|'.join(config.LEASE_INCLUDES))}
 FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.category': config.UNIT_COST_CATEGORIES,

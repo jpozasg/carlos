@@ -76,3 +76,6 @@ SCOPED_TABLES = ('observations', 'insurance_data', 'tax_data', 'maintenance_item
                  'research_checks')  # research_checks: the contract's recorded source checks (issue #114)
 SCOPE_COLUMNS = ('vehicle_id', 'engine_id', 'generation_id')
 LEVELS = {'vehicle_id': 'variant', 'engine_id': 'engine', 'generation_id': 'generation'}
+
+# knowledge rows that may carry a first-registration window (applies_from/applies_to, issue #153)
+WINDOWED_TABLES = ('maintenance_items', 'repair_risks', 'reliability_items')

@@ -159,7 +159,7 @@ function maintenanceCard(d) {
   const tot = rows.reduce((a, r) => a + (r.cost_eur || 0), 0) + cm.reduce((a, x) => a + x.eur, 0), hrs = rows.reduce((a, r) => a + (r.diy_hours || 0), 0);
   return `<div class="card span2"><h3>${t('mp_title')}</h3><p class="small muted" style="margin-top:0">${t('mp_lead', { km: num(d.period_km, 0), m: num(S.p.ownership_years * 12, 0) })}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('mp_job')}</th><th>${t('level')}</th><th>${t('mp_interval')}</th><th>${t('mp_who')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('mp_times')}</th><th class="n">${t('mp_cost')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
-    ${rows.map(r => `<tr><td>${esc(r.item)}${r.restarted ? ` ${resetTag(d, r.id)}` : ''}<div class="small muted">${esc(tv(r.status) ?? '')} ${noteBox(r.notes)}</div></td><td>${lvlTag(r.level)}</td>
+    ${rows.map(r => `<tr><td>${esc(r.item)}${r.restarted ? ` ${resetTag(d, r.id)}` : ''}<div class="small muted">${esc(tv(r.status) ?? '')} ${noteBox(r.notes)}</div></td><td>${lvlTag(r.level, r)}</td>
       <td>${intervalTxt(r.interval_km, r.interval_months)}</td><td>${r.diy ? t('mp_diy') : t('mp_ws')}</td><td class="n">${eP(r.price_eur)}</td>
       <td class="n">×${num(r.occurrences, 2)}</td><td class="n">${eP(r.cost_eur)}${r.diy_hours ? `<div class="small muted">${num(r.diy_hours, 1)} h</div>` : ''}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
     ${certainRows(d, cm)}
@@ -171,7 +171,7 @@ function risksCard(d) {
   const tot = rows.reduce((a, r) => a + (r.expected_eur || 0), 0), cr = certainOf(d, 'repairs'), cert = cr.reduce((a, x) => a + x.eur, 0);
   return `<div class="card span2"><h3>${t('rk_title')}</h3><p class="small muted" style="margin-top:0">${t('rk_lead')}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('rk_comp')}</th><th>${t('level')}</th><th>${t('rk_window')}</th><th class="n">${t('rk_prob')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('rk_share')}</th><th class="n">${t('rk_exp')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
-    ${rows.map(r => `<tr${r.share ? '' : ' class="muted"'}><td><span title="${esc(r.evidence ?? '')}${r.notes ? ' — ' + esc(r.notes) : ''}">${esc(r.component)}</span>${r.diy ? ` <span class="tag">DIY</span>` : ''}</td><td>${lvlTag(r.level)}</td>
+    ${rows.map(r => `<tr${r.share ? '' : ' class="muted"'}><td><span title="${esc(r.evidence ?? '')}${r.notes ? ' — ' + esc(r.notes) : ''}">${esc(r.component)}</span>${r.diy ? ` <span class="tag">DIY</span>` : ''}</td><td>${lvlTag(r.level, r)}</td>
       <td>${num(r.km_from, 0)}–${num(r.km_to, 0)}</td><td class="n">${num(r.probability * 100, 0)} %</td><td class="n">${eP(r.price_eur)}</td>
       <td class="n">${num(r.share * 100, 0)} %</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
     <tr><td colspan="6"><b>${t('rk_total')}</b></td><td class="n"><b>${euro(tot)}</b></td><td></td></tr>
@@ -184,7 +184,7 @@ function reliabilityCard(d) {
   const state = r => { const x = det[r.id] || {};
     return x.excluded ? `<span class="tag good">${t('rel_recall_done')}</span>` : x.counted ? `<span class="tag">${t('rel_counted')} −${num(x.points, 1)}</span>` : `<span class="small muted">${t('rel_not_counted')}</span>`; };
   const group = (part, rows) => rows.length ? `<h4 class="small" style="margin:12px 0 4px">${part ? esc(t('part_' + part)) : esc(t('rel_no_part'))}${part ? ` <span class="muted num">${(d.reliability_parts || {})[part] == null ? t(partUnknown(d, part)) : `${num(d.reliability_parts[part], 1)} / 9 ${t('rel_pts')}`}</span>` : ''}</h4>
-    <ul class="check">${rows.sort((a, b) => (det[b.id]?.points || 0) - (det[a.id]?.points || 0)).map(r => `<li><span class="ico pend" aria-hidden="true">i</span><div><b>${esc(r.component)}</b> · ${esc(r.issue ?? '')}<div class="small" style="margin:4px 0">${sevTag(r.severity)} ${lvlTag(r.level)}${r.is_recall ? ` <span class="tag warn">${t('rel_recall')}</span>` : ''} ${state(r)}</div>${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}</div></li>`).join('')}</ul>` : '';
+    <ul class="check">${rows.sort((a, b) => (det[b.id]?.points || 0) - (det[a.id]?.points || 0)).map(r => `<li><span class="ico pend" aria-hidden="true">i</span><div><b>${esc(r.component)}</b> · ${esc(r.issue ?? '')}<div class="small" style="margin:4px 0">${sevTag(r.severity)} ${lvlTag(r.level, r)}${r.is_recall ? ` <span class="tag warn">${t('rel_recall')}</span>` : ''} ${state(r)}</div>${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}</div></li>`).join('')}</ul>` : '';
   const total = (d.metrics || {}).reliability;
   return `<div class="card"><h3>${t('reliability')} ${total == null ? '' : `<span class="muted small num">${t('plate_rel_total', { n: num(total, 1) })}</span>`}</h3><p class="small muted" style="margin-top:0">${t('rel_lead')}</p>
     ${[...PARTS, null].map(p => group(p, d.reliability.filter(r => (r.part ?? null) === p))).join('')}</div>`;

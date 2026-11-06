@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=26). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=27). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -113,7 +113,7 @@ CREATE TABLE "maintenance_items" (
  schedule TEXT NOT NULL DEFAULT 'PACKAGE' CHECK (schedule IN ('PACKAGE', 'ITEM')),
  diy INTEGER NOT NULL DEFAULT 0 CHECK (diy IN (0, 1)),
  diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
- active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT,
+ active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT, applies_from TEXT, applies_to TEXT,
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "reliability_items" (
@@ -122,7 +122,7 @@ CREATE TABLE "reliability_items" (
  engine_id INTEGER REFERENCES engines(id),
  generation_id INTEGER REFERENCES generations(id),
  component TEXT NOT NULL, issue TEXT, evidence TEXT, severity TEXT,
- frequency_status TEXT, source_id INTEGER, inspection_action TEXT, part TEXT CHECK (part IN ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')), is_recall INTEGER NOT NULL DEFAULT 0 CHECK (is_recall IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id),
+ frequency_status TEXT, source_id INTEGER, inspection_action TEXT, part TEXT CHECK (part IN ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')), is_recall INTEGER NOT NULL DEFAULT 0 CHECK (is_recall IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), applies_from TEXT, applies_to TEXT,
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "repair_risks" (
@@ -140,7 +140,7 @@ CREATE TABLE "repair_risks" (
  diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
  status TEXT, evidence TEXT,
  source_id INTEGER REFERENCES sources(id),
- notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT,
+ notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT, applies_from TEXT, applies_to TEXT,
  CHECK (km_to > km_from),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );

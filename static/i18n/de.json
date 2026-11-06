@@ -346,6 +346,7 @@
  "status": "Status",
  "quality": "Qualität",
  "level": "Ebene",
+ "window_hint": "Gilt nur für Autos mit Erstzulassung in diesem Zeitraum (z. B. vor oder nach dem Facelift, Bauzeitraum eines Rückrufs)",
  "level_hint": "Die Ebene, der diese Zeile zugeordnet ist: die Variante, ihr Motor oder ihre Generation",
  "level_variant": "Variante",
  "level_engine": "Motor",
