@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=25). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=26). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -302,7 +302,7 @@ CREATE TABLE research_requests (
  worker TEXT,
  listing_id INTEGER REFERENCES listings(id),
  result TEXT
-, requested_by INTEGER REFERENCES users(id));
+, requested_by INTEGER REFERENCES users(id), request_token_hash TEXT);
 CREATE TABLE research_checks (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER REFERENCES vehicles(id),
@@ -318,6 +318,18 @@ CREATE TABLE research_checks (
  owner_id INTEGER REFERENCES users(id),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
+CREATE TABLE workers (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ name TEXT NOT NULL UNIQUE,
+ token_hash TEXT UNIQUE,
+ is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+ created_at TEXT NOT NULL DEFAULT (datetime('now')),
+ last_seen TEXT,
+ state TEXT CHECK (state IS NULL OR state IN ('idle', 'working', 'error')),
+ request_id INTEGER REFERENCES research_requests(id),
+ last_error TEXT,
+ last_error_at TEXT
+);
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_maintenance_scope ON maintenance_items (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_risks_scope ON repair_risks (vehicle_id, engine_id, generation_id);
@@ -328,3 +340,4 @@ CREATE INDEX idx_vehicles_hsn_tsn ON vehicles (hsn, tsn);
 CREATE INDEX research_requests_owner ON research_requests (owner_id, status);
 CREATE INDEX research_requests_queue ON research_requests (status, id);
 CREATE INDEX idx_research_checks_task ON research_checks (task);
+CREATE INDEX research_requests_token ON research_requests (request_token_hash);

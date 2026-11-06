@@ -47,7 +47,7 @@ The data directory is a git repository of its own (private). After a session: co
 ## The shared research worker (issue #113)
 The site runs on the Pi; the research runs on the owner's desktop, which stays on: Claude Code and a browser cannot run on a Pi 2B. Accounts queue listing links (`POST /api/requests`, the Compare page); `worker.py` polls the site, claims the oldest request, runs Claude Code headless with `docs/prompts/research-request.md` and reports the listing it wrote into the requester's account, or why it failed. Every request keeps who asked, when, which worker and the result (`GET /api/admin/requests`, the Accounts page).
 
-On the desktop: a checkout of this repository (code only; the data stays on the Pi), Claude Code signed in, Chrome with Claude in Chrome for sites that block plain fetches, and an admin agent token of the site (Settings → agent token of an admin account; it stays in the desktop's environment or `.env`, never in the repository). The worker reaches the site through its public URL behind Caddy (`https://carlos.example.net`) or the LAN address of the proxy; port 8000 stays local to the Pi.
+On the desktop: a checkout of this repository (code only; the data stays on the Pi), Claude Code signed in, Chrome with Claude in Chrome for sites that block plain fetches, and the worker's own token (issue #141): an admin creates the worker once (`POST /api/admin/workers {"name": "desktop"}`, shown once; regenerate it with `POST /api/admin/workers/<id>/token`, switch it off with `PATCH /api/admin/workers/<id> {"is_active": 0}`) and puts it in the desktop's environment as `WORKER_TOKEN` (a private env file, never the repository). The worker token can only send heartbeats, claim and finish; for each claimed request the site hands out a per-request token, and only that one reaches the headless research run: it writes the shared catalogue and the requester's account, nothing else, and dies when the request ends. The admin agent token stays with the owner and never goes to a worker (without `WORKER_TOKEN` the worker still runs with `AGENT_TOKEN`, an admin token, the old way). The worker reaches the site through its public URL behind Caddy (`https://carlos.example.net`) or the LAN address of the proxy; port 8000 stays local to the Pi.
 
 ```
 # ~/.config/systemd/user/carlos-worker.service
@@ -58,8 +58,7 @@ After=network-online.target
 [Service]
 WorkingDirectory=%h/carlos
 Environment=CAR_API=https://carlos.example.net
-Environment=WORKER_NAME=desktop
-EnvironmentFile=%h/carlos/.env
+EnvironmentFile=%h/.config/carlos-worker.env   # WORKER_TOKEN=…
 ExecStart=/usr/bin/python3 %h/carlos/worker.py
 Restart=always
 RestartSec=60
@@ -67,4 +66,4 @@ RestartSec=60
 [Install]
 WantedBy=default.target
 ```
-`systemctl --user enable --now carlos-worker`; `loginctl enable-linger $USER` keeps it running without a login session; `journalctl --user -u carlos-worker` shows one line per request. Settings (environment): `POLL_SECONDS` (60), `WORKER_TIMEOUT_MIN` (120, below the server's 3-hour reclaim), `CLAUDE_CMD` (`claude -p`; give the headless session the permissions it needs for this repository in its Claude Code settings rather than skipping permission checks), `WORKER_LOGS` (`worker-logs/`, one log per request, git-ignored). `python worker.py --once` handles at most one request and exits (a manual test).
+`systemctl --user enable --now carlos-worker`; `loginctl enable-linger $USER` keeps it running without a login session; `journalctl --user -u carlos-worker` shows one line per request. Settings (environment): `WORKER_TOKEN` (the worker's token), `WORKER_MODEL` (`sonnet`: the research runs on Sonnet; added as `--model` after `claude` unless `CLAUDE_CMD` names a model), `POLL_SECONDS` (60; a heartbeat every poll and every minute of a run, and a worker silent for 180 s shows as down in `GET /api/admin/workers`), `WORKER_TIMEOUT_MIN` (120, below the server's 3-hour reclaim), `CLAUDE_CMD` (`claude -p`; give the headless session the permissions it needs for this repository in its Claude Code settings rather than skipping permission checks), `WORKER_LOGS` (`worker-logs/`, one log per request, git-ignored). `python worker.py --once` handles at most one request and exits (a manual test).

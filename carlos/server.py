@@ -143,9 +143,18 @@ class Handler(BaseHTTPRequestHandler):
     def identify(self, c):
         """Session cookie (browser) or Bearer token (agent). Sets self.user; returns it."""
         bearer = re.fullmatch(r'Bearer (\S+)', self.headers.get('Authorization', '') or '')
+        self.request = None
         if bearer:
             self.user = auth.user_by_token(c, bearer[1])
-            if self.user is None:
+            if self.user is None:  # a per-request token (issue #141): the research run of one claimed request
+                self.request = rq.request_by_token(c, bearer[1])
+                if self.request is not None:
+                    self.user = c.execute('SELECT * FROM main.users WHERE id=? AND is_active=1', (self.request['owner_id'],)).fetchone()
+                    if self.user is None:
+                        raise Forbidden('The account of this request is no longer active')
+                    return self.user
+                if rq.worker_by_token(c, bearer[1]) is not None:
+                    raise NotAllowed('A worker token only sends heartbeats, claims and finishes requests (/api/worker/)')
                 raise Forbidden('Invalid token')
             if self.user['role'] != 'admin':  # agents work with an admin token; people sign in (issue #130)
                 raise NotAllowed('Agent tokens work for admin accounts only; sign in to use the app')
@@ -161,6 +170,15 @@ class Handler(BaseHTTPRequestHandler):
         self.uid is then that account, self.user stays the admin (the change log records who wrote)."""
         if self.identify(c) is None:
             raise Forbidden('Login required')
+        if self.request is not None:  # catalogue writes as the worker always did, listing data only in the requester's account
+            p = urlsplit(self.path).path
+            if admin or self.headers.get('X-Carlos-Account') or not (
+                    self.command == 'GET' and not p.startswith('/api/worker/')
+                    or self.command in ('POST', 'PATCH') and p.startswith('/api/agent/')):
+                raise NotAllowed("A request token reads and writes research data for the requester's account only (no admin, settings, queue or deletes)")
+            self.admin, self.uid = True, self.request['owner_id']
+            auth.scope(c, self.uid, curator=True)
+            return self.user
         if admin and self.user['role'] != 'admin':
             raise Forbidden('Admin only')
         self.admin, self.uid = self.user['role'] == 'admin', self.user['id']
@@ -273,6 +291,10 @@ class Handler(BaseHTTPRequestHandler):
     def api(self, c, method, path):
         if path.startswith('/api/admin/'):
             self.admin_api(c, method, path); return
+        bearer = re.fullmatch(r'Bearer (\S+)', self.headers.get('Authorization', '') or '')
+        w = rq.worker_by_token(c, bearer[1]) if bearer and path.startswith('/api/worker/') else None
+        if w is not None:
+            self.worker_api(c, method, path, w); return
         user = self.require(c)
         uid = self.uid
         query = parse_qs(urlsplit(self.path).query)
@@ -435,6 +457,25 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json({'error': 'Endpoint not found'}, 404)
 
+    def worker_api(self, c, method, path, w):
+        """A registered worker (issue #141): heartbeat, claim (returns the per-request token), finish its own request."""
+        req = re.fullmatch(r'/api/worker/requests/(\d+)', path)
+        if path == '/api/worker/heartbeat' and method == 'POST':
+            rq.heartbeat(c, w['id'], self.read_json())
+            self.send_json({'ok': True})
+        elif path == '/api/worker/claim' and method == 'POST':
+            self.read_json()
+            with c:
+                c.execute("UPDATE main.workers SET last_seen=datetime('now') WHERE id=?", (w['id'],))
+            self.send_json({'request': rq.claim(c, w['name'], w['id'])})
+        elif req and method == 'POST':
+            own = c.execute("SELECT 1 FROM main.research_requests WHERE id=? AND worker=? AND status='RUNNING'", (int(req[1]), w['name'])).fetchone()
+            if own is None:
+                raise NotAllowed('A worker finishes only the request it claimed')
+            self.send_json(rq.finish(c, int(req[1]), self.read_json()))
+        else:
+            self.send_json({'error': 'POST /api/worker/heartbeat, /api/worker/claim or /api/worker/requests/<id>'}, 404)
+
     def export_all(self, c, uid, others=()):
         """Dossiers of this account and of every other account that shows the changed catalogue row.
         shortcut: regenerates every dossier of each account on each write; fine for dozens of listings."""
@@ -498,7 +539,21 @@ class Handler(BaseHTTPRequestHandler):
     def admin_api(self, c, method, path):
         admin = self.require(c, admin=True)
         m = re.fullmatch(r'/api/admin/users/(\d+)(/invite)?', path)
-        if path == '/api/admin/requests' and method == 'GET':
+        wk = re.fullmatch(r'/api/admin/workers/(\d+)(/token)?', path)
+        if path == '/api/admin/workers' and method == 'GET':  # registered workers (issue #141)
+            self.send_json(rq.workers(c))
+        elif path == '/api/admin/workers' and method == 'POST':
+            wid, raw = rq.new_worker(c, self.read_json().get('name'))
+            self.send_json({'id': wid, 'token': raw, 'note': 'Shown once: give it to the worker as WORKER_TOKEN'}, 201)
+        elif wk and wk[2] and method == 'POST':
+            self.send_json({'id': int(wk[1]), 'token': rq.new_worker_token(c, int(wk[1])), 'note': 'Shown once; the previous token no longer works'})
+        elif wk and not wk[2] and method == 'PATCH':
+            d = self.read_json()
+            if set(d) != {'is_active'}:
+                raise ValueError('Only is_active (0/1) can be changed')
+            rq.set_worker_active(c, int(wk[1]), d['is_active'])
+            self.send_json(next(x for x in rq.workers(c) if x['id'] == int(wk[1])))
+        elif path == '/api/admin/requests' and method == 'GET':
             self.send_json(rq.everything(c))
         elif path == '/api/admin/users' and method == 'GET':
             self.send_json([auth.public(u) for u in c.execute('SELECT * FROM main.users ORDER BY id')])
