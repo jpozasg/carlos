@@ -365,13 +365,16 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(self.units()[l2['id']]['components']['fuel'])  # plug-in hybrids: not supported yet
 
     def test_new_car_150(self):
-        """A new car (issue #150): 0 km allowed, registered today for tax, age 0, its schedule starts at 0 with the first
-        HU at 36 months, and a reliability part whose every source check is N/A is unknown, never a clean record."""
+        """A new car (issue #150): registered today for tax, age 0, its schedule starts at 0 with the first HU at 36 months,
+        and a reliability part whose every source check is N/A is unknown, never a clean record. Since #165 (second-hand
+        only) a capture refuses a new car; the costing stays for listings captured before."""
         from carlos.costs import due, is_new
         from carlos import research
         from capture_listing import validate
         cap = {'url': 'https://x.example/1', 'platform': 'mobile.de', 'captured_at': '2026-11-06', 'vehicle_id': 1, 'mileage_km': 0, 'price_eur': 22990}
-        validate(cap)  # 0 km is a new car's mileage
+        with self.assertRaises(ValueError):
+            validate(cap)  # a new car is not captured any more (#165)
+        validate({**cap, 'mileage_km': 0, 'listing': {'first_registration': '2024-03'}})  # a registered car with 0 km is used
         with self.assertRaises(ValueError):
             validate({**cap, 'price_eur': 0})  # a price is never 0
         self.assertTrue(is_new({'first_registration': None, 'mileage_km': 0}))
@@ -411,13 +414,12 @@ class AppTest(unittest.TestCase):
         self.assertIn('lease field not stated: lease_fees_eur (ask the dealer; null is never 0)', todo)
         self.assertIn('lease kind not recorded: km, residual or abo', todo)
         self.assertNotIn('listing field missing: price_eur', todo)  # a lease-only ad has no purchase price
-        import capture_listing
-        cap = {'url': 'https://x', 'platform': 'p', 'captured_at': '2026-11-05', 'vehicle_id': v['id']}
-        for bad in ({'lease_monthly_eur': 0}, {'lease_term_months': 47.5}, {'lease_kind': 'rent'}, {'lease_includes': 'fuel'}):
+        import capture_listing  # second-hand purchases only (#165): a capture never writes a lease
+        cap = {'url': 'https://x', 'platform': 'p', 'captured_at': '2026-11-05', 'vehicle_id': v['id'], 'price_eur': 9000}
+        for lease in ({'lease_monthly_eur': 224}, {'lease_kind': 'abo'}, {'lease_includes': 'insurance'}):
             with self.assertRaises(ValueError):
-                capture_listing.validate({**cap, 'listing': bad})
-        capture_listing.validate({**cap, 'listing': {'lease_kind': 'abo', 'lease_monthly_eur': 299, 'lease_down_payment_eur': 0,
-                                                     'lease_includes': 'insurance,tax,maintenance'}})
+                capture_listing.validate({**cap, 'listing': lease})
+        capture_listing.validate({**cap, 'listing': {'first_registration': '2020-01'}})
 
     def test_lease_costs_129(self):
         from carlos.costs import lease_costs
@@ -451,13 +453,12 @@ class AppTest(unittest.TestCase):
         self.assertEqual(x['budget_status'], 'over_max')  # the rate is above the highest lease rate
         self.assertEqual(x['breakeven'], {'ready': False, 'missing': ['lease term differs from the ownership period']})
         self.assertIsNone(x['delta_vs_reference'])
-        # an ad with both offers: bought unless the account leases or compares both
+        # an ad with both offers is bought, whatever acquisition_mode is stored: second-hand purchases only (#165)
         e, v, l3 = self.ev_listing('Petrol', listing_id='LS3', lease_kind='km', lease_monthly_eur=224, lease_term_months=48)
-        self.assertEqual(self.units()[l3['id']]['offer'], 'purchase')
         self.req('POST', '/api/parameters', {'acquisition_mode': 'lease'})
         x = self.units()[l3['id']]
-        self.assertEqual((x['offer'], x['period_months']), ('lease', 48))
-        self.assertIsNotNone(x['offers']['purchase'])
+        self.assertEqual(x['offer'], 'purchase')
+        self.assertIsNotNone(x['offers']['lease'])
 
     def test_electric_research_contract_125(self):
         e, v, l = self.ev_listing()
