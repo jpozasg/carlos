@@ -2,7 +2,7 @@
 catalogue level on its own, all from the research contract (carlos/research.py, issue #114)."""
 import datetime
 from . import config, research
-from .costs import Knowledge, days_since, electricity_price
+from .costs import Knowledge, days_since, electricity_price, is_new
 from .db import rows, variant_name, variants
 
 
@@ -41,7 +41,7 @@ def todo(c, p, ranked):
             if u.get('offer') == 'lease' and u['components']['insurance'] is None:
                 t.append('lease without insurance in the rate: get a Vollkasko quote ("geleast", docs/browser-tasks.md)')
         for field in ('first_registration', 'mileage_km') + (() if u['is_reference'] else (() if lease else ('price_eur',)) + ('url',)):
-            if u[field] is None:
+            if u[field] is None and not (field == 'first_registration' and is_new(u)):  # a new car has none yet (#162)
                 t.append(f'listing field missing: {field}')
         if not u['is_reference']:
             if u['id'] not in snaps:
