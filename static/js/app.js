@@ -4,7 +4,7 @@ import * as i18n from './i18n.js';
 import { t } from './i18n.js';
 import { $, esc, num, store, toast, yrs } from './ui.js';
 
-export const S = { me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
+export const S = { accounts: [], me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
   fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null, prefs: {} };
 export const THEMES = ['cluster', 'friendly', 'garage', 'retro', 'olive', 'terminal', 'kawaii', 'circuit', 'arcade', 'hyrule'];
 const PAGES = {
@@ -12,6 +12,12 @@ const PAGES = {
   models: () => import('./pages/models.js'), sources: () => import('./pages/sources.js'), settings: () => import('./pages/settings.js'),
   admin: () => import('./pages/admin.js'), start: () => import('./pages/start.js') };
 const NAV = ['compare', 'ranking', 'models', 'sources', 'settings'];
+// "view as account" (issue #142): the admin's session sends this cookie, so every page and photo shows that account
+export const viewing = () => +(document.cookie.match(/(?:^|; )carlos_view=(\d+)/) || [])[1] || null;
+function setView(id) {
+  document.cookie = id ? `carlos_view=${id}; path=/; SameSite=Strict` : 'carlos_view=; path=/; max-age=0; SameSite=Strict';
+  location.hash = '#/compare'; location.reload();
+}
 
 export function applyTheme(theme = store.get('theme', 'cluster'), mode = store.get('mode', 'auto')) {
   if (!THEMES.includes(theme)) theme = 'cluster';
@@ -31,6 +37,7 @@ export async function loadAll() {
   Object.assign(S, { me, p, saved: p, preview: false, units: tco.listings, components: tco.components, ranking: tco.ranking, budget: tco.budget,
     fuelStale: tco.fuel_price_stale, storage: st, todo: td, sources: ss, models: null,
     prefs: Object.fromEntries(pr.map(x => [x.preference_key, x.preference_value])) });
+  if (me.role === 'admin') S.accounts = await get('/api/admin/users');
 }
 export async function refreshTco(query = '') {
   const d = await get('/api/tco' + query);
@@ -38,6 +45,7 @@ export async function refreshTco(query = '') {
   return d;
 }
 
+const viewedName = () => { const v = viewing(); return v && v !== S.me?.id ? S.accounts.find(u => u.id === v)?.username : null; };
 export function renderShell() {
   document.title = t('app_title');
   const p = S.p, st = S.storage;
@@ -45,7 +53,9 @@ export function renderShell() {
     <span class="chip${st && st.total_bytes / st.limit_bytes >= .9 ? ' bad' : st && st.total_bytes / st.limit_bytes >= .8 ? ' warn' : ''}" title="${esc(t('storage_hint'))}">${st ? `${num(st.total_bytes / 1048576, 1)} / ${num(st.limit_bytes / 1048576, 0)} MB` : ''}</span>` : '';
   const langs = `<div class="seg" role="group" aria-label="${esc(t('language'))}">${Object.keys(i18n.LANGS).map(l => `<button type="button" data-lang="${l}" lang="${l}" aria-pressed="${l === i18n.current()}">${l.toUpperCase()}</button>`).join('')}</div>`;
   $('hdr').innerHTML = `<div class="bar"><a class="brand" href="#/compare" aria-label="${esc(t('app_title'))}"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="/static/brand/mark.svg#mark"/></svg><span><b>Carlos</b><small>${esc(t('tagline'))}</small></span></a>${chips}${langs}
+    ${S.me?.role === 'admin' ? `<select class="chip" data-viewas aria-label="${esc(t('view_as'))}" title="${esc(t('view_as'))}"><option value="">${esc(t('view_as_me'))}</option>${S.accounts.filter(u => u.is_active && u.id !== S.me.id).map(u => `<option value="${u.id}"${u.id === viewing() ? ' selected' : ''}>${esc(t('view_as'))}: ${esc(u.username)}</option>`).join('')}</select>` : ''}
     ${S.me ? `<a class="chip" href="#/settings" title="${esc(t('account'))}">👤 ${esc(S.me.username)}</a><button class="chip" type="button" data-logout>${t('logout')}</button>` : ''}</div>
+    ${viewedName() ? `<div class="callout viewas" role="status"><p>${t('viewing_as', { u: `<b>${esc(viewedName())}</b>` })}</p><button class="btn sm" type="button" data-viewas-exit>${t('viewing_exit')}</button></div>` : ''}
     <nav class="main" aria-label="${esc(t('sections'))}">${[...NAV, ...(S.me?.role === 'admin' ? ['admin'] : [])].map(k => `<a href="#/${k}" data-nav="${k}">${t('tab_' + k)}</a>`).join('')}</nav>`;
   $('footer').innerHTML = esc(t('footer'));
   setHeaderHeight();
@@ -83,7 +93,8 @@ export async function route() {
 
 document.addEventListener('click', async e => {
   const l = e.target.closest('[data-lang]'); if (l) { await setLang(l.dataset.lang); return; }
-  if (e.target.closest('[data-logout]')) { await post('/api/auth/logout', {}); location.href = '/login'; }
+  if (e.target.closest('[data-viewas-exit]')) { setView(null); return; }
+  if (e.target.closest('[data-logout]')) { document.cookie = 'carlos_view=; path=/; max-age=0; SameSite=Strict'; await post('/api/auth/logout', {}); location.href = '/login'; }
 });
 const tip = $('tip');
 document.addEventListener('mousemove', e => { const s = e.target.closest('[data-tip]'); if (!s) { tip.style.opacity = 0; return; }
@@ -94,6 +105,7 @@ document.addEventListener('click', e => { const s = e.target.closest('[data-tip]
   tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px'; tip.style.top = (r.bottom + 6) + 'px'; });
 window.addEventListener('scroll', () => { tip.style.opacity = 0; }, { passive: true });
 window.addEventListener('hashchange', route);
+document.addEventListener('change', e => { const v = e.target.closest('[data-viewas]'); if (v) setView(+v.value || null); });
 
 (async () => {
   applyTheme();
@@ -101,7 +113,7 @@ window.addEventListener('hashchange', route);
   try { await loadAll(); } catch (e) { $('main').innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p></div>`; }
   renderShell();
   // first run: the setup wizard until it was finished or put off (preference onboarding_done)
-  if (S.me && !S.prefs.onboarding_done && (!location.hash || location.hash === '#/compare')) location.replace('#/start');
+  if (S.me && !viewing() && !S.prefs.onboarding_done && (!location.hash || location.hash === '#/compare')) location.replace('#/start');
   else if (!location.hash) location.replace('#/compare');
   route();
 })();

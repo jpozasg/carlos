@@ -7,7 +7,7 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 | `index.html` | the shell (header, main, footer, lightbox, toast); applies the saved theme before the first paint |
 | `auth.html` | sign-in and invite page (served at `/login` and `/invite/<token>`) |
 | `css/tokens.css` | design tokens and the themes; `css/app.css` layout and components |
-| `js/app.js` | state `S`, data loading, hash router (`#/compare?view=…`, `#/ranking`, `#/listing/<id>`, `#/models`, `#/models/<variant id>`, `#/sources`, `#/settings`, `#/admin`, `#/start?step=N`, `#/ranking?quiz=1`, `#/models?make=…&model=…&engine=…`), header, theme and language switching |
+| `js/app.js` | state `S`, data loading, hash router (`#/compare?view=…`, `#/ranking`, `#/listing/<id>`, `#/models`, `#/models/<variant id>`, `#/sources`, `#/settings`, `#/admin` (admins: workers, accounts, research queue, change log), `#/start?step=N`, `#/ranking?quiz=1`, `#/models?make=…&model=…&engine=…`), header, theme and language switching |
 | `js/api.js` | `get`, `post`, `patch`, `send`; a 401 sends the browser to `/login` |
 | `js/i18n.js` | `t(key, vars)`, plural objects `{one, other}`, `tv(code)` for fixed database codes, language detection |
 | `js/ui.js` | formatting (`euro`, `num`, `yrs`), escaping, tags, `store` (localStorage per browser), toast |
@@ -17,6 +17,8 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 | `i18n/en.json`, `es.json`, `de.json`, `pl.json` | the strings; `en.json` is the reference, the others must have the same keys |
 | `fonts/` | Bricolage Grotesque (SIL OFL), self-hosted, the one UI family |
 | `brand/` | `mark.svg` (symbol used in the header, coloured by the theme), `favicon.svg`, `logo.svg`, `icon-192.png`, `icon-512.png`; `manifest.webmanifest` |
+
+Admins get a **view as** switcher in the header (issue #142): picking an account sets the `carlos_view` cookie and reloads; every page then shows that account as its owner sees it, under a banner "Viewing as …" with a way back. The first-run wizard never opens while viewing as another account.
 
 ## Rules
 - **Themes change looks only.** Every theme runs the same JavaScript, calls the same API and shows the same data in the same places. A theme is a block of custom properties in `tokens.css` (`:root[data-theme="…"]`, plus its dark variant under `[data-mode="dark"]` and `.os-dark`) and, at most, a few decorative rules at the end of `app.css` scoped to `[data-theme="…"]`. Never put data, text or layout in a theme. The data-viz series colours (`--s1`…`--s8`) are the same validated palette in every theme so charts stay comparable.
