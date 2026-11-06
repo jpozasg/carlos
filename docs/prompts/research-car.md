@@ -26,6 +26,17 @@ python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); pri
 8. purchase/sale defaults and resale;
 9. listing checks, warnings and a final `verification` log entry.
 
+**Drivetrain and offer: which branch applies.** Read `fuel_type` (a fixed code) and the listing (new? lease?) first; several branches can apply (a new electric car, a leased petrol car).
+
+| Branch | Identify | Consumption (step 3) | Maintenance and risks (steps 4–5) | Also |
+|---|---|---|---|---|
+| **Petrol / Diesel** | engine code, aspiration, injection, timing drive | autokostencheck reported average of the exact variant (with reports, min, max) | oil, filters, plugs (petrol) / fuel filter (diesel), timing drive by km and age, coolant, brake fluid, HU | diesel: DPF/AdBlue risks where a source names them |
+| **Full hybrid** (`Hybrid`) | as petrol; note the hybrid system in `notes` | autokostencheck, as petrol | as petrol; hybrid battery and inverter as priced risks when a source names them | costed as petrol; never record it as `Petrol` (the code exists) |
+| **Plug-in hybrid** (`Plug-in hybrid`) | as petrol + usable battery kWh | autokostencheck if any; the energy cost is not supported yet (stays unknown, to-do) | as petrol + HV battery warranty check | say in the report that its fuel cost stays unknown |
+| **Electric** (`Electric`) | motor code, usable battery kWh, AC/DC charging kW (no aspiration, injection, timing drive) | ev-database.org real consumption of the exact variant and battery (Wh/km ÷ 10 = kWh/100 km), `consumption(..., electric=True)`; ADAC Ecotest as a cross-check row when one exists; never Spritmonitor | no oil, filters, plugs or timing drive; `DRIVE_COOLANT`, `REDUCTION_GEAR_OIL` (or `NONE FOUND` checks), brake fluid, cabin filter, 12 V battery, HU | battery warranty check `eng.hv_battery` + one priced HV battery risk on the engine; seller's battery health in `battery_soh_claim` and the SoH-certificate checklist item; resale without comparables `resale_rule_of_thumb(L, electric=True)` |
+| **New car** (no first registration, 0 km) | as its drivetrain | as its drivetrain (a new model may have few reports: report the count) | schedule from 0 km; HU item with `job='HU'` (first HU at 36 months is the calculation's) | `purchase_sale_defaults()` (no pre-purchase check) and `resale_rule_of_thumb()` apply the new-car rules; a source that does not cover the model yet is `N/A`, never `NONE FOUND` (the part then stays unknown) |
+| **Lease / Auto-Abo** | the model research is the same | as its drivetrain | as its drivetrain | the lease fields are the main agent's capture; report whether the rate includes insurance (a lease without it needs a **Vollkasko + GAP** quote) and whether the ad's total matches rate × term + down payment + fees (a mismatch is a `warning`) |
+
 Write everything through the helpers in `agent_tools.py` from a script in your scratchpad: `import sys; sys.path.insert(0, '{REPO}'); from agent_tools import *`. Register each source with `src(...)` (attach it to the level it describes: `vehicle_id`, `engine_id` or `generation_id`) before using it; reuse shared sources through the helpers. Pass `level='engine'` or `level='generation'` to the helpers for rows that belong to the engine or the generation; rows inherited from them already exist in `variant()`: do not write them again.
 
 **Rules:**
@@ -42,15 +53,20 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 - **Consumption:** only the reported average with its number of reports; if the page shows only the stored "Praxisverbrauch" (the average is rendered by JavaScript), write no consumption and report the URL.
 - **Phase windows:** a fault fixed by the facelift or a recall with a build range goes on the generation with `applies_from` / `applies_to` (first registration, `YYYY-MM`) in `reliability()`, `risk()` or `item()`, never as a second generation; ordinary facts of the whole generation get no window.
 - **Recalls, wear and the checklist:** write only recalls that can apply to this car (engine, gearbox, build window); generic wear (clutch, pads, battery, bulbs) is a priced risk, not a weak point, unless a source flags it for this model; never set a checklist item's status (the owner does that at the viewing).
-- **Leasing:** a lease offer is the listing's (captured by the main agent); the model research is the same. If the listing has a lease that does not include insurance, report that it needs a **Vollkasko** quote (protocol, "Leasing and car subscriptions").
-- **New cars** (no first registration, 0 km): follow the protocol's "New cars" section: `mileage_km: 0` and no first registration in the capture; the HU item with `job='HU'` (first HU at 36 months is applied by the calculation); `purchase_sale_defaults()` and `resale_rule_of_thumb()` handle the new-car rules; a reliability source that does not cover the model yet is `N/A`, never `NONE FOUND`.
-- **Electric cars** (`fuel_type='Electric'`): follow the protocol's "Electric cars" section: no oil, filters, plugs or timing drive; `DRIVE_COOLANT` and `REDUCTION_GEAR_OIL` jobs (or `NONE FOUND` checks) on the engine; the battery warranty as a check `eng.hv_battery` and one priced high-voltage battery risk on the engine; the seller's battery health in `battery_soh_claim`; resale without comparables with `resale_rule_of_thumb(L, electric=True)`. Plug-in hybrids: record them like a combustion car with `fuel_type='Plug-in hybrid'` (their energy cost is not supported yet). Full hybrids: `fuel_type='Hybrid'`.
 - **Search budget:** web searches are limited for the whole session (about 200, shared by all agents running in parallel). Spend them on the four reliability sources, the recalls and the consumption page first; fetch known URLs directly (ADAC Autokatalog, autokostencheck, repareo) instead of searching for them; say in the report which figures you could not source because the budget ran out.
 - **Never delete.** Do not call `delete()`; if a row you wrote is wrong, PATCH it, or `archive()` it and write the right one. Deleting needs the owner's confirmation, which only the main agent can ask for.
 
+**Pitfalls the research agents ran into (2026-11-05/06):**
+- **TSN:** a listing rarely shows it; when you pick one from ADAC/autokostencheck, say *assumed*, list the alternatives and that the registration document (field 2.2) decides. Check it matches the listing's power (one TSN per kW).
+- **Recalls:** applicability depends on the build date (VIN), not on HSN/TSN; give each recall its build window (`applies_from`/`applies_to`) and a checklist item "dealer VIN check"; a seller's "no recalls" is a seller claim, not evidence.
+- **Price contradictions:** the header price and the description can differ (stale text); keep the header price, log a `warning` quoting both.
+- **Brand-new models:** ADAC/TÜV statistics do not cover them; `N/A`, not a clean record.
+- **Coolant "lifetime" fills and similar:** a forum post is quality D; say so and prefer the manufacturer schedule.
+- **Unit and code traps:** fuel type is a fixed code (a free-text "Petrol (full hybrid)" silently breaks the contract); `quote_profile` must be JSON; 0 km is valid in a capture.
+
 **Report back (short):**
 - HSN/TSN (confirmed or assumed) and the tax calculator inputs (electric: first registration and permitted total weight; the battery kWh and warranty terms);
-- the consumption figure;
+- the consumption figure and its source (electric: the EVDB page and, if any, the ADAC Ecotest);
 - rows written per table and level;
 - certain costs by category (maintenance due at purchase, repairs) with their names and prices, and the largest risks with prices; risks priced only by estimate;
 - assumptions; questions for the user; what `todo` still lists.

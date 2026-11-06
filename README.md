@@ -45,6 +45,18 @@ Per listing, over the period (km per year × years from Settings):
 
 A total is only called a TCO when no component is missing; otherwise it is a partial subtotal and the missing parts are listed. Unknown is always NULL, never 0. The break-even view spreads running costs over the months and shows the payback month of switching. Details: `docs/data-model.md`, `docs/ranking.md`.
 
+## Supported cars and offers
+| Kind | How it is costed |
+|---|---|
+| Petrol, diesel | autokostencheck real-world consumption of the exact variant, fuel price from Settings |
+| Full hybrid | as petrol (fuel code `Hybrid`) |
+| Plug-in hybrid | recorded and researched; its energy cost stays unknown for now |
+| Electric | ev-database.org consumption + a charging-loss allowance, electricity prices from the Charging setup step, the tax exemption, battery warranty and health |
+| New car | first HU at 36 months, no pre-purchase check, DAT new-car depreciation; too new for ADAC/TÜV statistics = reliability unknown |
+| Lease / car subscription | lease payments and fees instead of purchase and depreciation; Vollkasko + GAP insurance unless the rate includes it; compared with buying when Settings → Money says "compare both" |
+
+Details: `docs/cost-research-protocol.md` and the research prompts in `docs/prompts/`.
+
 ## Three levels of model knowledge
 A car model is described at three levels: the **generation** (make, model, generation, years on sale, facelift), the **engine** (code, fuel, displacement, power, aspiration, injection, timing drive) and the **variant** (generation + engine + trim, gearbox, body, HSN/TSN). Maintenance schedules, repair risks, watch points, consumption, tax, insurance and tyre data attach to exactly one level, and a listing inherits the rows of its variant, its engine and its generation. An engine's oil interval is recorded once for every car that uses that engine.
 

@@ -8,6 +8,7 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
   - Browser work runs only in a dedicated Chrome profile without the user's logins and cookies.
   - The extension was removed from the user's main profile.
   - At the start, `list_connected_browsers` should show exactly that one browser. If several are connected, ask the user which one; never pick one yourself.
+  - A subagent or the headless worker cannot ask: if several browsers are connected and none is selected for its session, it stops and reports (the worker fails the request with "browser unavailable"). The main agent asks the owner, selects the chosen one, and the work is resumed or queued again (2026-11-06: Browser 1 chosen).
   - **To verify the profile,** open `https://www.check24.de/kfz-versicherung/`. A fresh profile shows the cookie banner, whereas the old profile had consent stored and showed none.
   - Cookie consent in this profile follows the usual rule: the most privacy-preserving option.
   - Never sign in to anything in it.
@@ -144,3 +145,14 @@ Quote results are recorded in `insurance_data` only (one row per quote, no perso
 - **Check the TSN echo every time:** a typed TSN was once ignored (the old TSN stayed and matched another model); retype it.
 - **Recording:** `insurance_data.quote_profile` must be a JSON object (a plain string is refused as "malformed JSON").
 - **autokostencheck:** the "Gemeldeter Durchschnitt … Grundlage sind N … Meldungen" block is sometimes rendered by JavaScript; plain fetches then show only the stored "Praxisverbrauch". Read it in the browser instead of falling back to another figure.
+
+### Run of 2026-11-06 (owner's account, 5 cars incl. a new and a leased car) — what changed
+- **Start date:** the profile's 01.01.2027 was refused for a newly bought car again; 01.12.2026 used and noted in `quote_profile`.
+- **The form remembers earlier sessions** ("Bestehendes Auto", a start date): re-enter every section instead of trusting what is shown.
+- **Cloudflare widget** before "Ergebnis anzeigen": it passed by itself ("Erfolg!"). If it ever asks for a click or a puzzle, stop and tell the owner: never solve it.
+- **Tarifoptionen dialog:** CHECK24 preselects its recommendation (Vollkasko for young cars, new cars and leased cars). Set the profile's cover there, or switch the result tab ("Teilkasko") afterwards, and check the active tab before reading prices. Then sort by "Niedrigster Preis" and read the first five non-member offers.
+- **New car ("Neuwagen"):** asks "Ungefährer Neuwert des Autos" in thousands of euros (a "… .000 €" field) and, again, the Vollkasko SF class: tick "bisher keine Vollkasko". The value field only accepts digits **appended at the end**: click into it, press End, type one digit, press End, type the next; check the shown value (a fast `type` left "2.000 €" for 23,000).
+- **Leased car:** financing "Leasing" also asks the new value: use the ADAC Autokatalog base price of the exact HSN/TSN (e.g. 36,070 € for 0603/COK) and cite it; the dialog then offers a **GAP cover** switch: on (lessors usually require it), Vollkasko €500 / Teilkasko €150 excess, free workshop choice as preset.
+- **First registration after "ändern":** select all (Ctrl+A) before typing the date; appending to the old value gives "Bitte geben Sie ein gültiges Datum an".
+- **Matched model:** compare the echoed power with the listing (one TSN per kW); this confirmed 0603/COK = 110 kW for the leased Golf.
+

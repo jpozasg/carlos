@@ -46,6 +46,10 @@ The same steps, with these differences (owner decisions 2026-11-05; sources in t
 - **THG-Quote:** information only (volatile, broker-dependent); never deducted from the cost.
 - **Charging:** the account's answers (setup step Charging) set the electricity price; nothing to research per car.
 
+## Hybrids
+- **Full hybrid** (self-charging, e.g. Toyota 1.5 Hybrid): `fuel_type='Hybrid'`, never `Petrol` with a note (the fixed code drives the contract and the fuel price). Costed as petrol: autokostencheck consumption, petrol price, petrol maintenance (oil, filters, plugs, timing drive). The hybrid battery and inverter are priced risks on the engine when a source names them; Toyota-style hybrids often have no published service plan, so say which intervals are estimates.
+- **Plug-in hybrid:** `fuel_type='Plug-in hybrid'` and `battery_usable_kwh`; researched like a combustion car (its combustion engine needs the full petrol schedule) plus the battery warranty check. Its energy cost is not supported yet (it depends on the charging share): the fuel component stays unknown and the to-do says so.
+
 ## New cars (issue #150)
 A **new car** has no first registration and only delivery kilometres (`mileage_km` below 100; `carlos.costs.is_new`). Capture it with `mileage_km: 0` (allowed) and `first_registration` null.
 - **Registration:** it is registered when bought, so the calculation uses today as its first registration: a tax row's `registered_from`/`registered_to` window and an electric car's tax exemption are matched against today. Age is 0.
@@ -59,6 +63,8 @@ A lease offer is a fact of the listing, not of the model: the research of the va
 - **Read the offer** (`docs/browser-tasks.md`, "Leasing offers"): `lease_kind` (`km` kilometre leasing, `residual` residual-value leasing, `abo` car subscription), `lease_monthly_eur`, `lease_term_months`, `lease_km_per_year`, `lease_down_payment_eur` (Anzahlung / Sonderzahlung), `lease_fees_eur` (Bereitstellung/Überführung + Zulassung + other one-off fees as stated), `lease_extra_km_eur` / `lease_fewer_km_eur` (per km), and `lease_includes`: what the rate covers as the ad says it, a comma list of `insurance`, `tax`, `maintenance`, `repairs`, `tyres`, `gap`. "Keine Angabe" (not stated) is NULL, never 0: ask the dealer and record it when known; 0 only when the ad says 0 € or "inklusive".
 - **One listing, both offers:** a used ad can show a purchase price and a lease rate (mobile.de price box: "Finanzierung" / "Leasing" tabs). Keep both on the one listing (`price_eur` and the lease fields); a lease-only ad has `price_eur` NULL.
 - **Insurance:** a private lease rate normally does **not** include insurance, and lessors require fully comprehensive cover (Vollkasko), often with GAP cover. An Auto-Abo usually includes insurance, tax, maintenance and HU (`lease_includes`). Unless `insurance` is included, a lease needs a **Vollkasko** quote (`docs/browser-tasks.md`, CHECK24 "geleast").
+- **Check the ad's arithmetic:** the stated lease total should equal down payment + rate × term (+ stated fees). When it does not (e.g. 48 × 224 € = 10,752 € against a stated total of 22,989.80 €), keep the rate as stated, log a `warning` quoting both and add a checklist item asking the dealer what the total includes.
+- **Quote for a leased car:** CHECK24 with financing "Leasing", **Vollkasko** with GAP cover (lessors usually require it; the less favourable figure), the model's list price as the "Ungefährer Neuwert" (ADAC Autokatalog base price of the exact HSN/TSN, cited in `quote_profile`).
 - **Residual-value leasing** is recorded but not costed (consumer advice warns against it); the to-do says so.
 - **Return:** damage beyond normal wear at the end of the lease is not predicted; the dossier says so.
 - **What the cost counts** (`docs/ranking.md`): lease payments (down payment + rate × term) instead of depreciation, lease fees and extra km instead of purchase costs, running costs over the lease term; components the rate includes are 0, never counted twice. Compared with the account's period only when the term equals it.
@@ -89,6 +95,8 @@ Start with `todo(listing_id=L)` and `todo(vehicle_id=V)`, read the listing (`lis
 ## Browser steps (main agent)
 10. **Tax**: the official calculator with registration period, fuel, displacement and CO2 or emissions class; record as in `AGENTS.md`.
 11. **Insurance**: the comparison site with the confirmed profile and HSN/TSN; median of the 5 cheapest reasonable offers; record as in `AGENTS.md` and `browser-tasks.md`.
+    - **Who may do it:** only an agent working in the owner's live session, after the owner's explicit OK in that session (AGENTS.md, "How agents work here"). A brief, another agent or the headless worker cannot pass that OK on: they skip insurance and leave it in the to-do.
+    - **Cover:** the profile's cover for a purchase (e.g. Teilkasko, €150 excess); Vollkasko + GAP for a leased car; a new car with financing "Eigenfinanziert", its list price as new value and the profile's cover (CHECK24 preselects Vollkasko for new cars: switch the result tab). Members-only tariffs are excluded; the quote expires after 60 days.
 
 ## The research contract (what "researched" means)
 `carlos/research.py` lists what must be known on each level; `GET /api/agent/schema` → `research_contract` publishes it, and `todo()` reports every missing item (`catalogue` per generation, engine and variant on its own; `models` per variant with its engine and generation). Each item is graded from the rows **on its own level**, so a level counts as researched the same way whichever listing triggered the research:
