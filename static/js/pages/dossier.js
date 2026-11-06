@@ -54,15 +54,20 @@ function scoreBox(d) {
   const parts = (d.explain || []).filter(x => x.contribution > 0).sort((a, b) => b.contribution - a.contribution);
   const legend = parts.length > 5 ? [...parts.slice(0, 4), { criterion: null, contribution: parts.slice(4).reduce((a, x) => a + x.contribution, 0) }] : parts;
   let at = 0;
-  // round caps reach half the stroke (6.5) past each end: shorten every arc by a cap plus a 2.5 gap so neighbours never
-  // overlap; an arc shorter than that is drawn as a dot
-  const CUT = 13 + 2.5;
-  const arcs = parts.map(x => { const len = x.contribution / 100 * RC, draw = Math.max(0.01, len - CUT), off = at + (len - draw) / 2;
-    at += len; return `<circle class="sr-arc" r="50" cx="60" cy="60" stroke="${critColor(x.criterion, keys)}" stroke-dasharray="${draw.toFixed(2)} ${RC.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"/>`; }).join('');
+  // each criterion is a ring segment with small rounded corners that never leaves its own slot (issue #195): the
+  // segment is inset by its corner radius and stroked with that radius and round joins, so tiny contributions become
+  // short rounded pieces in sequence instead of full-size dots overlapping their neighbours
+  const pt = (r, l) => { const a = l / 50 - Math.PI / 2; return `${(60 + r * Math.cos(a)).toFixed(2)} ${(60 + r * Math.sin(a)).toFixed(2)}`; };
+  const arcs = parts.map(x => { const len = x.contribution / 100 * RC, slot = len - 2.5;  // 2.5: gap between segments
+    const r = Math.max(0.3, Math.min(3, slot / 2)), s = at + 1.25 + r, e = Math.max(s + 0.01, at + len - 1.25 - r), big = (e - s) / 50 > Math.PI ? 1 : 0;
+    at += len;
+    if (slot <= 0.6) return '';  // too small to draw without touching a neighbour; still listed in the legend
+    const ro = 56.5 - r, ri = 43.5 + r, c = critColor(x.criterion, keys);
+    return `<path class="sr-arc" fill="${c}" stroke="${c}" stroke-width="${(2 * r).toFixed(2)}" d="M${pt(ro, s)}A${ro} ${ro} 0 ${big} 1 ${pt(ro, e)}L${pt(ri, e)}A${ri} ${ri} 0 ${big} 0 ${pt(ri, s)}Z"/>`; }).join('');
   const aria = `${t('plate_score')} ${num(d.score, 0)} / 100, ${word}; ${parts.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}`).join(', ')}`;
   return `<div class="scorecard sc-${band}${SWEEP ? ' sc-sweep' : ''}">
     <div class="sc-top">${title}<span class="sc-rank">${d.rank ? t('sc_rank', { r: d.rank, n }) : t('ref_not_ranked')}</span></div>
-    <div class="sr"><div class="sr-ring"><svg viewBox="0 0 120 120" role="img" aria-label="${esc(aria)}"><circle class="sr-track" r="50" cx="60" cy="60"/><g class="sr-arcs" transform="rotate(-90 60 60)">${arcs}</g>${avg == null ? '' : `<line class="sr-avg" ${ringAt(avg, 40, 60)}/>`}</svg>
+    <div class="sr"><div class="sr-ring"><svg viewBox="0 0 120 120" role="img" aria-label="${esc(aria)}"><circle class="sr-track" r="50" cx="60" cy="60"/><g class="sr-arcs">${arcs}</g>${avg == null ? '' : `<line class="sr-avg" ${ringAt(avg, 40, 60)}/>`}</svg>
       <div class="sr-mid"><b class="sc-num">${scoreTxt(d)}</b><span class="sc-word">${word}</span></div></div>
       <ul class="sr-legend">${legend.map(x => `<li><i style="background:${x.criterion ? critColor(x.criterion, keys) : 'var(--text-3)'}"></i><span>${x.criterion ? t('c_' + x.criterion) : t('sc_other')}</span><b class="num">${num(x.contribution, 0)}</b></li>`).join('')}</ul></div>
     <p class="sc-cov">${gap == null ? '' : `<span class="sr-gap ${gap >= 0 ? 'up' : 'down'}">${gap >= 0 ? '▲' : '▼'} ${t('sc_vs_avg', { d: (gap >= 0 ? '+' : '−') + num(Math.abs(gap), 0), a: num(avg, 0) })}</span> · `}${t('coverage', { n: num(d.coverage * 100, 0) })}</p></div>`;
