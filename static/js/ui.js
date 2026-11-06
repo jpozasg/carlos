@@ -62,3 +62,15 @@ export function gaps(items) {
     <ul class="small" lang="en" style="margin:6px 0 0;padding-left:18px">${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted" style="margin:4px 0 0">${t('gaps_note')}</p></details>`;
 }
 export function intervalTxt(km, mo) { const a = []; if (km) a.push(num(km, 0) + ' km'); if (mo) a.push(num(mo, 0) + ' ' + t('months_short')); return a.join(' ' + t('or_word') + ' ') || '—'; }
+
+// review flags of a level (#168): what, why and every review (worker, date, outcome, finding); a flag clears only when
+// two independent reviews reach the same conclusion, so an open one stays visible here and in every inheriting dossier
+export function flagsCard(flags) {
+  if (!flags || !flags.length) return '';
+  const open = f => f.status === 'OPEN';
+  return `<div class="card span2"><h3>${t('flags_title')} <span class="muted small">${flags.filter(open).length}</span></h3><p class="small muted" style="margin-top:0">${t('flags_lead')}</p>
+    <ul class="check">${flags.map(f => `<li><span class="ico ${open(f) ? 'pend' : 'ok'}" aria-hidden="true">${open(f) ? '!' : '✓'}</span><div><b>${esc(f.what)}</b> <span class="tag ${open(f) ? 'warn' : 'good'}">${esc(f.status)}</span> <span class="tag">${esc(f.kind)}</span> ${lvlTag(f.level)}
+      <div class="small muted">${esc(f.why)}</div>${(f.reviews || []).length ? `<ul class="small" style="margin:4px 0 0;padding-left:18px">${f.reviews.map(r => `<li>${esc(r.review_date)} · ${esc(r.worker)} · <b>${esc(r.outcome)}</b>: ${esc(r.conclusion)} — ${esc(r.finding)}</li>`).join('')}</ul>` : `<div class="small muted">${t('flag_no_reviews')}</div>`}</div></li>`).join('')}</ul></div>`;
+}
+// a fault's probability as the sources put it: a frequency band with its shape, or a sourced curve (#168)
+export const faultProb = f => f.frequency_band ? `${esc(f.frequency_band)}${f.shape ? ' · ' + esc(f.shape) : ''}` : (f.curve_km || f.curve_age ? t('f_curve') : '—');

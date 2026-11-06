@@ -550,7 +550,12 @@
   "RUNNING": "Being researched",
   "DONE": "Done",
   "FAILED": "Failed",
-  "CANCELLED": "Cancelled"
+  "CANCELLED": "Cancelled",
+  "engine_family": "engine family",
+  "gearbox": "gearbox",
+  "gearbox_family": "gearbox family",
+  "body_style": "body style",
+  "option": "option"
  },
  "cv_ruler": "At a glance",
  "versus_title": "Keep or switch?",
@@ -884,5 +889,23 @@
  "ch_table": "Table",
  "ch_action": "Action",
  "ch_when": "When",
- "ch_older": "Older"
+ "ch_older": "Older",
+ "flags_title": "Review flags",
+ "flags_lead": "Problems a worker must look at again on this level. A flag clears only when two independent reviews reach the same conclusion.",
+ "flag_no_reviews": "Not reviewed yet",
+ "faults_title": "Faults",
+ "faults_lead": "Known design faults: the chance over your ownership period (from the frequency band and shape, or a sourced curve), the price and the expected cost.",
+ "f_band": "Frequency",
+ "f_consequence": "Consequence",
+ "f_curve": "sourced curve",
+ "f_fixed": "fixed",
+ "f_window_uncertain": "window uncertain",
+ "recalls_title": "Recalls",
+ "stats_title": "TÜV/ADAC figures",
+ "stats_age": "Age (years)",
+ "stats_class": "Class average",
+ "history_title": "Known history",
+ "quotes_title": "Insurance quotes",
+ "engine_family": "Engine family",
+ "gearbox_family": "Gearbox family"
 }

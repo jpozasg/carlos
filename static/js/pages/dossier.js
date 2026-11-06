@@ -2,7 +2,7 @@
 import { S, refreshTco, go } from '../app.js';
 import { get, send } from '../api.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt, critColor, researchLevels } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, statusTags, gaps, intervalTxt, safeUrl, toast, CAR_SVG, scoreTxt, critColor, researchLevels, flagsCard, faultProb } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
 let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
@@ -181,6 +181,22 @@ function risksCard(d) {
     ${cert ? `<tr><td colspan="8" class="small muted">${t('rk_certain')}</td></tr>${certainRows(d, cr)}<tr><td colspan="6"><b>${esc(comp('repairs'))}</b></td><td class="n"><b>${euro(tot + cert)}</b></td><td></td></tr>` : ''}</tbody></table></div></div>`;
 }
 // weak points grouped by part; each part counts its 3 worst (issue #54), a recall drops out once checked as done
+// faults (#168): the chance over the ownership period from the band and shape (or curve), the price and the expected cost
+function faultsCard(d) {
+  const rows = (d.fault_plan || []).slice().sort((a, b) => (b.expected_eur || 0) - (a.expected_eur || 0));
+  if (!rows.length) return '';
+  return `<div class="card span2"><h3>${t('faults_title')}</h3><p class="small muted" style="margin-top:0">${t('faults_lead')}</p>
+    <div class="tablewrap"><table><thead><tr><th>${t('rk_comp')}</th><th>${t('level')}</th><th>${t('f_band')}</th><th>${t('severity')}</th><th class="n">${t('rk_prob')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('rk_exp')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
+    ${rows.map(r => `<tr${r.expected_eur ? '' : ' class="muted"'}><td><b>${esc(r.component)}</b> ${esc(r.issue ?? '')}${r.repaired_at_km != null ? ` <span class="tag good">${t('f_fixed')}</span>` : ''}${r.window_uncertain ? ` <span class="tag warn">${t('f_window_uncertain')}</span>` : ''}</td><td>${lvlTag(r.level, r)}</td>
+      <td>${faultProb(r)}</td><td>${sevTag(r.severity)}</td><td class="n">${r.probability == null ? PEND() : num(r.probability * 100, 1) + ' %'}</td><td class="n">${eP(r.price_eur)}</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+// what is known about this car (#174): jobs done, faults present or ruled out, recalls checked; and its insurance quotes
+function historyCard(d) {
+  const h = d.history || [], q = d.quotes || [];
+  if (!h.length && !q.length) return '';
+  return `<div class="card"><h3>${t('history_title')}</h3>${h.length ? `<ul class="check">${h.map(x => `<li><span class="ico ${x.status === 'PRESENT' || x.status === 'OPEN' ? 'bad' : 'ok'}" aria-hidden="true">${x.status === 'PRESENT' || x.status === 'OPEN' ? '!' : '✓'}</span><div><b>${esc(x.item)}</b> <span class="tag">${esc(x.status)}</span> <span class="tag">${esc(x.evidence)}</span><div class="small muted">${[x.event_date, x.km == null ? null : num(x.km, 0) + ' km', x.parts_eur || x.labor_eur ? euro((x.parts_eur || 0) + (x.labor_eur || 0)) : null].filter(Boolean).map(esc).join(' · ')}</div></div></li>`).join('')}</ul>` : empty(t('no_rows'))}
+    ${q.length ? `<h3 style="margin-top:16px">${t('quotes_title')}</h3><div class="tablewrap"><table><thead><tr><th>${t('date')}</th><th class="n">${t('premium')}</th><th>${t('status')}</th><th>${t('mp_src')}</th></tr></thead><tbody>${q.map(x => `<tr><td>${esc(x.quote_date ?? '')}</td><td class="n">${eP(x.annual_premium_eur)}</td><td>${esc(x.premium_status)}${x.insurer ? ' · ' + esc(x.insurer) : ''}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
+}
 function reliabilityCard(d) {
   if (!d.reliability.length) return `<div class="card"><h3>${t('reliability')}</h3>${empty(t('no_reliability'))}</div>`;
   const det = Object.fromEntries((d.reliability_detail || []).map(x => [x.id, x]));
@@ -250,14 +266,14 @@ async function draw(id, quiet = false) {
         [t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a> · ${esc(d.engine_description ?? '')}`], [t('generation'), `<a href="${modelsHref({ make: d.make, model: d.model })}">${esc(d.generation)}</a> ${d.generation_start_year ?? '?'}–${d.generation_end_year ?? '?'}`],
         ...(d.is_reference ? [] : [[t('seller'), d.seller ? esc(d.seller) + (d.location ? ', ' + esc(d.location) : '') : PEND()], ...(sellerRating(d) ? [[t('seller_rating'), sellerRating(d)]] : []), [t('accident_free'), d.accident_free_claim == null ? PEND() : claim(d.accident_free_claim ? t('yes') : t('no'))], [t('owners'), claim(d.owners_claim)],
         [t('hu'), claim(d.hu_claim)], [t('history'), claim(d.service_history_claim)], [t('equipment'), d.equipment ? esc(d.equipment) : PEND()], [t('verdict'), d.verdict ? `<b>${esc(d.verdict)}</b>` : PEND()]]), [t('notes'), d.notes ? esc(d.notes) : PEND()]])}</div></div>
-    ${rankCard(d)}</div>
-    <div class="grid dtab" data-tab="maintenance"${hid('maintenance')}>${maintenanceCard(d)}${risksCard(d)}</div>
+    ${flagsCard(d.review_flags)}${rankCard(d)}</div>
+    <div class="grid dtab" data-tab="maintenance"${hid('maintenance')}>${maintenanceCard(d)}${risksCard(d)}${faultsCard(d)}</div>
     <div class="grid dtab" data-tab="viewing"${hid('viewing')}>${viewingPanel()}${inspectionCard(d)}</div>
     <div class="grid dtab" data-tab="costs"${hid('costs')}>
     <div class="card"><h3>${t('valuations')}</h3>${d.valuations.length ? d.valuations.map(valuationRow).join('') : empty(t('no_valuations'))}
       <h3 style="margin-top:16px">${t('own_costs')}</h3>${d.unit_costs.length ? `<div class="tablewrap"><table><thead><tr><th>${t('concept')}</th><th class="n">${t('parts')}</th><th class="n">${t('labour')}</th><th class="n">DIY</th></tr></thead><tbody>${d.unit_costs.map(x => `<tr><td>${esc(x.item)}<div class="small muted">${esc(tv(x.category))} · ${esc(tv(x.status))}</div></td><td class="n">${eP(x.parts_eur)}</td><td class="n">${eP(x.labor_eur)}</td><td class="n">${x.diy_hours == null ? '—' : num(x.diy_hours, 1) + ' h'}</td></tr>`).join('')}</tbody></table></div>` : empty(t('no_own_costs'))}</div>
     </div>
-    <div class="grid dtab" data-tab="reliability"${hid('reliability')}>${reliabilityCard(d)}</div>
+    <div class="grid dtab" data-tab="reliability"${hid('reliability')}>${reliabilityCard(d)}${historyCard(d)}</div>
     <div class="grid dtab" data-tab="log"${hid('log')}>
     <div class="card"><h3>${t('archive')}</h3>${archive(d)}</div>
     <div class="card"><h3>${t('log')}</h3>${d.events.length ? `<ol class="timeline">${d.events.slice().reverse().map(ev => `<li><time>${esc(ev.event_date)}</time> <span class="tag">${esc(tv(ev.kind))}</span><div>${esc(ev.text)}</div></li>`).join('')}</ol>` : empty(t('no_events'))}</div>

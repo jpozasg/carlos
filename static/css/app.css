@@ -396,7 +396,7 @@ textarea.vnote{min-height:80px;resize:vertical}
 .variants{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}
 .variants li{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:13px}
 .variants a{font-weight:600}
-.lvl-variant{--lc:var(--s1)}.lvl-engine{--lc:var(--s2)}.lvl-generation{--lc:var(--s3)}
+.lvl-variant{--lc:var(--s1)}.lvl-engine{--lc:var(--s2)}.lvl-generation{--lc:var(--s3)}.lvl-engine_family{--lc:var(--s4)}.lvl-gearbox{--lc:var(--s5)}.lvl-gearbox_family{--lc:var(--s6)}.lvl-body_style{--lc:var(--s7)}.lvl-option{--lc:var(--s8)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--lc)}
 
 /* sources */

@@ -550,7 +550,12 @@
   "RUNNING": "Investigándose",
   "DONE": "Hecho",
   "FAILED": "Fallido",
-  "CANCELLED": "Cancelado"
+  "CANCELLED": "Cancelado",
+  "engine_family": "familia de motor",
+  "gearbox": "caja de cambios",
+  "gearbox_family": "familia de caja",
+  "body_style": "carrocería",
+  "option": "opción"
  },
  "cv_ruler": "De un vistazo",
  "versus_title": "¿Quedarte o cambiar?",
@@ -884,5 +889,23 @@
  "ch_table": "Tabla",
  "ch_action": "Acción",
  "ch_when": "Cuándo",
- "ch_older": "Anteriores"
+ "ch_older": "Anteriores",
+ "flags_title": "Avisos de revisión",
+ "flags_lead": "Problemas que un agente debe revisar de nuevo en este nivel. Un aviso solo se cierra cuando dos revisiones independientes llegan a la misma conclusión.",
+ "flag_no_reviews": "Aún sin revisar",
+ "faults_title": "Fallos",
+ "faults_lead": "Fallos de diseño conocidos: la probabilidad durante tu periodo de uso (según la frecuencia y la forma, o una curva con fuente), el precio y el coste esperado.",
+ "f_band": "Frecuencia",
+ "f_consequence": "Consecuencia",
+ "f_curve": "curva con fuente",
+ "f_fixed": "reparado",
+ "f_window_uncertain": "periodo incierto",
+ "recalls_title": "Llamadas a revisión",
+ "stats_title": "Cifras TÜV/ADAC",
+ "stats_age": "Edad (años)",
+ "stats_class": "Media de la clase",
+ "history_title": "Historial conocido",
+ "quotes_title": "Presupuestos de seguro",
+ "engine_family": "Familia de motor",
+ "gearbox_family": "Familia de caja"
 }
