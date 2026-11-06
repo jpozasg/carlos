@@ -359,6 +359,7 @@
  "rs_accepted": "{n} estimated or C/D source",
  "rs_move": "Move it up a level",
  "part_unknown": "not researched",
+ "part_too_new": "too new for statistics",
  "levels_hint": "a row attached to an engine or a generation applies to every variant that shares it",
  "models_title": "Models",
  "models_lead": "Make → model → generation → engine → variant. Maintenance, risks and watch points are attached to the right level and inherited by every variant below.",

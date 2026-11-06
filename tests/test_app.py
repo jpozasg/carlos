@@ -349,6 +349,36 @@ class AppTest(unittest.TestCase):
         e2, v2, l2 = self.ev_listing('Plug-in hybrid', listing_id='PH1')
         self.assertIsNone(self.units()[l2['id']]['components']['fuel'])  # plug-in hybrids: not supported yet
 
+    def test_new_car_150(self):
+        """A new car (issue #150): 0 km allowed, registered today for tax, age 0, its schedule starts at 0 with the first
+        HU at 36 months, and a reliability part whose every source check is N/A is unknown, never a clean record."""
+        from carlos.costs import due, is_new
+        from carlos import research
+        from capture_listing import validate
+        cap = {'url': 'https://x.example/1', 'platform': 'mobile.de', 'captured_at': '2026-11-06', 'vehicle_id': 1, 'mileage_km': 0, 'price_eur': 22990}
+        validate(cap)  # 0 km is a new car's mileage
+        with self.assertRaises(ValueError):
+            validate({**cap, 'price_eur': 0})  # a price is never 0
+        self.assertTrue(is_new({'first_registration': None, 'mileage_km': 0}))
+        self.assertFalse(is_new({'first_registration': '2025-01', 'mileage_km': 10}))
+        self.assertFalse(is_new({'first_registration': None, 'mileage_km': None}))  # unknown is not new
+        hu = {'id': 9, 'job': 'HU', 'interval_km': None, 'interval_months': 24}
+        self.assertEqual([due(hu, 0, m, frozenset(), True) for m in (24, 36, 48, 60)], [0, 1, 1, 2])
+        self.assertEqual(due(hu, 0, 48, frozenset()), 2.0)  # a used car: the expected share
+        oil = {'id': 8, 'job': 'OIL_SERVICE', 'interval_km': 15000, 'interval_months': 12}
+        self.assertEqual(due(oil, 40000, 30, frozenset(), True), 2)  # whole intervals from 0
+        e, v, l = self.ev_listing('Petrol', listing_id='NEW1', mileage_km=0, first_registration=None, price_eur=22990)
+        self.agent('POST', 'tax_data', {'vehicle_id': v['id'], 'annual_tax_eur': 40, 'status': 'VERIFIED', 'source_id': SRC_GUIDE,
+                                        'registered_from': '2025-01'})
+        u = self.units()[l['id']]
+        self.assertAlmostEqual(u['components']['tax'], 40 * u['period_months'] / 12)  # the window covers a car registered today
+        self.assertEqual(u['metrics']['age'], 0)
+        items = [{'id': f'rel.CHASSIS.{s}', 'grade': 'ACCEPTED', 'na_only': s != 'guide'} for s in ('adac', 'tuev', 'guide')]
+        self.assertNotIn('CHASSIS', research.known_parts(items))
+        self.assertEqual(research.too_new_parts(items), ['CHASSIS'])
+        self.assertIn('CHASSIS', research.known_parts(items, {'CHASSIS'}))  # a documented weak point is evidence
+        self.assertIn('CHASSIS', research.known_parts([{**i, 'na_only': False} for i in items]))
+
     def test_lease_data_127(self):
         post = lambda b: self.req('POST', '/api/parameters', b)[0]
         self.assertEqual(post({'acquisition_mode': 'rent'}), 400)

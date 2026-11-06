@@ -361,6 +361,7 @@
  "rs_accepted": "{n} szacowane lub ze źródła C/D",
  "rs_move": "Przenieś poziom wyżej",
  "part_unknown": "niezbadane",
+ "part_too_new": "za nowy na statystyki",
  "levels_hint": "wiersz przypisany do silnika lub generacji dotyczy każdego wariantu, który go współdzieli",
  "models_title": "Modele",
  "models_lead": "Marka → model → generacja → silnik → wariant. Konserwacja, ryzyka i punkty uwagi są przypisane do właściwego poziomu i dziedziczone przez każdy wariant poniżej.",
