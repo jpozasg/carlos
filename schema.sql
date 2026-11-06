@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=29). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=30). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -288,7 +288,7 @@ CREATE TABLE research_requests (
  worker TEXT,
  listing_id INTEGER REFERENCES listings(id),
  result TEXT
-, requested_by INTEGER REFERENCES users(id), request_token_hash TEXT);
+, requested_by INTEGER REFERENCES users(id), request_token_hash TEXT, kind TEXT NOT NULL DEFAULT 'LISTING' CHECK (kind IN ('LISTING', 'FOLLOW_UP')), flag_id INTEGER REFERENCES review_flags(id));
 CREATE TABLE workers (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  name TEXT NOT NULL UNIQUE,
@@ -372,7 +372,7 @@ CREATE TABLE reliability_stats (
  kind TEXT NOT NULL CHECK (kind IN ('TUEV', 'ADAC')), age_from INTEGER NOT NULL, age_to INTEGER NOT NULL,
  value REAL NOT NULL, unit TEXT NOT NULL, sample_count INTEGER, report_year INTEGER,
  source_id INTEGER NOT NULL REFERENCES sources(id), notes TEXT,
- archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id),
+ archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), class_average REAL CHECK (class_average IS NULL OR class_average > 0),
  CHECK (age_to >= age_from));
 CREATE TABLE market_models (
  id INTEGER PRIMARY KEY AUTOINCREMENT, generation_id INTEGER NOT NULL REFERENCES generations(id),
@@ -428,6 +428,25 @@ CREATE TABLE "research_checks" (
  archived INTEGER NOT NULL DEFAULT 0, owner_id INTEGER REFERENCES users(id),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL)
       + (engine_family_id IS NOT NULL) + (gearbox_family_id IS NOT NULL) + (body_style_id IS NOT NULL) + (option_id IS NOT NULL) = 1));
+CREATE TABLE review_flags (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ vehicle_id INTEGER REFERENCES vehicles(id), engine_id INTEGER REFERENCES engines(id),
+ generation_id INTEGER REFERENCES generations(id), gearbox_id INTEGER REFERENCES gearboxes(id),
+ engine_family_id INTEGER REFERENCES engine_families(id), gearbox_family_id INTEGER REFERENCES gearbox_families(id),
+ body_style_id INTEGER REFERENCES body_styles(id), option_id INTEGER REFERENCES options(id),
+ kind TEXT NOT NULL CHECK (kind IN ('STATS_MISMATCH', 'SOURCES_DISAGREE', 'FIX_UNCERTAIN', 'OTHER')),
+ what TEXT NOT NULL, why TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLEARED')),
+ created_at TEXT NOT NULL DEFAULT (datetime('now')), created_by TEXT, cleared_at TEXT,
+ owner_id INTEGER REFERENCES users(id),
+ CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL)
+      + (engine_family_id IS NOT NULL) + (gearbox_family_id IS NOT NULL) + (body_style_id IS NOT NULL) + (option_id IS NOT NULL) = 1));
+CREATE TABLE flag_reviews (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, flag_id INTEGER NOT NULL REFERENCES review_flags(id),
+ worker TEXT NOT NULL, review_date TEXT NOT NULL DEFAULT (date('now')),
+ outcome TEXT NOT NULL CHECK (outcome IN ('CONFIRMED', 'RESOLVED')),
+ conclusion TEXT NOT NULL, finding TEXT NOT NULL, source_id INTEGER REFERENCES sources(id),
+ UNIQUE (flag_id, worker, conclusion));
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_risks_scope ON repair_risks (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_reliability_scope ON reliability_items (vehicle_id, engine_id, generation_id);

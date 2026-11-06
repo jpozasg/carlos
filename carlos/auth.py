@@ -12,18 +12,18 @@ OWNED = ('generations', 'engines', 'vehicles', 'sources', 'listings', 'project_p
 # owner_id NULL = the shared catalogue (issue #109); the target design's levels (#174) are catalogue rows too
 MODEL = ('generations', 'engines', 'vehicles', 'engine_families', 'gearbox_families', 'gearboxes', 'body_styles', 'options')
 _KNOW = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data', 'research_checks',
-         'faults', 'recalls', 'reliability_stats', 'market_models')
+         'faults', 'recalls', 'reliability_stats', 'market_models', 'review_flags')
 _LISTING_CHILDREN = ('valuations', 'unit_costs', 'inspection_items', 'listing_events', 'listing_snapshots', 'listing_media', 'maintenance_resets',
                      'listing_history', 'listing_quotes', 'listing_options')
 # Archivable tables (issue #58): <table> shows only rows with archived=0 (every read and calculation), <table>_all
 # also the archived ones (to restore a row with PATCH archived=0). Both are filtered by account.
-ARCHIVABLE = _KNOW + ('valuations', 'unit_costs', 'inspection_items', 'maintenance_resets', 'listing_history', 'listing_quotes')
+ARCHIVABLE = tuple(t for t in _KNOW if t != 'review_flags') + ('valuations', 'unit_costs', 'inspection_items', 'maintenance_resets', 'listing_history', 'listing_quotes')
 # The view each level column is checked against: a knowledge row is visible when its level is (#174).
 LEVEL_VIEW = {'vehicle_id': 'vehicles', 'engine_id': 'engines', 'generation_id': 'generations', 'gearbox_id': 'gearboxes',
               'engine_family_id': 'engine_families', 'gearbox_family_id': 'gearbox_families', 'body_style_id': 'body_styles',
               'option_id': 'options'}
 _ALL = tuple(LEVEL_VIEW)
-KNOW_LEVELS = {t: _ALL if t in ('maintenance_items', 'research_checks', 'faults', 'recalls') else
+KNOW_LEVELS = {t: _ALL if t in ('maintenance_items', 'research_checks', 'faults', 'recalls', 'review_flags') else
                ('generation_id',) if t == 'reliability_stats' else _ALL[:3] for t in _KNOW if t != 'market_models'}
 _visible = lambda cols: ' OR '.join(f'{c} IN (SELECT id FROM {LEVEL_VIEW[c]})' for c in cols)
 # What an account sees (issue #109): its own rows; catalogue variants linked to it (through its listings) with their
@@ -43,6 +43,7 @@ _BASE = {**{t: f'SELECT * FROM main.{t} WHERE owner_id={{o}}' + (f' OR owner_id 
          **{t: f'SELECT * FROM main.{t} WHERE (' + _visible(cols)
                + (' OR coalesce(' + ', '.join(cols) + ') IS NULL' if t == 'maintenance_items' else '')
                + ') AND (owner_id IS NULL OR owner_id={o})' for t, cols in KNOW_LEVELS.items()},
+         'flag_reviews': 'SELECT * FROM main.flag_reviews WHERE flag_id IN (SELECT id FROM review_flags)',
          'market_models': 'SELECT * FROM main.market_models WHERE generation_id IN (SELECT id FROM generations) '
                           'AND engine_id IN (SELECT id FROM engines) AND (owner_id IS NULL OR owner_id={o})',
          **{t: f'SELECT * FROM main.{t} WHERE listing_id IN (SELECT id FROM listings)' for t in _LISTING_CHILDREN}}

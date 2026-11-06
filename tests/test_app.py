@@ -213,6 +213,52 @@ class AppTest(unittest.TestCase):
         finally:
             c.close()
 
+    def test_review_flags_168(self):
+        """#168: a flag lives on its level and is cleared only when two different workers resolve it with the same
+        conclusion; a CONFIRMED review or a lone resolution keeps it open; it cannot be cleared by hand; every review is
+        kept; the variant and every inheriting listing show it. TÜV/ADAC figures that clearly disagree with the faults
+        raise a STATS_MISMATCH flag with one follow-up request, which a worker finishes without a listing."""
+        st, f = self.agent('POST', 'review_flags', {'engine_id': E_A, 'kind': 'SOURCES_DISAGREE', 'what': 'Chain life',
+                                                    'why': 'ADAC and the guide disagree'})
+        self.assertEqual(st, 201)
+        rev = lambda w, o, con: self.agent('POST', 'flag_reviews', {'flag_id': f['id'], 'worker': w, 'outcome': o,
+                                                                    'conclusion': con, 'finding': 'checked'})[0]
+        status = lambda: next(x for x in self.req('GET', f'/api/vehicles/{V_A}')[1]['review_flags'] if x['id'] == f['id'])['status']
+        self.assertEqual(rev('run 1', 'RESOLVED', 'guide outdated'), 201)
+        self.assertEqual(rev('run 1', 'RESOLVED', 'guide outdated'), 400)                 # the same worker twice: not independent
+        self.assertEqual(rev('run 2', 'CONFIRMED', 'guide outdated'), 201)
+        self.assertEqual(rev('run 3', 'RESOLVED', 'ADAC outdated'), 201)                  # a different conclusion
+        self.assertEqual(status(), 'OPEN')
+        self.assertEqual(self.agent('PATCH', f"review_flags/{f['id']}", {'status': 'CLEARED'})[0], 400)
+        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertEqual([x['id'] for x in a['review_flags']], [f['id']])                 # inherited by the listing
+        self.assertEqual(len(a['review_flags'][0]['reviews']), 3)
+        self.assertEqual(rev('run 4', 'RESOLVED', 'guide outdated'), 201)
+        self.assertEqual(status(), 'CLEARED')
+        # statistics vs faults: G1 far worse than the class average, G2 average, while G1's faults predict almost nothing
+        self.agent('POST', 'faults', {'engine_id': E_B, 'component': 'Turbo', 'part': 'ENGINE', 'consequence': 'COST',
+                                      'existence': 'CONFIRMED', 'frequency_band': 'widespread', 'shape': 'WEAR_KM',
+                                      'parts_eur': 900, 'source_id': SRC_GUIDE})
+        self.agent('POST', 'faults', {'generation_id': G1, 'component': 'Trim', 'part': 'CHASSIS', 'consequence': 'COSMETIC',
+                                      'existence': 'CONFIRMED', 'frequency_band': 'rare', 'shape': 'RANDOM',
+                                      'parts_eur': 50, 'source_id': SRC_GUIDE})
+        stat = {'kind': 'TUEV', 'age_from': 6, 'age_to': 7, 'unit': '% major defects', 'class_average': 10, 'source_id': fx.SRC_HU}
+        self.assertEqual(self.agent('POST', 'reliability_stats', {**stat, 'generation_id': G2, 'value': 10})[0], 201)
+        self.assertEqual(self.agent('POST', 'reliability_stats', {**stat, 'generation_id': G1, 'value': 20})[0], 201)
+        flags = [x for x in self.req('GET', f'/api/vehicles/{V_A}')[1]['review_flags'] if x['kind'] == 'STATS_MISMATCH']
+        self.assertEqual(len(flags), 1)
+        self.assertIn('missing faults', flags[0]['why'])
+        self.agent('POST', 'reliability_stats', {**stat, 'generation_id': G1, 'value': 21, 'age_from': 8, 'age_to': 9})
+        with sqlite3.connect(config.DB) as c:
+            reqs = c.execute("SELECT id, url FROM research_requests WHERE kind='FOLLOW_UP'").fetchall()
+        self.assertEqual(reqs, [(reqs[0][0], f"carlos://follow-up/flag/{flags[0]['id']}")])   # one flag, one request
+        from carlos import research_requests
+        with sqlite3.connect(config.DB) as c:
+            c.row_factory = sqlite3.Row
+            c.execute("UPDATE research_requests SET status='RUNNING', worker='w' WHERE id=?", (reqs[0][0],))
+            research_requests.finish(c, reqs[0][0], {'status': 'DONE', 'result': 'reviewed'})
+            self.assertEqual(c.execute('SELECT status FROM research_requests WHERE id=?', (reqs[0][0],)).fetchone()[0], 'DONE')
+
     def test_fault_costs_174(self):
         """Step 2 (#174, method #168): a fault's expected cost is the conditional chance over the owner's km × its price; a
         documented fix switches to the fixed part's curve (or none); extended warranty pays its share; a band and shape
@@ -841,6 +887,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual([x['result'] for x in self.req('GET', '/api/requests')[1]][0], 'page blocked')
         self.assertEqual(worker.outcome('noise\nCARLOS_RESULT listing_id=12\n')['listing_id'], 12)
         self.assertEqual(worker.outcome('crashed')['status'], 'FAILED')
+        self.assertEqual(worker.outcome('CARLOS_RESULT done: faults complete'), {'status': 'DONE', 'result': 'faults complete'})  # a follow-up (#168)
         # the research runs on Sonnet (owner, 2026-11-06): --model added after the claude executable unless given
         self.assertEqual(worker.command('claude -p', 'sonnet'), ['claude', '--model', 'sonnet', '-p'])
         self.assertEqual(worker.command('claude --chrome -p --', 'sonnet')[:3], ['claude', '--model', 'sonnet'])
@@ -887,7 +934,7 @@ class AppTest(unittest.TestCase):
         self.assertIn('variant var.tax missing: annual tax from the BMF Kfz-Steuer-Rechner', mod[V_B])   # an estimate is not the calculator
         self.assertIn('variant var.identity missing: HSN/TSN, gearbox, body, emissions class, CO2', mod[V_B2])
         self.assertIn('variant var.gearbox missing: automatic gearbox weak points checked for this variant', mod[V_B2])
-        self.assertFalse(any('var.gearbox' in t for t in mod[V_A]))           # manual gearbox: the generation's checks suffice
+        self.assertFalse(any(t.startswith('variant var.gearbox missing') for t in mod[V_A]))           # manual gearbox: the generation's checks suffice
         self.assertIn('generation gen.recalls missing: recall search (KBA / manufacturer)', mod[V_A])
         self.assertEqual({x['vehicle_id']: x['state'] for x in d['models']}[V_A], 'incomplete')
         self.assertEqual(set(d['catalogue']), {'generations', 'engines', 'variants'})

@@ -15,7 +15,7 @@ from pathlib import Path
 from capture_listing import Api, ApiError, load_token
 
 ROOT = Path(__file__).resolve().parent
-RESULT = re.compile(r'CARLOS_RESULT (?:listing_id=(\d+)|failed: (.*))')
+RESULT = re.compile(r'CARLOS_RESULT (?:listing_id=(\d+)|failed: (.*)|done: (.*))')  # done: a follow-up without a listing (#168)
 
 
 def outcome(output):
@@ -24,6 +24,8 @@ def outcome(output):
     m = RESULT.fullmatch(lines[-1]) if lines else None
     if m and m[1]:
         return {'status': 'DONE', 'listing_id': int(m[1]), 'result': 'Listing written by the worker'}
+    if m and m[3]:
+        return {'status': 'DONE', 'result': m[3]}
     return {'status': 'FAILED', 'result': m[2] if m else 'No CARLOS_RESULT line. Log tail:\n' + '\n'.join(lines[-30:])}
 
 

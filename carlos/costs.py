@@ -699,7 +699,7 @@ def tco_rows(c, p):
         for rid, st in recall_status.items():  # done or not affected (VIN check): the recall stops counting
             if st in ('DONE', 'NOT AFFECTED'):
                 rel_checks[f'R{rid}'] = 'OK'
-        items += research.listing_items(u, {'insurance': know.of('insurance_data', v), 'tax': {'exempt': True} if electric and taxable == 0 else tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
+        items += research.listing_items(u, {'insurance': know.of('insurance_data', v) + quotes.get(u['id'], []), 'tax': {'exempt': True} if electric and taxable == 0 else tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
                                             'weak_points': {r['id'] for r in rel_rows}, 'checked': set(checks.get(u['id'], {})),
                                             'captured': u['id'] in captured}, today)
         u['research'] = items
@@ -811,7 +811,7 @@ def listing_detail(c, listing_id, p, ranked):
              maintenance_resets=q('SELECT * FROM maintenance_resets WHERE listing_id=? ORDER BY id'),
              history=q('SELECT * FROM listing_history WHERE listing_id=? ORDER BY id'),
              quotes=q('SELECT * FROM listing_quotes WHERE listing_id=? ORDER BY id'),
-             recalls=know.of('recalls', v, reg),
+             recalls=know.of('recalls', v, reg), review_flags=know.of('review_flags', v),
              inspection=q('SELECT * FROM inspection_items WHERE listing_id=? ORDER BY id'),
              events=q('SELECT * FROM listing_events WHERE listing_id=? ORDER BY event_date, id'),
              snapshots=q('SELECT * FROM listing_snapshots WHERE listing_id=? ORDER BY captured_at, id'),
@@ -825,6 +825,8 @@ def listing_detail(c, listing_id, p, ranked):
                              'OR id IN (SELECT source_id FROM listing_events WHERE listing_id=?) OR id=? ORDER BY id',
                           (v['id'], v['engine_id'], v['generation_id'], listing_id, u['source_id'])))
     u['research_levels'] = research.levels(u['research'])
+    from .models import with_reviews
+    u['review_flags'] = with_reviews(c, u['review_flags'])  # problems flagged on any of its levels (#168)
     months = p['ownership_years'] * 12
     restarted = frozenset(u.get('restarted_items') or ())
     u['maintenance_plan'] = maintenance_plan(u['maintenance'], u['period_km'], months, restarted, is_new(u))

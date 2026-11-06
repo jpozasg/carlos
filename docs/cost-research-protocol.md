@@ -134,13 +134,34 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `var.tyres` | variant (or its generation) | size, price per tyre, tread life | – |
 | `var.tax` | variant | a tax row from the BMF Kfz-Steuer-Rechner (`tax_official_calculator`) | A |
 | `var.gearbox` | variant (automatics) | check: weak points of this automatic gearbox | C |
-| `rel.<PART>.<source>` | engine (ENGINE) or generation (GEARBOX, CHASSIS, ELECTRICS) | check per part and source: `adac`, `tuev` (B), `guide` (C) and, for ENGINE, `engine_specific` (C). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
+| `var.gearbox_level` | variant | the variant names its gearbox (`gearbox_id`) | – |
+| `gen.baseline` | generation | TÜV/ADAC figures per age class (`reliability_stats`, with the class average), or a check `N/A` (too new) | B |
+| `fam.risks` | engine family (else the engine) | engine family faults, each priced with a probability, or a check `NONE FOUND` | – |
+| `gbx.identity` | gearbox (else the variant) | gearbox code and type | – |
+| `gbx.service` | gearbox (else the variant) | the `GEARBOX_OIL` job with an interval and the workshop price, or a check `NONE FOUND` | – |
+| `gbx.clutch` | gearbox (manual, DCT) | the `CLUTCH` job with a life, the DIY parts and the workshop price, or a check `NONE FOUND` | – |
+| `gbx.risks`, `gfam.risks` | gearbox, gearbox family (else the level below) | faults, each priced with a probability, or a check `NONE FOUND` | – |
+| `bdy.risks` | body style (only when the variant has one) | body style faults and maintenance (convertible roof …), or a check `NONE FOUND` | – |
+| `rel.<PART>.<source>` | generation (`adac`, `tuev`, `guide`), engine family (`engine_specific`, ENGINE), gearbox family (`gearbox_specific`, GEARBOX) | check per part and source: `adac`, `tuev` (B), `guide` (C), `engine_specific` and `gearbox_specific` (C). A missing family is graded on the engine or gearbox, a missing gearbox on the variant; an older check on the engine still counts (ACCEPTED, move it up). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
 | `lst.insurance` | listing | a quote younger than 60 days (the reference car: the premium the owner pays) | – |
 | `lst.tax_covered` | listing | a tax row whose registration window covers the car's first registration (an electric car exempt for the whole period needs none) | – |
 | `lst.valuation` | listing | a `resale_end` valuation | – |
 | `lst.purchase_sale`, `lst.checklist`, `lst.capture`, `lst.photos` | listing (for sale) | purchase costs; a checklist item for every weak point; a capture; archived photos | – |
 
 Changing the contract: add the item to `research.py` and this table in the same PR (a test checks the ids); a new item makes every level it applies to incomplete at once. When an item's rule gets stricter, raise its `since` to the new `CONTRACT_VERSION`, so checks recorded against the older contract stop counting.
+
+## Faults: frequency and shape (owner, 2026-11-06, #168)
+Faults (`fault()`, table `faults`) replace weak points and repair risks; one row per design fault on exactly one level (engine family, engine, gearbox family, gearbox, generation, body style, option, variant). Every fault gets a price and a probability, found the same way for every car:
+1. **Frequency band** from what the sources say, by 200,000 km or 15 years (the central value counts, the range is stored): `systemic` 50 % (40–70; needs `manufacturer_trace`: extended warranty, goodwill, TPI or class action), `widespread` 25 % (20–40), `common` 12 % (8–20), `occasional` 5 % (3–8), `rare` 1.5 % (0.5–3). A fault only forums report is one band milder and never above `common` (the API refuses it). A real statistic replaces the band with an explicit `curve_km` / `curve_age` (`probability_basis='STATISTIC'`). Quote the sentence the band rests on in `quote`.
+2. **Shape**: `WEAR_KM` (grows with km), `AGE` (grows with years: rubber, rust, batteries), `WINDOW` (happens within `window_km` after `onset_km`, then stops) or `RANDOM` (even over life). Every curve continues to 300,000 km / 20 years; the expected cost is the conditional chance over the owner's km (or years, the larger counts) × the price.
+3. **Fixes and warranty**: a documented fix of the car (listing history `DONE`) switches the fault to `fixed_fault_id`'s curve (the fixed part's own fault) or to none; "fixed from" a build date needs an A/B source, otherwise the fault stays with `window_uncertain=1`. An extended warranty (`warranty_km`, `warranty_years`, `warranty_share`) lowers the cost while it applies.
+4. **Severity is derived**: HIGH for ENGINE_DAMAGE, STRANDS or SAFETY or a price ≥ €1,500; MEDIUM ≥ €500 or UNUSABLE; LOW otherwise.
+
+**Statistics baseline and the consistency check:** record the TÜV/ADAC figures of the generation per age class (`reliability_stats` with `class_average`, the same report's average). After every fault or statistics write the server compares the two ways: a generation whose figure is ≥ 1.5 × the class average while its faults predict ≤ 1/1.5 × the catalogue average (or the other way round) gets a `STATS_MISMATCH` review flag and a follow-up request. Nothing is scaled automatically.
+
+**Review flags** (`review_flags`): a problem to look at again on the level where it is (kinds `STATS_MISMATCH`, `SOURCES_DISAGREE`, `FIX_UNCERTAIN`, `OTHER`; `what` and `why`). Raise one yourself when sources disagree and you cannot settle it. A flag is never cleared by hand: every review is recorded with `flag_review(flag_id, worker, outcome, conclusion, finding)` (`CONFIRMED` or `RESOLVED`; `conclusion` a short fixed wording), and the flag clears only when two different workers or runs resolve it with the same conclusion. The Models page and the dossier of every listing inheriting the level show open flags and their reviews.
+
+**Follow-up requests:** a new `STATS_MISMATCH` flag queues a research request of kind `FOLLOW_UP` with the URL `carlos://follow-up/flag/<id>` (one open per flag; the first admin's). The worker reviews the flagged level (missing faults when the statistics are worse, overstated ones when they are better), corrects the rows, records its `flag_review` and finishes the request without a listing.
 
 ## Definition of done
 - `todo(vehicle_id=V)` and `todo(listing_id=L)` are empty except owner decisions (verdict) and items that need the user (TSN confirmation); the variant's `state` is `researched` or `verified`.
