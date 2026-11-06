@@ -181,7 +181,7 @@
  "need_two": "The ranking needs at least two cars for sale with data in the weighted criteria.",
  "missing_criteria": "no value for {l}",
  "quiz_title": "Which car would you buy?",
- "quiz_lead": "Eight quick choices between four cars. Each time the cars are the same model and equal in everything except one advantage each. Tap the one you would buy, then the one you would buy last. There are no right answers; Carlos counts what you pick and shows you the count afterwards.",
+ "quiz_lead": "Three to six quick choices between six cars. Each time the cars are the same model and equal in everything except one advantage each. Tap the one you would buy, then the one you would buy last. There are no right answers; Carlos counts what you pick and shows you the count afterwards.",
  "weights": "Weights (0 = ignore)",
  "weights_lead": "Move a slider to override the answers. The ranking then shows the weights were set by hand, and you can go back to the answers at any time.",
  "weights_manual": "edited by hand",
@@ -639,7 +639,7 @@
  "quiz_start": "Start the choices",
  "quiz_retake": "Make the choices again",
  "quiz_later": "Skip, decide later",
- "quiz_method": "How the choices become weights: each advantage appears in exactly four of the eight choices, and every two advantages meet at least once. For each one, Carlos counts how often you picked its car first and how often last: (first − last) ÷ times shown gives −1 to +1, which maps to 0–5, never below 1 (only you can switch a criterion off, by hand). An advantage you never saw counts 3. This is best–worst scaling, a standard survey method that forces trade-offs instead of asking how important things are, because everything is \"important\" when asked directly. Details and sources: docs/ranking.md.",
+ "quiz_method": "How the choices become weights: each advantage appears in four of the six choices, and every two advantages meet at least twice; when the first three choices already agree (no advantage picked both first and last), the questionnaire stops there. For each one, Carlos counts how often you picked its car first and how often last: (first − last) ÷ times shown gives −1 to +1, which maps to 0–5, never below 1 (only you can switch a criterion off, by hand). An advantage you never saw counts 3. This is best–worst scaling, a standard survey method that forces trade-offs instead of asking how important things are, because everything is \"important\" when asked directly. Details and sources: docs/ranking.md.",
  "weight_of": "Weight {w} of 5",
  "prio_title": "Your priorities",
  "prio_lead": "How much each criterion counts in the score, 0 to 5, and the answers behind it.",
@@ -982,5 +982,10 @@
  "fv_hu_months_18": "at least 18 months",
  "excluded_filter": "left out by your filter: {f}",
  "filtered_n": "{n} cars are not ranked because of your filters.",
- "osm_credit": "Postcode distances: © <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a> contributors (ODbL)"
+ "osm_credit": "Postcode distances: © <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a> contributors (ODbL)",
+ "bw_cost_ord": "usual cost per month",
+ "bw_cost_less": "{p} % less per month",
+ "bw_row_budget": "Price",
+ "bw_row_safety": "Safety",
+ "bw_row_distance": "Distance"
 }

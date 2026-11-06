@@ -182,7 +182,7 @@
  "need_two": "Ranking wymaga co najmniej dwóch aut na sprzedaż z danymi w ważonych kryteriach.",
  "missing_criteria": "brak wartości dla: {l}",
  "quiz_title": "Które auto byś kupił(a)?",
- "quiz_lead": "Osiem szybkich wyborów między czterema autami. Za każdym razem to ten sam model, jednakowy we wszystkim poza jedną zaletą każdego. Stuknij auto, które byś kupił(a), a potem to, które kupił(a)byś na końcu. Nie ma dobrych odpowiedzi; Carlos liczy twoje wybory i potem pokazuje wynik.",
+ "quiz_lead": "Od trzech do sześciu szybkich wyborów między sześcioma autami. Za każdym razem to ten sam model, jednakowy we wszystkim poza jedną zaletą każdego. Stuknij auto, które byś kupił(a), a potem to, które kupił(a)byś na końcu. Nie ma dobrych odpowiedzi; Carlos liczy twoje wybory i potem pokazuje wynik.",
  "weights": "Wagi (0 = pomiń)",
  "weights_lead": "Przesuń suwak, aby nadpisać odpowiedzi. Ranking pokaże wtedy, że wagi ustawiono ręcznie; w każdej chwili możesz wrócić do odpowiedzi.",
  "weights_manual": "zmienione ręcznie",
@@ -641,7 +641,7 @@
  "quiz_start": "Zacznij wybory",
  "quiz_retake": "Wybierz jeszcze raz",
  "quiz_later": "Pomiń, zdecyduję później",
- "quiz_method": "Jak wybory stają się wagami: każda zaleta pojawia się w dokładnie czterech z ośmiu wyborów i każde dwie zalety spotykają się co najmniej raz. Dla każdej Carlos liczy, ile razy jej auto wybrano jako pierwsze, a ile jako ostatnie: (pierwsze − ostatnie) ÷ liczba pokazań daje od −1 do +1, co przelicza się na 0–5, nigdy poniżej 1 (wyłączyć kryterium możesz tylko ty, ręcznie). Zaleta, której nie widziałeś(-aś), liczy się jako 3. To skalowanie najlepszy–najgorszy, standardowa metoda badań ankietowych, która wymusza wybór zamiast pytać o ważność, bo zapytany wprost uznaje się wszystko za „ważne”. Szczegóły i źródła: docs/ranking.md.",
+ "quiz_method": "Jak wybory stają się wagami: każda zaleta pojawia się w czterech z sześciu wyborów, a każde dwie spotykają się co najmniej dwa razy; jeśli trzy pierwsze wybory są już spójne (żadna zaleta nie wybrana jednocześnie jako pierwsza i ostatnia), ankieta kończy się wcześniej. Dla każdej Carlos liczy, ile razy jej auto wybrano jako pierwsze, a ile jako ostatnie: (pierwsze − ostatnie) ÷ liczba pokazań daje od −1 do +1, co przelicza się na 0–5, nigdy poniżej 1 (wyłączyć kryterium możesz tylko ty, ręcznie). Zaleta, której nie widziałeś(-aś), liczy się jako 3. To skalowanie najlepszy–najgorszy, standardowa metoda badań ankietowych, która wymusza wybór zamiast pytać o ważność, bo zapytany wprost uznaje się wszystko za „ważne”. Szczegóły i źródła: docs/ranking.md.",
  "weight_of": "Waga {w} z 5",
  "prio_title": "Twoje priorytety",
  "prio_lead": "Ile każde kryterium waży w ocenie, od 0 do 5, i odpowiedzi, które za tym stoją.",
@@ -984,5 +984,10 @@
  "fv_hu_months_18": "co najmniej 18 miesięcy",
  "excluded_filter": "pominięte przez twój filtr: {f}",
  "filtered_n": "{n} aut nie jest w rankingu z powodu twoich filtrów.",
- "osm_credit": "Odległości wg kodu pocztowego: © współtwórcy <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a> (ODbL)"
+ "osm_credit": "Odległości wg kodu pocztowego: © współtwórcy <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a> (ODbL)",
+ "bw_cost_ord": "zwykły koszt miesięczny",
+ "bw_cost_less": "{p} % mniej miesięcznie",
+ "bw_row_budget": "Cena",
+ "bw_row_safety": "Bezpieczeństwo",
+ "bw_row_distance": "Odległość"
 }
