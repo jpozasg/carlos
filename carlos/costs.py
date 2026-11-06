@@ -1,5 +1,5 @@
 """Cost calculation per listing over the ownership period (README, "Calculation"). NULL means unknown, never 0."""
-import datetime, re
+import datetime, json, re
 from . import config
 from . import research
 from .db import for_variant, rows, scoped
@@ -136,6 +136,122 @@ def scheduled_maintenance(items, km, months):
     return total
 
 
+def curve_at(points, x, end):
+    """Cumulative share failed at x on a curve [[x, share], …] (#174): linear between the points, from (0, 0); beyond the
+    last point it continues with the last segment's slope up to `end` (CURVE_END_KM / _YEARS), never above 1: no zero
+    risk just because the source stopped counting (#168)."""
+    prev = (0, 0.0)
+    for px, ps in points:
+        if x <= px:
+            return prev[1] + (ps - prev[1]) * (x - prev[0]) / (px - prev[0]) if px > prev[0] else ps
+        prev = (px, ps)
+    a = points[-2] if len(points) > 1 else (0, 0.0)
+    slope = (prev[1] - a[1]) / (prev[0] - a[0]) if prev[0] > a[0] else 0
+    return min(1.0, prev[1] + slope * (min(x, end) - prev[0]))
+
+
+def conditional(points, start, end, limit):
+    """Chance the fault happens between start and end given it has not happened by start: (F(end) − F(start)) / (1 − F(start))."""
+    fa, fb = curve_at(points, max(start, 0), limit), curve_at(points, max(end, 0), limit)
+    return 0.0 if fa >= 1 else max(0.0, (fb - fa) / (1 - fa))
+
+
+def shape_curves(f):
+    """(km curve, age curve) of a fault (#168): its own stated points, else one of the four shapes scaled to its band's
+    central share s by BAND_REFERENCE_KM / _YEARS, continuing to CURVE_END_KM / _YEARS. WEAR_KM rises with km (s·(km/ref)²),
+    AGE with years, WINDOW reaches s by window_km then only a residual 10 % of s more by CURVE_END_KM, RANDOM is steady
+    (1 − (1 − s)^(km/ref)). None without curve and band."""
+    km = json.loads(f['curve_km']) if f.get('curve_km') else None
+    age = json.loads(f['curve_age']) if f.get('curve_age') else None
+    if km or age or f.get('frequency_band') not in config.FREQUENCY_BANDS or not f.get('shape'):
+        return km, age
+    s, R, Y, E = config.FREQUENCY_BANDS[f['frequency_band']][0], config.BAND_REFERENCE_KM, config.BAND_REFERENCE_YEARS, config.CURVE_END_KM
+    cap = lambda v: round(min(0.95, v), 6)
+    if f['shape'] == 'WEAR_KM':
+        return [[x, cap(s * (x / R) ** 2)] for x in (50_000, 100_000, 150_000, R, E)], None
+    if f['shape'] == 'AGE':
+        return None, [[y, cap(s * (y / Y) ** 2)] for y in (5, 10, Y, config.CURVE_END_YEARS)]
+    if f['shape'] == 'WINDOW':
+        w = f.get('window_km') or 100_000
+        return [[w, cap(s)], [E, cap(s * 1.1)]], None
+    return [[x, cap(1 - (1 - s) ** (x / R))] for x in (100_000, R, E)], None  # RANDOM
+
+
+def fault_price(f):
+    """Workshop price of a fault (parts + labour); None without a price."""
+    return None if f['parts_eur'] is None and f['labor_eur'] is None else (f['parts_eur'] or 0) + (f['labor_eur'] or 0)
+
+
+def fault_severity(f):
+    """Derived, never chosen (owner, 2026-11-06, #168): HIGH when it can destroy the engine or gearbox, strand the car or is
+    a safety risk, or costs ≥ SEVERITY_HIGH_EUR; MEDIUM from SEVERITY_MEDIUM_EUR or when the car is unusable until fixed;
+    LOW below that while the car still drives."""
+    price = fault_price(f) or 0
+    if f['consequence'] in ('ENGINE_DAMAGE', 'STRANDS', 'SAFETY') or price >= config.SEVERITY_HIGH_EUR:
+        return 'HIGH'
+    return 'MEDIUM' if f['consequence'] == 'UNUSABLE' or price >= config.SEVERITY_MEDIUM_EUR else 'LOW'
+
+
+def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=None, annual_km=None, by_id=None):
+    """Per-fault expected repair cost over the period (#174, #168): the chance it fails during the owner's km and years
+    (the larger of the km and age chances, never both) given it has not failed yet, × its price. A sourced usage
+    multiplier applies when the account's usage is heavy (short trips). After a documented fix (history DONE at km) the
+    car follows the fixed part's curve from there (fixed_fault_id), or none. Extended warranty cover reduces the cost of
+    the share that falls while it applies. p or price None = unknown."""
+    done, by_id = done or {}, by_id or {}
+    out = []
+    for f in faults:
+        d = done.get(f['id'])
+        g = f if d is None else by_id.get(f.get('fixed_fault_id'))  # the curve the car follows now
+        k0 = None if km_now is None else km_now - (d or 0)
+        p = 0.0 if g is None else None
+        cover = 0.0
+        if g is not None:
+            km_c, age_c = shape_curves(g)
+            ps = []
+            if km_c and k0 is not None:
+                ps.append(('km', conditional(km_c, k0, k0 + km_period, config.CURVE_END_KM)))
+            if age_c and age_now is not None and d is None:
+                ps.append(('age', conditional(age_c, age_now, age_now + months / 12, config.CURVE_END_YEARS)))
+            if ps:
+                axis, p = max(ps, key=lambda t: t[1])
+                if heavy and g.get('usage_multiplier') and 'SHORT_TRIPS' in (g.get('usage_flags') or ''):
+                    p = min(1.0, p * g['usage_multiplier'])
+                # warranty: the share of p inside the cover (km and years from first registration, years as km at the
+                # owner's annual km) is paid by the manufacturer for warranty_share of the price
+                if f.get('warranty_share') and km_now is not None and axis == 'km':
+                    limit = min(f['warranty_km'] or float('inf'),
+                                km_now + max(0, (f['warranty_years'] - (age_now or 0))) * (annual_km or 0) if f.get('warranty_years') else float('inf'))
+                    if limit > km_now:
+                        cover = conditional(km_c, k0, min(k0 + km_period, k0 + limit - km_now), config.CURVE_END_KM) * f['warranty_share']
+        price = fault_price(f)
+        out.append({**{k: f.get(k) for k in ('id', 'component', 'part', 'issue', 'consequence', 'existence', 'probability_basis',
+                                              'frequency_band', 'shape', 'inspection_action', 'applies_from', 'applies_to',
+                                              'window_uncertain', 'source_id', 'notes')},
+                    'level': f.get('level'), 'severity': fault_severity(f), 'price_eur': price, 'repaired_at_km': d,
+                    'probability': None if p is None else round(p, 4), 'warranty_cover': round(cover, 4),
+                    'expected_eur': None if p is None or (p and price is None) else round(max(0.0, p - cover) * (price or 0), 2)})
+    return out
+
+
+def market_value(m, age, km):
+    """Value of the model at an age and mileage from its market model (#166): the value at the reference point, less the
+    share lost per year and per 10,000 km."""
+    return m['value_ref_eur'] * (1 - m['rate_year']) ** (age - m['ref_age_years']) * (1 - m['rate_10k_km']) ** ((km - m['ref_km']) / 10000)
+
+
+def market_model(models, u, today):
+    """The usable market model of a listing's model: same generation and engine, same gearbox when the model names one,
+    at least MARKET_MIN_PER_BAND cars in each of the three bands, sampled within MARKET_MAX_AGE_DAYS; None otherwise."""
+    for m in sorted(models, key=lambda m: -m['id']):
+        if m['generation_id'] == u['generation_id'] and m['engine_id'] == u['engine_id'] and m['gearbox_id'] in (None, u.get('gearbox_id')):
+            counts = json.loads(m['band_counts'])
+            age = days_since(m['sample_date'], today)
+            if len(counts) == 3 and min(counts) >= config.MARKET_MIN_PER_BAND and age is not None and age <= config.MARKET_MAX_AGE_DAYS:
+                return m
+    return None
+
+
 def depreciation(u, vals):
     """(expected, pessimistic, optimistic). Candidate: price − resale. Reference: sale today − resale (opportunity cost)."""
     end = vals.get('resale_end')
@@ -213,13 +329,56 @@ def check_budget(p):
         raise ValueError('budget_ideal_eur must not be greater than budget_max_eur')
 
 
-UNITS_SQL = '''SELECT l.*, v.generation_id, v.engine_id, v.trim, v.transmission, v.body_style, v.model_year,
+UNITS_SQL = '''SELECT l.*, v.generation_id, v.engine_id, v.gearbox_id, v.body_style_id, e.family_id engine_family_id,
+  gb.family_id gearbox_family_id, gb.code gearbox_code, gb.type gearbox_type, v.trim, v.transmission, v.body_style, v.model_year,
   v.emissions_standard, v.co2_g_km, v.hsn, v.tsn, v.technical_status, v.notes vehicle_notes,
   g.make, g.model, g.name generation, g.start_year generation_start_year, g.end_year generation_end_year, g.facelift_year,
   e.code engine_code, e.family engine_family, e.description engine_description, e.fuel_type, e.displacement_cc, e.cylinders,
   e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive, e.battery_usable_kwh, e.ac_charge_kw, e.dc_charge_kw
 FROM listings l JOIN vehicles v ON v.id=l.vehicle_id JOIN generations g ON g.id=v.generation_id JOIN engines e ON e.id=v.engine_id
+LEFT JOIN gearboxes gb ON gb.id=v.gearbox_id
 ORDER BY l.is_reference DESC, l.id'''
+
+
+def levels_of(u, options=frozenset()):
+    """The level ids a listing's knowledge resolves through (db.applies): variant, engine and its family, gearbox and
+    its family, generation, body style, and the options present on the listing (#174)."""
+    return {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id'], 'gearbox_id': u.get('gearbox_id'),
+            'engine_family_id': u.get('engine_family_id'), 'gearbox_family_id': u.get('gearbox_family_id'),
+            'body_style_id': u.get('body_style_id'), 'option_ids': frozenset(options)}
+
+
+def listing_facts(c):
+    """Per listing: its history records, options present and insurance quotes (#174)."""
+    hist, opts, quotes = {}, {}, {}
+    for h in rows(c, 'SELECT * FROM listing_history ORDER BY id'):
+        hist.setdefault(h['listing_id'], []).append(h)
+    for lid, oid in c.execute('SELECT listing_id, option_id FROM listing_options'):
+        opts.setdefault(lid, set()).add(oid)
+    for q in rows(c, 'SELECT * FROM listing_quotes ORDER BY id'):
+        quotes.setdefault(q['listing_id'], []).append(q)
+    return hist, opts, quotes
+
+
+def history_effects(h, m_rows):
+    """What a listing's history changes (#174): scheduled jobs DONE restart (by item or job code), faults DONE restart their
+    km curve at that mileage, PRESENT items are certain costs by category, recalls get their per-car status."""
+    done_jobs = {x['job'] for x in h if x['status'] == 'DONE' and x['job']}
+    restarted = {x['maintenance_item_id'] for x in h if x['status'] == 'DONE' and x['maintenance_item_id']} | \
+        {m['id'] for m in m_rows if m.get('job') in done_jobs}
+    faults_done = {x['fault_id']: x['km'] or 0 for x in h if x['status'] == 'DONE' and x['fault_id']}
+    present = {}
+    for x in h:
+        if x['status'] == 'PRESENT':
+            present[x['category']] = present.get(x['category'], 0) + (x['parts_eur'] or 0) + (x['labor_eur'] or 0)
+    recalls = {x['recall_id']: x['status'] for x in h if x['recall_id']}
+    return restarted, faults_done, present, recalls
+
+
+def quote_for(qs, is_reference):
+    """The listing's insurance quote behind the cost: the reference car's own premium (USER DATA), else the newest."""
+    user = [q for q in qs if q['premium_status'] == config.USER_PREMIUM] if is_reference else []
+    return max(user or qs, key=lambda q: q['id'], default=None)
 
 
 def diy_choice(c):
@@ -247,6 +406,9 @@ class Knowledge:
     def __init__(self, c):
         self.t = {t: scoped(c, t) for t in config.SCOPED_TABLES}
         self.jobs = diy_choice(c)
+        self.faults_by_id = {f['id']: f for f in self.t['faults']}  # a fix's curve (fixed_fault_id) may sit on another level
+        mix = c.execute("SELECT preference_value FROM project_preferences WHERE preference_key='driving_mix'").fetchone()
+        self.heavy = bool(mix) and mix[0] in config.HEAVY_USE_MIX  # short trips: heavy-use intervals and sourced multipliers
 
     def of(self, table, v, reg=None):
         """The variant's rows; maintenance items and risks with a job code carry this account's DIY choice (#106 part 4);
@@ -254,6 +416,14 @@ class Knowledge:
         rs = for_variant(self.t[table], v)
         if table in config.WINDOWED_TABLES:
             rs = [r for r in rs if in_window(r, reg)]
+        if table == 'maintenance_items':
+            # a global default (no level) is overridden by a level row with the same job (#174); heavy use takes the
+            # manufacturer's heavy-use interval where one is given
+            jobs = {r['job'] for r in rs if r['level'] != 'shared' and r.get('job')}
+            rs = [r for r in rs if not (r['level'] == 'shared' and r.get('job') in jobs)]
+            if self.heavy:
+                rs = [{**r, 'interval_km': r.get('interval_km_heavy') or r['interval_km'],
+                       'interval_months': r.get('interval_months_heavy') or r['interval_months']} for r in rs]
         if self.jobs is None or table not in ('maintenance_items', 'repair_risks'):
             return rs
         return [{**r, 'diy': int(r['job'] in self.jobs), 'diy_as_stored': r['diy']} if r.get('job') else r for r in rs]
@@ -299,7 +469,7 @@ def reliability(rel_rows, checks, known=frozenset(config.RELIABILITY_PARTS)):
     while any row has no part (unclassified rows are never guessed into a part). A part outside `known`
     (its required source checks are missing, issue #114) is None, and so is the total: never full points by default."""
     detail = []
-    for r in sorted(rel_rows, key=lambda r: r['id']):
+    for r in sorted(rel_rows, key=lambda r: (str(r['id'])[:1].isalpha(), str(r['id']).rjust(12))):
         check = checks.get(r['id'])
         detail.append({'id': r['id'], 'component': r['component'], 'severity': r['severity'], 'part': r.get('part'),
                        'is_recall': bool(r.get('is_recall')), 'check': check, 'level': r.get('level'), 'source_id': r['source_id'],
@@ -389,6 +559,8 @@ def tco_rows(c, p):
     for r in c.execute('SELECT listing_id, captured_at, price_eur FROM listing_snapshots WHERE price_eur IS NOT NULL ORDER BY captured_at, id'):
         prices.setdefault(r['listing_id'], []).append({'date': r['captured_at'][:10], 'price_eur': r['price_eur']})
     today, limits = datetime.date.today(), budget(p)
+    history, opts, quotes = listing_facts(c)
+    markets = rows(c, 'SELECT * FROM market_models')
     contract = research.Contract(c, know)
     captured = {r[0] for r in c.execute('SELECT DISTINCT listing_id FROM listing_snapshots')}
     units = rows(c, UNITS_SQL)
@@ -396,11 +568,15 @@ def tco_rows(c, p):
     ref_sale = vals.get(ref['id'], {}).get('sale_today') if ref else None
     out = []
     for u in units:
-        v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
+        v = levels_of(u, opts.get(u['id'], ()))
         # a new car is registered when bought: today stands in for its first registration (tax window, EV exemption)
         new = is_new(u)
         reg = u['first_registration'] or (today.isoformat()[:7] if new else None)
-        cons, ins_row, tax_row = know.consumption(v, u['fuel_type']), know.insurance(v, u['is_reference']), know.tax(v, reg)
+        # build-date windows (#174): the build date when the listing shows it, else the registration, flagged
+        win = u.get('build_date') or reg
+        u['build_date_unknown'] = not u.get('build_date')
+        quote = quote_for(quotes.get(u['id'], []), u['is_reference'])
+        cons, ins_row, tax_row = know.consumption(v, u['fuel_type']), quote or know.insurance(v, u['is_reference']), know.tax(v, reg)
         electric = u['fuel_type'] == 'Electric'
         annual_tax = (tax_row or {}).get('annual_tax_eur')
         u.update(consumption=cons['value_num'] if cons else None, consumption_unit=cons['unit'] if cons else None,
@@ -410,7 +586,13 @@ def tco_rows(c, p):
         costs = by_listing.get(u['id'], [])
         unit_cost = {cat: sum((x['parts_eur'] or 0) + (x['labor_eur'] or 0) for x in costs if x['category'] == cat)
                      if any(x['category'] == cat for x in costs) else None for cat in config.UNIT_COST_CATEGORIES}
-        m_rows, r_rows, restarted = know.of('maintenance_items', v, reg), know.of('repair_risks', v, reg), frozenset(resets.get(u['id'], ()))
+        m_rows, r_rows = know.of('maintenance_items', v, win), know.of('repair_risks', v, win)
+        f_rows, rc_rows = know.of('faults', v, win), know.of('recalls', v, win)
+        h_restart, faults_done, present, recall_status = history_effects(history.get(u["id"], []), m_rows)
+        restarted = frozenset(resets.get(u['id'], ())) | h_restart
+        for cat, amount in present.items():  # a PRESENT history item is a certain cost (#174)
+            unit_cost[cat] = (unit_cost[cat] or 0) + amount
+        age_now = 0.0 if new else age_years(u['first_registration'], today)
         # energy price: diesel, petrol (full hybrids too), electricity for an electric car; a plug-in hybrid's mix of both
         # is not supported yet, so its fuel stays unknown (owner decision 2026-11-05)
         price_l = None if u['fuel_type'] in ('Electric', 'Plug-in hybrid') else \
@@ -430,18 +612,35 @@ def tco_rows(c, p):
             taxable = ev_tax_months(reg, today, months_) if electric else months_
             maint, maint_hours = maintenance_cost(m_rows, km_, months_, restarted, new)
             risk, risk_hours = expected_repairs(r_rows, u['mileage_km'], km_)
+            fp = fault_plan(f_rows, u['mileage_km'], km_, age_now, months_, know.heavy, faults_done, p['annual_km'], know.faults_by_id)
+            if f_rows:  # faults (#174) add to the old risks; any unknown chance or price makes the repairs unknown
+                fcost = None if any(x['expected_eur'] is None for x in fp) else sum(x['expected_eur'] for x in fp)
+                risk = None if fcost is None or (r_rows and risk is None) else (risk or 0) + fcost
             wear = tyre_cost(know.tyres(v), km_)
             # the jobs whose price for this account's DIY choice is missing, named for the to-do
             unpriced = ([need(x) for x in maintenance_plan(m_rows, km_, months_, restarted, new) if x['cost_eur'] is None] if maint is None else []) + \
-                ([need(x) for x in risk_plan(r_rows, u['mileage_km'], km_) if x['expected_eur'] is None] if risk is None and u['mileage_km'] is not None else [])
+                ([need(x) for x in risk_plan(r_rows, u['mileage_km'], km_) if x['expected_eur'] is None] if risk is None and u['mileage_km'] is not None else []) + \
+                ([f"{x['component']} (fault: chance or price)" for x in fp if x['expected_eur'] is None] if risk is None else [])
             return {'fuel': u['consumption'] * km_ / 100 * energy if u['consumption'] is not None and energy else None,
                     'tax': None if taxable is None else 0.0 if taxable == 0 else annual_tax * taxable / 12 if annual_tax is not None else None,
                     'maintenance': add(unit_cost['maintenance'], maint), 'repairs': add(unit_cost['repairs'], risk),
                     'tyres': add(unit_cost['tyres'], wear)}, \
                 {'taxable': taxable, 'maint': maint, 'maint_hours': maint_hours, 'risk': risk, 'risk_hours': risk_hours,
-                 'wear': wear, 'unpriced': unpriced, 'km': km_, 'months': years * 12 if months_ is None else months_}
+                 'wear': wear, 'unpriced': unpriced, 'km': km_, 'months': years * 12 if months_ is None else months_, 'faults': fp}
 
         run, det = running(km, years * 12)
+        u['fault_plan'], u['restarted_items'] = det['faults'], sorted(restarted)
+        # resale from the model's market sample (#166): end value at the owner's end age and km, less the private-sale
+        # discount; it replaces the listing's own valuation when the sample is usable
+        mm = market_model(markets, u, today) if age_now is not None and u['mileage_km'] is not None else None
+        u['market_model_id'] = mm['id'] if mm else None
+        if mm:
+            sale = lambda a, k: round(market_value(mm, a, k) * (1 - config.PRIVATE_SALE_DISCOUNT), -1)
+            lv = vals.setdefault(u['id'], {})
+            lv['resale_end'] = {'expected_eur': sale(age_now + years, u['mileage_km'] + km), 'low_eur': None, 'high_eur': None,
+                                'source': 'market', 'market_model_id': mm['id']}
+            if u['is_reference'] and 'sale_today' not in lv:
+                lv['sale_today'] = {'expected_eur': sale(age_now, u['mileage_km']), 'low_eur': None, 'high_eur': None, 'source': 'market'}
         annual_ins = (ins_row or {}).get('annual_premium_eur')
         dep, dep_pess, dep_opt = depreciation(u, vals.get(u['id'], {}))
         parts = {'fuel': run['fuel'], 'insurance': annual_ins * years if annual_ins is not None else None, 'tax': run['tax'],
@@ -488,16 +687,24 @@ def tco_rows(c, p):
                               **({'lease': det['lease']} if u['offer'] == 'lease' else {})},
                  initial_outlay=(u['price_eur'] - ref_sale['expected_eur'] if not u['is_reference'] and ref_sale
                                  and u['price_eur'] is not None and u['offer'] == 'purchase' else None))
-        age = 0.0 if new else age_years(u['first_registration'], today)
+        age = age_now
         counts = u['inspection_counts']
         items = contract.resolved(v['id'])
-        rel_rows = know.of('reliability_items', v, reg)
+        rel_rows = know.of('reliability_items', v, win)
+        rel_checks = dict(checks.get(u['id'], {}))
+        rel_rows = rel_rows + [{'id': f"F{f['id']}", 'component': f['component'], 'severity': fault_severity(f), 'part': f['part'],
+                                'is_recall': False, 'level': f['level'], 'source_id': f['source_id']} for f in f_rows] + \
+            [{'id': f"R{r['id']}", 'component': r['code'] + ': ' + r['defect'], 'severity': 'HIGH' if r['safety'] else 'MEDIUM',
+              'part': r['part'], 'is_recall': True, 'level': r['level'], 'source_id': r['source_id']} for r in rc_rows]
+        for rid, st in recall_status.items():  # done or not affected (VIN check): the recall stops counting
+            if st in ('DONE', 'NOT AFFECTED'):
+                rel_checks[f'R{rid}'] = 'OK'
         items += research.listing_items(u, {'insurance': know.of('insurance_data', v), 'tax': {'exempt': True} if electric and taxable == 0 else tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
                                             'weak_points': {r['id'] for r in rel_rows}, 'checked': set(checks.get(u['id'], {})),
                                             'captured': u['id'] in captured}, today)
         u['research'] = items
         evidence = {r['part'] for r in rel_rows if r.get('part')}
-        rel_total, rel_parts, u['reliability_detail'] = reliability(rel_rows, checks.get(u['id'], {}), research.known_parts(items, evidence))
+        rel_total, rel_parts, u['reliability_detail'] = reliability(rel_rows, rel_checks, research.known_parts(items, evidence))
         u['reliability_too_new'] = research.too_new_parts(items, evidence)
         u['reliability_parts'] = rel_parts
         rc = recall_checks.get(u['id'], {})
@@ -596,12 +803,15 @@ def listing_detail(c, listing_id, p, ranked):
     if u is None:
         return None
     q = lambda sql: rows(c, sql, (listing_id,))
-    v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
+    v = levels_of(u, [r['option_id'] for r in q('SELECT option_id FROM listing_options WHERE listing_id=?')])
     know = Knowledge(c)
-    reg = u['first_registration'] or (datetime.date.today().isoformat()[:7] if is_new(u) else None)  # as in the ranking
+    reg = u.get('build_date') or u['first_registration'] or (datetime.date.today().isoformat()[:7] if is_new(u) else None)  # as in the ranking
     u.update(valuations=q('SELECT * FROM valuations WHERE listing_id=? ORDER BY id'),
              unit_costs=q('SELECT * FROM unit_costs WHERE listing_id=? ORDER BY id'),
              maintenance_resets=q('SELECT * FROM maintenance_resets WHERE listing_id=? ORDER BY id'),
+             history=q('SELECT * FROM listing_history WHERE listing_id=? ORDER BY id'),
+             quotes=q('SELECT * FROM listing_quotes WHERE listing_id=? ORDER BY id'),
+             recalls=know.of('recalls', v, reg),
              inspection=q('SELECT * FROM inspection_items WHERE listing_id=? ORDER BY id'),
              events=q('SELECT * FROM listing_events WHERE listing_id=? ORDER BY event_date, id'),
              snapshots=q('SELECT * FROM listing_snapshots WHERE listing_id=? ORDER BY captured_at, id'),
@@ -616,12 +826,13 @@ def listing_detail(c, listing_id, p, ranked):
                           (v['id'], v['engine_id'], v['generation_id'], listing_id, u['source_id'])))
     u['research_levels'] = research.levels(u['research'])
     months = p['ownership_years'] * 12
-    restarted = frozenset(r['maintenance_item_id'] for r in u['maintenance_resets'])
+    restarted = frozenset(u.get('restarted_items') or ())
     u['maintenance_plan'] = maintenance_plan(u['maintenance'], u['period_km'], months, restarted, is_new(u))
     u['repair_risks'] = risk_plan(sorted(know.of('repair_risks', v, reg), key=lambda r: (r['km_from'], r['id'])), u['mileage_km'], u['period_km'])
     # the dossier lists the sources these rows cite too (shared sources such as the HU fee have no vehicle)
     have = {s['id'] for s in u['sources']}
     cited = {x['source_id'] for x in u['maintenance_plan'] + u['repair_risks'] + u['tyres'] + u['insurance'] + u['tax']
+             + u.get('fault_plan', []) + u['recalls'] + u['quotes']
              + u['observations'] if x['source_id'] and x['source_id'] not in have}
     if cited:
         u['sources'] += rows(c, f"SELECT * FROM sources WHERE id IN ({','.join('?' * len(cited))}) ORDER BY id", tuple(cited))

@@ -88,11 +88,17 @@ FAULT_CONSEQUENCES = ['ENGINE_DAMAGE', 'STRANDS', 'SAFETY', 'UNUSABLE', 'COST', 
 # car or is a safety risk, or costs at least SEVERITY_HIGH_EUR; MEDIUM from SEVERITY_MEDIUM_EUR or when the car is
 # unusable until fixed; LOW below that while the car still drives.
 SEVERITY_HIGH_EUR, SEVERITY_MEDIUM_EUR = 1500, 500
-# PROVISIONAL — to be confirmed by the owner (under independent review, 2026-11-06): the words a source uses for how often
-# a fault happens → cumulative share of cars failed by REFERENCE_KM, used only for ESTIMATE curves when no source gives
-# a number. One place; replace the values here when the review is decided.
-REFERENCE_KM = 200_000
-FREQUENCY_WORDS = {'typical': 0.60, 'very common': 0.35, 'common': 0.20, 'occasional': 0.08, 'rare': 0.02}
+# Fault probability method (owner, 2026-11-06, #168): the wording of the sources → a band of the share of cars affected by
+# BAND_REFERENCE_KM or BAND_REFERENCE_YEARS: (central value used for the cost, low, high). 'systemic' needs a manufacturer
+# trace (extended warranty, Kulanz, TPI, class action); a forum-only fault is one band milder, never above 'common'.
+BAND_REFERENCE_KM, BAND_REFERENCE_YEARS = 200_000, 15
+FREQUENCY_BANDS = {'systemic': (0.50, 0.40, 0.70), 'widespread': (0.25, 0.20, 0.40), 'common': (0.12, 0.08, 0.20),
+                   'occasional': (0.05, 0.03, 0.08), 'rare': (0.015, 0.005, 0.03)}
+FORUM_MAX_BAND = 'common'
+# every curve continues to these limits (no zero risk beyond the last point stated); four shapes
+CURVE_END_KM, CURVE_END_YEARS = 300_000, 20
+FAULT_SHAPES = ['WEAR_KM', 'AGE', 'WINDOW', 'RANDOM']
+HEAVY_USE_MIX = ('Mostly town',)  # setup driving_mix values that mean heavy use (short trips)
 PRIVATE_SALE_DISCOUNT = 0.05  # asking → private sale price (#166): ESTIMATED, range 3–10 %, no primary source found
 MARKET_MIN_PER_BAND, MARKET_MAX_AGE_DAYS = 5, 183  # resale sample (#166): ≥ 5 cars in each of the three bands, 6 months
 
