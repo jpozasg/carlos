@@ -67,3 +67,11 @@ RestartSec=60
 WantedBy=default.target
 ```
 `systemctl --user enable --now carlos-worker`; `loginctl enable-linger $USER` keeps it running without a login session; `journalctl --user -u carlos-worker` shows one line per request. Settings (environment): `WORKER_TOKEN` (the worker's token), `WORKER_MODEL` (`sonnet`: the research runs on Sonnet; added as `--model` after `claude` unless `CLAUDE_CMD` names a model), `POLL_SECONDS` (60; a heartbeat every poll and every minute of a run, and a worker silent for 180 s shows as down in `GET /api/admin/workers`), `WORKER_TIMEOUT_MIN` (120, below the server's 3-hour reclaim), `CLAUDE_CMD` (`claude -p`; give the headless session the permissions it needs for this repository in its Claude Code settings rather than skipping permission checks), `WORKER_LOGS` (`worker-logs/`, one log per request, git-ignored). `python worker.py --once` handles at most one request and exits (a manual test).
+
+## Research pilot and reset (issues #167, #194)
+Before the full re-research, two independent runs research the same known cars on two reset copies and are compared; only when they agree (same faults on the same levels, bands at most one step apart, prices within ±30 %, no worker failures) does the real reset run.
+1. `python pilot.py setup` — two reset copies of the database in `data/backups/pilot/a` and `b` (ignored by the data repository), with the pilot cars' photos; the real database is only read.
+2. `python pilot.py commands` — prints the commands for two servers (ports 8021, 8022) and one worker per run (`~/.config/carlos/worker.env` for run a, `worker-2.env` for run b); start them in separate terminals.
+3. `python pilot.py queue` — queues the pilot cars on both servers (admin token: `AGENT_TOKEN` or `.env`); at most 5 requests wait per account, so run it again when the first ones are done.
+4. `python pilot_compare.py data/backups/pilot/a/cars.sqlite data/backups/pilot/b/cars.sqlite` — the comparison report. Fix the prompt or the rules, then repeat from step 1.
+5. Only then, with the owner's go: stop the server and the workers, `python research_reset.py data/cars.sqlite` (dry run), then `--apply`, start the server and queue every listing (`carlos://listing/<id>` for the reference car or an ad gone offline).

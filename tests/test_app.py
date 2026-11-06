@@ -1577,6 +1577,25 @@ class AppTest(unittest.TestCase):
         self.assertEqual((st, d['vehicle_id'], d['research_levels']['variant']['state']), (200, None, 'incomplete'))
         self.assertEqual(self.req('GET', '/api/tco')[0], 200)
         self.assertEqual(research_reset.run(config.DB, apply=True, keep=1), {})   # idempotent
+        # a listing awaiting research is queued by reference, not by an ad link (#194)
+        self.assertEqual(self.req('POST', '/api/requests', {'url': f'carlos://listing/{CAR_A}'})[0], 201)
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'carlos://listing/99999'})[0], 400)
+
+    def test_pilot_compare_identical_runs(self):
+        """#167 pilot: comparing a run with itself reports full agreement and no failures."""
+        import pilot_compare
+        c = sqlite3.connect(config.DB)
+        c.execute("INSERT INTO faults (engine_id, component, part, consequence, existence, parts_eur, labor_eur, frequency_band, shape, source_id) "
+                  "VALUES (?, 'Timing chain stretch', 'ENGINE', 'ENGINE_DAMAGE', 'CONFIRMED', 300, 500, 'common', 'WEAR_KM', ?)", (E_A, SRC_GUIDE))
+        c.commit(); c.close()
+        acct, pilot_compare.ACCOUNT = pilot_compare.ACCOUNT, 1
+        try:
+            out = pilot_compare.report(config.DB, config.DB)
+        finally:
+            pilot_compare.ACCOUNT = acct
+        for line in ('- A: 1, B: 1, matched: 1', '- Same level: 100 % (1/1)', '- Band within one step: 100 % (1/1)',
+                     '- Workshop price within ±30 %: 100 % (1/1)', '- A: none'):
+            self.assertIn(line, out)
 
 
 if __name__ == '__main__':

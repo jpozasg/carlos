@@ -23,7 +23,11 @@ def mine(c, uid):
 
 def create(c, uid, data, by=None):
     """by: the admin who queued it for the account (issue #139); None when the account asked itself."""
-    url, note = clean_url(data.get('url')), (str(data.get('note') or '').strip()[:1000] or None)
+    raw = str(data.get('url') or '').strip()
+    m = re.fullmatch(r'carlos://listing/(\d+)', raw)  # re-research a listing the account has (no ad, or offline; #194)
+    if m and not c.execute('SELECT 1 FROM main.listings WHERE id=? AND owner_id=?', (int(m[1]), uid)).fetchone():
+        raise ValueError(f'{raw}: no such listing in this account')
+    url, note = raw if m else clean_url(raw), (str(data.get('note') or '').strip()[:1000] or None)
     with c:
         open_urls = [r[0] for r in c.execute("SELECT url FROM main.research_requests WHERE owner_id=? AND status IN ('QUEUED','RUNNING')", (uid,))]
         if url in open_urls:
