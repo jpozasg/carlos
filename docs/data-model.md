@@ -20,9 +20,10 @@ SQLite, one file (`cars.sqlite` in the data directory). `schema.sql` is the exec
 |---|---|---|
 | `generations` | generation | `make`, `model`, `name` (generation code or name), `start_year`, `end_year`, `facelift_year`, `status`, `notes`, `owner_id`. |
 | `engines` | engine | `code` (manufacturer engine code), `family`, `description`, `fuel_type` (Petrol / Diesel / Hybrid / Plug-in hybrid / Electric), `displacement_cc`, `cylinders`, `power_kw`, `power_ps`, `aspiration` (NATURALLY ASPIRATED / TURBO / SUPERCHARGED), `injection` (PORT / DIRECT / DUAL / CARBURETTOR), `timing_drive` (CHAIN / BELT / WET BELT / GEAR); for an electric engine `battery_usable_kwh`, `ac_charge_kw`, `dc_charge_kw` instead of displacement, aspiration, injection and timing drive (NULL), `status`, `notes`, `owner_id`. |
-| `vehicles` | variant | `generation_id`, `engine_id`, `trim`, `transmission`, `body_style`, `model_year`, `emissions_standard`, `co2_g_km`, `hsn`, `tsn`, `technical_status`, `notes`, `owner_id`. |
+| `gearboxes` | gearbox (#164) | `code` (e.g. DQ200, MQ200), `type` (MANUAL / DCT / AT / CVT / SINGLE-SPEED), `gears`, `maker`, `description`, `status`, `notes`, `owner_id` (NULL = shared catalogue, like an engine). |
+| `vehicles` | variant | `generation_id`, `engine_id`, `gearbox_id` (the shared gearbox, #164), `trim`, `transmission`, `body_style`, `model_year`, `emissions_standard`, `co2_g_km`, `hsn`, `tsn`, `technical_status`, `notes`, `owner_id`. |
 
-**Knowledge tables** attach to exactly one level through `vehicle_id`, `engine_id` or `generation_id` (a CHECK constraint enforces it). A listing resolves its data from its variant, its engine and its generation together (`carlos/db.py: for_variant`). The `level` of every row is returned by the API.
+**Knowledge tables** attach to exactly one level through `vehicle_id`, `engine_id` or `generation_id`; `maintenance_items`, `repair_risks`, `reliability_items`, `research_checks` (and `sources`) may also attach to `gearbox_id` (issue #164; a CHECK constraint enforces exactly one, at most one for sources). A listing resolves its data from its variant, its engine, its gearbox and its generation together (`carlos/db.py: for_variant`). Where each reliability part lives: ENGINE on the engine, GEARBOX on the gearbox, CHASSIS and body ELECTRICS on the generation (`docs/cost-research-protocol.md`, "Data levels"). The `level` of every row is returned by the API.
 
 | Table | What a row is | Key columns |
 |---|---|---|

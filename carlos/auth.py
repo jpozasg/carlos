@@ -7,8 +7,9 @@ SESSION_DAYS, INVITE_HOURS = 30, 72
 COOKIE = 'carlos_session'
 LOGIN_MAX_FAILS, LOGIN_LOCK_SECONDS = 10, 300
 FAILS = {}  # shortcut: per-client lock in memory; resets on restart (single process)
-OWNED = ('generations', 'engines', 'vehicles', 'sources', 'listings', 'project_parameters', 'project_preferences')
-MODEL = ('generations', 'engines', 'vehicles')  # owner_id NULL = the shared catalogue (issue #109)
+OWNED = ('generations', 'engines', 'gearboxes', 'vehicles', 'sources', 'listings', 'project_parameters', 'project_preferences')
+MODEL = ('generations', 'engines', 'gearboxes', 'vehicles')  # owner_id NULL = the shared catalogue (issues #109, #164)
+GEARBOX_TABLES = ('maintenance_items', 'repair_risks', 'reliability_items', 'research_checks')  # config.GEARBOX_TABLES
 _KNOW = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data', 'research_checks')
 _LISTING_CHILDREN = ('valuations', 'unit_costs', 'inspection_items', 'listing_events', 'listing_snapshots', 'listing_media', 'maintenance_resets')
 # Archivable tables (issue #58): <table> shows only rows with archived=0 (every read and calculation), <table>_all
@@ -20,11 +21,13 @@ ARCHIVABLE = _KNOW + ('valuations', 'unit_costs', 'inspection_items', 'maintenan
 _LINKED = {'vehicles': '(id IN (SELECT vehicle_id FROM main.catalogue_links WHERE owner_id={o}) OR {cat})',
            'engines': '(id IN (SELECT engine_id FROM vehicles) OR id IN (SELECT engine_id FROM main.catalogue_links WHERE owner_id={o}) OR {cat})',
            'generations': '(id IN (SELECT generation_id FROM vehicles) OR id IN (SELECT generation_id FROM main.catalogue_links WHERE owner_id={o}) OR {cat})',
+           'gearboxes': '(id IN (SELECT gearbox_id FROM vehicles) OR {cat})',
            'sources': '(vehicle_id IN (SELECT id FROM vehicles) OR engine_id IN (SELECT id FROM engines) OR generation_id IN (SELECT id FROM generations) '
-                      'OR coalesce(vehicle_id, engine_id, generation_id) IS NULL)'}
+                      'OR gearbox_id IN (SELECT id FROM gearboxes) OR coalesce(vehicle_id, engine_id, generation_id, gearbox_id) IS NULL)'}
 _BASE = {**{t: f'SELECT * FROM main.{t} WHERE owner_id={{o}}' + (f' OR owner_id IS NULL AND {_LINKED[t]}' if t in _LINKED else '') for t in OWNED},
-         **{t: f'SELECT * FROM main.{t} WHERE (vehicle_id IN (SELECT id FROM vehicles) OR engine_id IN (SELECT id FROM engines) '
-               f'OR generation_id IN (SELECT id FROM generations)) AND (owner_id IS NULL OR owner_id={{o}})' for t in _KNOW},
+         **{t: 'SELECT * FROM main.{t} WHERE (vehicle_id IN (SELECT id FROM vehicles) OR engine_id IN (SELECT id FROM engines) '
+               'OR generation_id IN (SELECT id FROM generations){g}) AND (owner_id IS NULL OR owner_id={{o}})'.format(
+                   t=t, g=' OR gearbox_id IN (SELECT id FROM gearboxes)' if t in GEARBOX_TABLES else '') for t in _KNOW},
          **{t: f'SELECT * FROM main.{t} WHERE listing_id IN (SELECT id FROM listings)' for t in _LISTING_CHILDREN}}
 VIEWS = {}
 for _t, _sql in _BASE.items():

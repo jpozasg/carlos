@@ -31,7 +31,8 @@ RELIABILITY_PART_MAX = RELIABILITY_TOP * 3  # higher is better: each part starts
 # Controlled job codes of maintenance items and repair risks (migration 022, part 4 of #106); append new jobs here.
 JOBS = ['OIL_SERVICE', 'AIR_FILTER', 'CABIN_FILTER', 'SPARK_PLUGS', 'TIMING_DRIVE', 'COOLANT', 'BRAKE_FLUID', 'BRAKES_FRONT',
         'BRAKES_REAR', 'BATTERY', 'BULBS', 'WIPERS', 'HU', 'FUEL_FILTER', 'DRIVE_BELT', 'CLUTCH',
-        'DRIVE_COOLANT', 'REDUCTION_GEAR_OIL']  # electric drive: battery/motor coolant loop, reduction gear oil (#121)
+        'DRIVE_COOLANT', 'REDUCTION_GEAR_OIL',  # electric drive: battery/motor coolant loop, reduction gear oil (#121)
+        'GEARBOX_OIL']  # DCT / automatic / CVT oil service, on the gearbox level (#164)
 # engines.fuel_type (#121): a full hybrid is costed as petrol; an electric car's energy is electricity (kWh)
 FUEL_TYPES = ['Petrol', 'Diesel', 'Hybrid', 'Plug-in hybrid', 'Electric']
 HOME_CHARGING = ['none', 'socket', 'wallbox', 'wallbox_planned']
@@ -71,11 +72,14 @@ OWNER_CONSUMPTION = 'Owner measured average'
 # Insurance: the reference car uses the premium the user actually pays (USER DATA) over comparison quotes.
 USER_PREMIUM = 'USER DATA'
 
-# Knowledge tables attach to exactly one level: variant (vehicle_id), engine (engine_id) or generation (generation_id).
+# Knowledge tables attach to exactly one level: variant (vehicle_id), engine (engine_id), generation (generation_id) or,
+# for the tables in GEARBOX_TABLES, gearbox (gearbox_id, issue #164).
 SCOPED_TABLES = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data',
                  'research_checks')  # research_checks: the contract's recorded source checks (issue #114)
-SCOPE_COLUMNS = ('vehicle_id', 'engine_id', 'generation_id')
-LEVELS = {'vehicle_id': 'variant', 'engine_id': 'engine', 'generation_id': 'generation'}
+SCOPE_COLUMNS = ('vehicle_id', 'engine_id', 'generation_id', 'gearbox_id')
+LEVELS = {'vehicle_id': 'variant', 'engine_id': 'engine', 'generation_id': 'generation', 'gearbox_id': 'gearbox'}
+GEARBOX_TABLES = ('maintenance_items', 'repair_risks', 'reliability_items', 'research_checks')  # and sources
+GEARBOX_TYPES = ['MANUAL', 'DCT', 'AT', 'CVT', 'SINGLE-SPEED']  # DCT = dual clutch (DSG), AT = torque-converter automatic
 
 # knowledge rows that may carry a first-registration window (applies_from/applies_to, issue #153)
 WINDOWED_TABLES = ('maintenance_items', 'repair_risks', 'reliability_items')

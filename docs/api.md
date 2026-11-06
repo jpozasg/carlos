@@ -30,7 +30,7 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 | `GET /api/models` | the tree `makes[] → models[] → generations[] → engines[] → variants[]` with each variant's `listings`, the count of knowledge rows per table and `research` (contract state per level: `incomplete`, `researched`, `verified`) |
 | `GET /api/vehicles` | flat list of variants with make, model, generation and engine basics |
 | `GET /api/vehicles/<id>` | one variant: its fields, `engine_row`, `generation_row`, every knowledge table resolved with `level`, `siblings` (variants sharing the engine or the generation), `listings`, `sources`, `research` (per level: `state`, `missing`, `accepted`, graded `items`) |
-| `GET /api/generations`, `GET /api/engines`, `GET /api/sources` | the account's rows |
+| `GET /api/generations`, `GET /api/engines`, `GET /api/gearboxes`, `GET /api/sources` | the account's rows (gearboxes: the shared gearbox level, #164) |
 | `GET /api/ranking` | the questionnaire state (`answers`, `weights`, `derived_weights`, `manual`, `criteria`, `questions`) |
 | `GET /api/todo` (alias `/api/agent/todo`) | what is still missing: `account` (setup, ranking choices, fuel price age, the insurance profile a quote needs), per listing, per variant (`models`: missing contract items of the variant with its engine and generation, and its `state`) and `catalogue` (each generation, engine and variant on its own rows: `state`, `missing`, `accepted`) (English texts, see `AGENTS.md`) |
 | `GET /api/storage`, `GET /api/health` | disk use; integrity, schema version, number of listings, storage ratio |

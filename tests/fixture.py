@@ -13,6 +13,8 @@ V_A, V_B, V_REF, V_B2 = 1, 2, 3, 4
 # engines / generations
 E_A, E_B, E_REF = 1, 2, 3
 G1, G2 = 1, 2
+# gearboxes (#164): a manual shared by three variants, an automatic on V_B2
+GB_M, GB_AT = 1, 2
 # sources
 SRC_LISTING, SRC_USER, SRC_HU, SRC_TAX_OFFICIAL, SRC_QUOTE, SRC_GUIDE = 1, 2, 3, 4, 5, 6
 
@@ -37,6 +39,10 @@ ROWS = {
         dict(id=E_REF, code='AM16', description='1.6 petrol, naturally aspirated', fuel_type='Petrol',
              displacement_cc=1600, cylinders=4, power_kw=85, power_ps=115, aspiration='NATURALLY ASPIRATED', injection=None, timing_drive='CHAIN', status='PARTIAL'),
     ],
+    'gearboxes': [
+        dict(id=GB_M, code='MT5', type='MANUAL', gears=5, maker='Testgear', status='VERIFIED'),
+        dict(id=GB_AT, code='AT6', type='AT', gears=6, maker='Testgear', status='PARTIAL'),
+    ],
     'sources': [
         dict(id=SRC_LISTING, owner_id=ADMIN, title='Test listing source', url='https://example.test/listing', source_type='listing', quality='A', accessed_date=TODAY),
         dict(id=SRC_USER, owner_id=ADMIN, title='User-provided data', source_type='user_reported', accessed_date=TODAY, supports='Facts about the own car', limitations='User statements'),
@@ -46,10 +52,10 @@ ROWS = {
         dict(id=SRC_GUIDE, engine_id=E_A, title='Engine guide AM14', url='https://example.test/am14', source_type='buying_guide', quality='C', accessed_date=TODAY),
     ],
     'vehicles': [
-        dict(id=V_A, generation_id=G1, engine_id=E_A, trim='Hatch 1.4 Comfort', transmission='Manual', body_style='Hatchback, 5 doors', emissions_standard='Euro 5', co2_g_km=140, hsn='1111', tsn='AAA', technical_status='VERIFIED'),
-        dict(id=V_B, generation_id=G2, engine_id=E_B, trim='City 1.2 Turbo', transmission='Manual', body_style='Hatchback, 5 doors', emissions_standard='Euro 6', co2_g_km=105, hsn='2222', tsn='BBB', technical_status='VERIFIED'),
-        dict(id=V_REF, generation_id=G1, engine_id=E_REF, trim='Hatch 1.6 Sport', transmission='Manual', body_style='Hatchback, 3 doors', emissions_standard='Euro 4', co2_g_km=165, hsn='1111', tsn='AAC', technical_status='PARTIAL'),
-        dict(id=V_B2, generation_id=G2, engine_id=E_B, trim='City 1.2 Turbo Plus', transmission='Automatic', body_style='Hatchback, 5 doors', emissions_standard='Euro 6', co2_g_km=108, hsn=None, tsn=None, technical_status='PENDING'),
+        dict(id=V_A, generation_id=G1, engine_id=E_A, gearbox_id=GB_M, trim='Hatch 1.4 Comfort', transmission='Manual', body_style='Hatchback, 5 doors', emissions_standard='Euro 5', co2_g_km=140, hsn='1111', tsn='AAA', technical_status='VERIFIED'),
+        dict(id=V_B, generation_id=G2, engine_id=E_B, gearbox_id=GB_M, trim='City 1.2 Turbo', transmission='Manual', body_style='Hatchback, 5 doors', emissions_standard='Euro 6', co2_g_km=105, hsn='2222', tsn='BBB', technical_status='VERIFIED'),
+        dict(id=V_REF, generation_id=G1, engine_id=E_REF, gearbox_id=GB_M, trim='Hatch 1.6 Sport', transmission='Manual', body_style='Hatchback, 3 doors', emissions_standard='Euro 4', co2_g_km=165, hsn='1111', tsn='AAC', technical_status='PARTIAL'),
+        dict(id=V_B2, generation_id=G2, engine_id=E_B, gearbox_id=GB_AT, trim='City 1.2 Turbo Plus', transmission='Automatic', body_style='Hatchback, 5 doors', emissions_standard='Euro 6', co2_g_km=108, hsn=None, tsn=None, technical_status='PENDING'),
     ],
     'listings': [
         dict(id=REF, vehicle_id=V_REF, source_id=SRC_USER, platform='OWNED', mileage_km=180000, first_registration='2009-05',
@@ -107,10 +113,11 @@ ROWS = {
     ],
     # the contract's reliability source checks (issue #114): every part of every engine and generation, so reliability
     # is known; a test removes some to see a part become unknown
-    'research_checks': [dict({col: lvl}, task=f'rel.{part}.{src}', result='NONE FOUND', contract_version=1, checked_date=TODAY,
+    'research_checks': [dict({col: lvl}, task=f'rel.{part}.{src}', result='NONE FOUND', contract_version=5, checked_date=TODAY,
                              source_id=SRC_HU if src in ('adac', 'tuev') else SRC_GUIDE)
                         for col, lvl, parts in [('engine_id', e, ['ENGINE']) for e in (E_A, E_B, E_REF)] +
-                        [('generation_id', g, ['GEARBOX', 'CHASSIS', 'ELECTRICS']) for g in (G1, G2)]
+                        [('generation_id', g, ['CHASSIS', 'ELECTRICS']) for g in (G1, G2)] +
+                        [('gearbox_id', gb, ['GEARBOX']) for gb in (GB_M, GB_AT)]
                         for part in parts for src in ('adac', 'tuev', 'guide') + (('engine_specific',) if part == 'ENGINE' else ())],
     'valuations': [
         dict(listing_id=REF, kind='sale_today', expected_eur=2500, status='ESTIMATED', valued_date=TODAY, source_id=SRC_GUIDE),

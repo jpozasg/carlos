@@ -7,7 +7,7 @@ from .auth import _KNOW, _LISTING_CHILDREN, ARCHIVABLE, MODEL, OWNED
 # Format of controlled codes written by the agent (English: upper-case statuses, snake_case kinds).
 CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_events', 'kind'): r'[a-z][a-z_]*',
                 ('vehicles', 'technical_status'): r'[A-Z][A-Z /-]*', ('generations', 'status'): r'[A-Z][A-Z /-]*',
-                ('engines', 'status'): r'[A-Z][A-Z /-]*',
+                ('engines', 'status'): r'[A-Z][A-Z /-]*', ('gearboxes', 'status'): r'[A-Z][A-Z /-]*',
                 ('reliability_items', 'severity'): r'[A-Z][A-Z /-]*', ('reliability_items', 'frequency_status'): r'[A-Z][A-Z /-]*',
                 ('insurance_data', 'premium_status'): r'[A-Z][A-Z /-]*', ('repair_risks', 'status'): r'[A-Z][A-Z /-]*',
                 ('tyre_data', 'status'): r'[A-Z][A-Z /-]*', ('tyre_data', 'tyre_type'): r'[A-Z][A-Z /-]*',
@@ -19,12 +19,13 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'engines.aspiration': ['NATURALLY ASPIRATED', 'TURBO', 'SUPERCHARGED'],
                'engines.injection': ['PORT', 'DIRECT', 'DUAL', 'CARBURETTOR'],
                'engines.timing_drive': ['CHAIN', 'BELT', 'WET BELT', 'GEAR'], 'engines.fuel_type': config.FUEL_TYPES,
+               'gearboxes.type': config.GEARBOX_TYPES,
                'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED'],
                'reliability_items.part': config.RELIABILITY_PARTS,
                'maintenance_items.job': config.JOBS, 'repair_risks.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A'],
                'listings.lease_kind': config.LEASE_KINDS}
 # Tables the agent may write. Those in the second set require source_id on insert.
-AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
+AGENT_TABLES = {'generations', 'engines', 'gearboxes', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
                 'maintenance_items', 'reliability_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',
                 'listing_snapshots', 'repair_risks', 'tyre_data', 'maintenance_resets', 'research_checks'}
 SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
@@ -32,7 +33,8 @@ SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'ma
                    'maintenance_resets', 'research_checks'}
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'))
 RULES = ('null = unknown (never 0); archive outdated rows with PATCH archived=1 (listings: listing_status WITHDRAWN); DELETE only after the owner confirmed it; source quality A–D; free text '
-         'in English; knowledge rows attach to exactly one level: vehicle_id (variant), engine_id or generation_id; see AGENTS.md')
+         'in English; knowledge rows attach to exactly one level: vehicle_id (variant), engine_id, generation_id or (maintenance, risks, '
+         'reliability, research checks) gearbox_id; see AGENTS.md')
 
 
 class UnsupportedMediaType(Exception):
@@ -115,9 +117,10 @@ def clean_row(c, table, data, insert):
     if insert and table == 'reliability_items' and out.get('part') is None:
         raise ValueError(f"reliability_items requires part: one of {config.RELIABILITY_PARTS} (docs/cost-research-protocol.md, step 2)")
     if insert and table in config.SCOPED_TABLES and sum(out.get(k) is not None for k in config.SCOPE_COLUMNS) != 1:
-        raise ValueError(f'{table} must attach to exactly one level: vehicle_id (variant), engine_id or generation_id')
+        raise ValueError(f'{table} must attach to exactly one level: vehicle_id (variant), engine_id or generation_id'
+                         + (' or gearbox_id' if table in config.GEARBOX_TABLES else ''))
     if insert and table == 'sources' and sum(out.get(k) is not None for k in config.SCOPE_COLUMNS) > 1:
-        raise ValueError('sources attach to at most one level: vehicle_id, engine_id or generation_id (none = shared)')
+        raise ValueError('sources attach to at most one level: vehicle_id, engine_id, generation_id or gearbox_id (none = shared)')
     return out
 
 
@@ -170,15 +173,15 @@ def link(c, owner_id, vehicle_id):
 def linked_accounts(c, table, row_id):
     """Accounts with a listing on the level this row belongs to (their dossiers show it)."""
     if table in MODEL:
-        lv = {{'vehicles': 'vehicle_id', 'engines': 'engine_id', 'generations': 'generation_id'}[table]: row_id}
+        lv = {{'vehicles': 'vehicle_id', 'engines': 'engine_id', 'generations': 'generation_id', 'gearboxes': 'gearbox_id'}[table]: row_id}
     elif table in _KNOW or table == 'sources':
-        r = c.execute(f'SELECT vehicle_id, engine_id, generation_id FROM main.{table} WHERE id=?', (row_id,)).fetchone()
+        r = c.execute(f'SELECT * FROM main.{table} WHERE id=?', (row_id,)).fetchone()
         lv = dict(r) if r else {}
     else:
         return []
     return [o for (o,) in c.execute('SELECT DISTINCT l.owner_id FROM main.listings l JOIN main.vehicles v ON v.id=l.vehicle_id '
-                                    'WHERE v.id=? OR v.engine_id=? OR v.generation_id=?',
-                                    (lv.get('vehicle_id'), lv.get('engine_id'), lv.get('generation_id')))]
+                                    'WHERE v.id=? OR v.engine_id=? OR v.generation_id=? OR v.gearbox_id=?',
+                                    (lv.get('vehicle_id'), lv.get('engine_id'), lv.get('generation_id'), lv.get('gearbox_id')))]
 
 
 def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):

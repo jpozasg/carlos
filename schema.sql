@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=27). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=28). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
@@ -100,48 +100,6 @@ CREATE TABLE "tax_data" (
  engine_id INTEGER REFERENCES engines(id),
  generation_id INTEGER REFERENCES generations(id),
  annual_tax_eur REAL, status TEXT, basis TEXT, source_id INTEGER, notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), registered_from TEXT, registered_to TEXT,
- CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
-);
-CREATE TABLE "maintenance_items" (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- vehicle_id INTEGER REFERENCES vehicles(id),
- engine_id INTEGER REFERENCES engines(id),
- generation_id INTEGER REFERENCES generations(id),
- item TEXT NOT NULL, interval_km INTEGER, interval_months INTEGER,
- reference_cost_eur REAL, diy_parts_cost_eur REAL, labor_included INTEGER,
- status TEXT, source_id INTEGER, notes TEXT,
- schedule TEXT NOT NULL DEFAULT 'PACKAGE' CHECK (schedule IN ('PACKAGE', 'ITEM')),
- diy INTEGER NOT NULL DEFAULT 0 CHECK (diy IN (0, 1)),
- diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
- active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT, applies_from TEXT, applies_to TEXT,
- CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
-);
-CREATE TABLE "reliability_items" (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- vehicle_id INTEGER REFERENCES vehicles(id),
- engine_id INTEGER REFERENCES engines(id),
- generation_id INTEGER REFERENCES generations(id),
- component TEXT NOT NULL, issue TEXT, evidence TEXT, severity TEXT,
- frequency_status TEXT, source_id INTEGER, inspection_action TEXT, part TEXT CHECK (part IN ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')), is_recall INTEGER NOT NULL DEFAULT 0 CHECK (is_recall IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), applies_from TEXT, applies_to TEXT,
- CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
-);
-CREATE TABLE "repair_risks" (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- vehicle_id INTEGER REFERENCES vehicles(id),
- engine_id INTEGER REFERENCES engines(id),
- generation_id INTEGER REFERENCES generations(id),
- component TEXT NOT NULL,
- km_from INTEGER NOT NULL CHECK (km_from >= 0),
- km_to INTEGER NOT NULL,
- probability REAL NOT NULL CHECK (probability >= 0 AND probability <= 1),
- parts_eur REAL CHECK (parts_eur IS NULL OR parts_eur >= 0),
- labor_eur REAL CHECK (labor_eur IS NULL OR labor_eur >= 0),
- diy INTEGER NOT NULL DEFAULT 0 CHECK (diy IN (0, 1)),
- diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
- status TEXT, evidence TEXT,
- source_id INTEGER REFERENCES sources(id),
- notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT, applies_from TEXT, applies_to TEXT,
- CHECK (km_to > km_from),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
 CREATE TABLE "tyre_data" (
@@ -271,16 +229,7 @@ CREATE TABLE "vehicles" (
  technical_status TEXT,
  notes TEXT,
  owner_id INTEGER REFERENCES users(id)
-);
-CREATE TABLE "sources" (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- vehicle_id INTEGER REFERENCES vehicles(id),
- engine_id INTEGER REFERENCES engines(id),
- generation_id INTEGER REFERENCES generations(id),
- title TEXT NOT NULL, url TEXT, source_type TEXT, quality TEXT,
- accessed_date TEXT, supports TEXT, limitations TEXT, owner_id INTEGER REFERENCES users(id),
- CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) <= 1)
-);
+, gearbox_id INTEGER REFERENCES gearboxes(id));
 CREATE TABLE catalogue_links (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  owner_id INTEGER NOT NULL REFERENCES users(id),
@@ -303,21 +252,6 @@ CREATE TABLE research_requests (
  listing_id INTEGER REFERENCES listings(id),
  result TEXT
 , requested_by INTEGER REFERENCES users(id), request_token_hash TEXT);
-CREATE TABLE research_checks (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- vehicle_id INTEGER REFERENCES vehicles(id),
- engine_id INTEGER REFERENCES engines(id),
- generation_id INTEGER REFERENCES generations(id),
- task TEXT NOT NULL,
- source_id INTEGER NOT NULL REFERENCES sources(id),
- result TEXT NOT NULL CHECK (result IN ('FOUND', 'NONE FOUND', 'N/A')),
- contract_version INTEGER NOT NULL,
- checked_date TEXT,
- notes TEXT,
- archived INTEGER NOT NULL DEFAULT 0,
- owner_id INTEGER REFERENCES users(id),
- CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
-);
 CREATE TABLE workers (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  name TEXT NOT NULL UNIQUE,
@@ -330,14 +264,97 @@ CREATE TABLE workers (
  last_error TEXT,
  last_error_at TEXT
 );
+CREATE TABLE gearboxes (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ code TEXT NOT NULL,
+ type TEXT CHECK (type IS NULL OR type IN ('MANUAL', 'DCT', 'AT', 'CVT', 'SINGLE-SPEED')),
+ gears INTEGER CHECK (gears IS NULL OR gears >= 1),
+ maker TEXT,
+ description TEXT,
+ status TEXT,
+ notes TEXT,
+ owner_id INTEGER REFERENCES users(id)
+);
+CREATE TABLE "maintenance_items" (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ vehicle_id INTEGER REFERENCES vehicles(id),
+ engine_id INTEGER REFERENCES engines(id),
+ generation_id INTEGER REFERENCES generations(id),
+ item TEXT NOT NULL, interval_km INTEGER, interval_months INTEGER,
+ reference_cost_eur REAL, diy_parts_cost_eur REAL, labor_included INTEGER,
+ status TEXT, source_id INTEGER, notes TEXT,
+ schedule TEXT NOT NULL DEFAULT 'PACKAGE' CHECK (schedule IN ('PACKAGE', 'ITEM')),
+ diy INTEGER NOT NULL DEFAULT 0 CHECK (diy IN (0, 1)),
+ diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
+ active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT, applies_from TEXT, applies_to TEXT,
+ gearbox_id INTEGER REFERENCES gearboxes(id),
+ CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL) = 1)
+);
+CREATE TABLE "repair_risks" (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ vehicle_id INTEGER REFERENCES vehicles(id),
+ engine_id INTEGER REFERENCES engines(id),
+ generation_id INTEGER REFERENCES generations(id),
+ component TEXT NOT NULL,
+ km_from INTEGER NOT NULL CHECK (km_from >= 0),
+ km_to INTEGER NOT NULL,
+ probability REAL NOT NULL CHECK (probability >= 0 AND probability <= 1),
+ parts_eur REAL CHECK (parts_eur IS NULL OR parts_eur >= 0),
+ labor_eur REAL CHECK (labor_eur IS NULL OR labor_eur >= 0),
+ diy INTEGER NOT NULL DEFAULT 0 CHECK (diy IN (0, 1)),
+ diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
+ status TEXT, evidence TEXT,
+ source_id INTEGER REFERENCES sources(id),
+ notes TEXT, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), job TEXT, applies_from TEXT, applies_to TEXT,
+ gearbox_id INTEGER REFERENCES gearboxes(id),
+ CHECK (km_to > km_from),
+ CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL) = 1)
+);
+CREATE TABLE "reliability_items" (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ vehicle_id INTEGER REFERENCES vehicles(id),
+ engine_id INTEGER REFERENCES engines(id),
+ generation_id INTEGER REFERENCES generations(id),
+ component TEXT NOT NULL, issue TEXT, evidence TEXT, severity TEXT,
+ frequency_status TEXT, source_id INTEGER, inspection_action TEXT, part TEXT CHECK (part IN ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')), is_recall INTEGER NOT NULL DEFAULT 0 CHECK (is_recall IN (0, 1)), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), applies_from TEXT, applies_to TEXT,
+ gearbox_id INTEGER REFERENCES gearboxes(id),
+ CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL) = 1)
+);
+CREATE TABLE "research_checks" (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ vehicle_id INTEGER REFERENCES vehicles(id),
+ engine_id INTEGER REFERENCES engines(id),
+ generation_id INTEGER REFERENCES generations(id),
+ task TEXT NOT NULL,
+ source_id INTEGER NOT NULL REFERENCES sources(id),
+ result TEXT NOT NULL CHECK (result IN ('FOUND', 'NONE FOUND', 'N/A')),
+ contract_version INTEGER NOT NULL,
+ checked_date TEXT,
+ notes TEXT,
+ archived INTEGER NOT NULL DEFAULT 0,
+ owner_id INTEGER REFERENCES users(id),
+ gearbox_id INTEGER REFERENCES gearboxes(id),
+ CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL) = 1)
+);
+CREATE TABLE "sources" (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ vehicle_id INTEGER REFERENCES vehicles(id),
+ engine_id INTEGER REFERENCES engines(id),
+ generation_id INTEGER REFERENCES generations(id),
+ title TEXT NOT NULL, url TEXT, source_type TEXT, quality TEXT,
+ accessed_date TEXT, supports TEXT, limitations TEXT, owner_id INTEGER REFERENCES users(id),
+ gearbox_id INTEGER REFERENCES gearboxes(id),
+ CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL) <= 1)
+);
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
-CREATE INDEX idx_maintenance_scope ON maintenance_items (vehicle_id, engine_id, generation_id);
-CREATE INDEX idx_risks_scope ON repair_risks (vehicle_id, engine_id, generation_id);
-CREATE INDEX idx_reliability_scope ON reliability_items (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_listings_vehicle ON listings (vehicle_id);
 CREATE INDEX idx_catalogue_links_owner ON catalogue_links (owner_id);
 CREATE INDEX idx_vehicles_hsn_tsn ON vehicles (hsn, tsn);
 CREATE INDEX research_requests_owner ON research_requests (owner_id, status);
 CREATE INDEX research_requests_queue ON research_requests (status, id);
-CREATE INDEX idx_research_checks_task ON research_checks (task);
 CREATE INDEX research_requests_token ON research_requests (request_token_hash);
+CREATE INDEX idx_maintenance_scope ON maintenance_items (vehicle_id, engine_id, generation_id);
+CREATE INDEX idx_risks_scope ON repair_risks (vehicle_id, engine_id, generation_id);
+CREATE INDEX idx_reliability_scope ON reliability_items (vehicle_id, engine_id, generation_id);
+CREATE INDEX idx_research_checks_task ON research_checks (task);
+CREATE INDEX idx_gearbox_knowledge ON reliability_items (gearbox_id);

@@ -54,12 +54,14 @@ def variant_detail(c, vehicle_id):
     v['research'] = research.levels(contract.resolved(v['id']))
     v['engine_row'] = rows(c, 'SELECT * FROM engines WHERE id=?', (v['engine_id'],))[0]
     v['generation_row'] = rows(c, 'SELECT * FROM generations WHERE id=?', (v['generation_id'],))[0]
+    v['gearbox_row'] = (rows(c, 'SELECT * FROM gearboxes WHERE id=?', (v['gearbox_id'],)) or [None])[0]
     v['siblings'] = {'same_engine': [x['id'] for x in variants(c, 'WHERE v.engine_id=? AND v.id<>?', (v['engine_id'], v['id']))],
+                     'same_gearbox': [x['id'] for x in variants(c, 'WHERE v.gearbox_id=? AND v.id<>?', (v['gearbox_id'], v['id']))],
                      'same_generation': [x['id'] for x in variants(c, 'WHERE v.generation_id=? AND v.id<>?', (v['generation_id'], v['id']))]}
     v['listings'] = rows(c, 'SELECT id, listing_id, platform, url, price_eur, mileage_km, first_registration, listing_status, '
                             'is_reference, last_checked FROM listings WHERE vehicle_id=? ORDER BY id', (vehicle_id,))
-    v['sources'] = rows(c, 'SELECT * FROM sources WHERE vehicle_id=? OR engine_id=? OR generation_id=? ORDER BY id',
-                        (v['id'], v['engine_id'], v['generation_id']))
+    v['sources'] = rows(c, 'SELECT * FROM sources WHERE vehicle_id=? OR engine_id=? OR generation_id=? OR gearbox_id=? ORDER BY id',
+                        (v['id'], v['engine_id'], v['generation_id'], v['gearbox_id']))
     return v
 
 

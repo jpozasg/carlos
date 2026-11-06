@@ -563,7 +563,13 @@
   "RUNNING": "Being researched",
   "DONE": "Done",
   "FAILED": "Failed",
-  "CANCELLED": "Cancelled"
+  "CANCELLED": "Cancelled",
+  "gearbox": "gearbox",
+  "MANUAL": "Manual",
+  "DCT": "Dual-clutch (DCT)",
+  "AT": "Automatic (torque converter)",
+  "CVT": "CVT",
+  "SINGLE-SPEED": "Single-speed"
  },
  "cv_ruler": "At a glance",
  "versus_title": "Keep or switch?",
@@ -897,5 +903,10 @@
  "ch_table": "Table",
  "ch_action": "Action",
  "ch_when": "When",
- "ch_older": "Older"
+ "ch_older": "Older",
+ "level_gearbox": "gearbox",
+ "same_gearbox": "Same gearbox",
+ "gears": "Gears",
+ "gearbox_type": "Type",
+ "no_gearbox": "No gearbox linked yet"
 }

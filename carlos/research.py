@@ -12,10 +12,11 @@ from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 4  # 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
+CONTRACT_VERSION = 5  # 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154); 5: gearbox level (#164)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
-LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id'}
+LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'gearbox': 'gearbox_id', 'variant': 'vehicle_id'}
+LEVEL_ORDER = ('generation', 'engine', 'gearbox', 'variant', 'listing')
 REL_SOURCES = {'adac': 'B', 'tuev': 'B', 'guide': 'C', 'engine_specific': 'C'}  # the same sources for every car, minimum quality
 
 
@@ -68,7 +69,7 @@ petrol = lambda ctx: (ctx['row'].get('fuel_type') or '').lower() in ('petrol', '
 electric = lambda ctx: ctx['row'].get('fuel_type') == 'Electric'
 combustion = lambda ctx: not electric(ctx)  # an engine with oil, filters, a timing drive (plug-in hybrids included)
 diesel = lambda ctx: (ctx['row'].get('fuel_type') or '').lower() == 'diesel'
-automatic = lambda ctx: bool(re.search(r'auto|dsg|cvt|dual.clutch|tiptronic', ctx['row'].get('transmission') or '', re.I))
+oil_change_gearbox = lambda ctx: ctx['row'].get('type') in ('DCT', 'AT', 'CVT')  # a manual's oil is usually a lifetime fill
 always = lambda ctx: True
 # which research_checks results satisfy an item that is a check, or the alternative to rows ('NONE FOUND' etc.)
 FOUND_OR_NONE, NOT_APPLICABLE = ('FOUND', 'NONE FOUND', 'N/A'), ('N/A',)
@@ -109,15 +110,20 @@ ITEMS = [
      _consumption, (), 'C', always, 1),
     ('var.tyres', 'variant', 'all-season tyres: size, price, tread life (variant or generation)', _tyres, (), None, always, 1),
     ('var.tax', 'variant', 'annual tax from the BMF Kfz-Steuer-Rechner', _tax, (), 'A', always, 1),
-    ('var.gearbox', 'variant', 'automatic gearbox weak points checked for this variant', None, FOUND_OR_NONE, 'C', automatic, 1),
+    ('gbx.identity', 'gearbox', 'gearbox code, type and number of gears', _fields('code', 'type', 'gears'), (), None, always, 5),
+    ('gbx.oil', 'gearbox', 'DCT / automatic / CVT oil service: interval and workshop price (or a check: lifetime fill)',
+     _job('GEARBOX_OIL'), ('NONE FOUND',), None, oil_change_gearbox, 5),
+    ('gbx.risks', 'gearbox', 'gearbox repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
 ]
-# weak points: the same four sources per part (docs/cost-research-protocol.md, step 2); the engine part on the engine,
-# the rest on the generation (owner decision 2026-11-05: gearbox on the generation, var.gearbox for automatics)
+# weak points: the same sources per part (docs/cost-research-protocol.md, step 2), each on the level the part belongs to
+# (issue #164): ENGINE on the engine (with an engine-specific source), GEARBOX on the gearbox (its faults follow the
+# gearbox type, not the model), CHASSIS and ELECTRICS on the generation
+REL_LEVEL = {'ENGINE': 'engine', 'GEARBOX': 'gearbox', 'CHASSIS': 'generation', 'ELECTRICS': 'generation'}
 for _part in config.RELIABILITY_PARTS:
     for _src, _q in REL_SOURCES.items():
         if _src != 'engine_specific' or _part == 'ENGINE':
-            ITEMS.append((f'rel.{_part}.{_src}', 'engine' if _part == 'ENGINE' else 'generation',
-                          f'{_part.lower()} weak points: {_src.replace("_", "-")} source checked', None, FOUND_OR_NONE, _q, always, 1))
+            ITEMS.append((f'rel.{_part}.{_src}', REL_LEVEL[_part], f'{_part.lower()} weak points: {_src.replace("_", "-")} source checked',
+                          None, FOUND_OR_NONE, _q, always, 5 if _part == 'GEARBOX' else 1))
 ITEM = {i[0]: i for i in ITEMS}
 TASKS = set(ITEM)
 
@@ -168,7 +174,7 @@ class Contract:
 
     def __init__(self, c, know):
         self.sources = {r['id']: r for r in rows(c, 'SELECT id, quality, source_type FROM sources')}
-        self.rows = {t: {r['id']: r for r in rows(c, f'SELECT * FROM {t}')} for t in ('vehicles', 'engines', 'generations')}
+        self.rows = {t: {r['id']: r for r in rows(c, f'SELECT * FROM {t}')} for t in ('vehicles', 'engines', 'gearboxes', 'generations')}
         self.index = {}
         for table, rs in know.t.items():
             for r in rs:
@@ -200,10 +206,13 @@ class Contract:
         engine job stored on the variant) counts as ACCEPTED at most, with a hint to move the row up."""
         v = self.rows['vehicles'][vehicle_id]
         engine, generation = self.rows['engines'][v['engine_id']], self.rows['generations'][v['generation_id']]
+        # a variant without a gearbox yet (#164) still owes the gearbox research: its items are graded on an empty row
+        gearbox = self.rows['gearboxes'].get(v.get('gearbox_id')) or {'id': None}
         out = []
         # only the variant counts as "too low": an engine row is the engine's research, not the generation's
-        lower = {'generation': [('vehicle_id', v['id'])], 'engine': [('vehicle_id', v['id'])], 'variant': []}
-        for level, row in (('generation', generation), ('engine', engine), ('variant', v)):
+        lower = {'generation': [('vehicle_id', v['id'])], 'engine': [('vehicle_id', v['id'])],
+                 'gearbox': [('vehicle_id', v['id'])], 'variant': []}
+        for level, row in (('generation', generation), ('engine', engine), ('gearbox', gearbox), ('variant', v)):
             below = None
             for i in self.level(level, row):
                 if i['grade'] == 'MISSING' and lower[level]:
@@ -221,7 +230,7 @@ def known_parts(items, evidence=frozenset()):
     buying guide finding nothing about a brand-new model is no track record; issue #150)."""
     known = set()
     for p in config.RELIABILITY_PARTS:
-        its = [i for i in items if i['id'].startswith(f'rel.{p}.') or p == 'GEARBOX' and i['id'] == 'var.gearbox']
+        its = [i for i in items if i['id'].startswith(f'rel.{p}.')]
         stats = [i for i in its if i['id'] in (f'rel.{p}.adac', f'rel.{p}.tuev')]
         if all(i['grade'] != 'MISSING' for i in its) and (p in evidence or not stats or not all(i.get('na_only') for i in stats)):
             known.add(p)
@@ -272,8 +281,8 @@ def published():
 
 
 def levels(items):
-    """Summary per level (generation, engine, variant, listing) of resolved items, for the UI."""
-    return {lvl: summary([i for i in items if i['level'] == lvl]) for lvl in ('generation', 'engine', 'variant', 'listing')
+    """Summary per level (generation, engine, gearbox, variant, listing) of resolved items, for the UI."""
+    return {lvl: summary([i for i in items if i['level'] == lvl]) for lvl in LEVEL_ORDER
             if any(i['level'] == lvl for i in items)}
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 import migrate
 from carlos import auth, config, server, costs, ranking
 from tests import fixture as fx
-from tests.fixture import REF, CAR_A, CAR_B, V_A, V_B, V_REF, V_B2, E_A, E_B, G1, G2, SRC_GUIDE, SRC_LISTING, SRC_QUOTE, SRC_TAX_OFFICIAL
+from tests.fixture import REF, CAR_A, CAR_B, V_A, V_B, V_REF, V_B2, E_A, E_B, G1, G2, GB_M, GB_AT, SRC_GUIDE, SRC_LISTING, SRC_QUOTE, SRC_TAX_OFFICIAL
 
 TOKEN, PASSWORD = fx.TOKEN, fx.PASSWORD
 REAL_DB = config.ROOT / 'data' / 'cars.sqlite'
@@ -161,7 +161,7 @@ class AppTest(unittest.TestCase):
         # the sibling variant on the same engine and generation inherits the same rows
         v = self.req('GET', f'/api/vehicles/{V_B2}')[1]
         self.assertEqual(len(v['maintenance_items']), 3)
-        self.assertEqual(v['siblings'], {'same_engine': [V_B], 'same_generation': [V_B]})
+        self.assertEqual(v['siblings'], {'same_engine': [V_B], 'same_gearbox': [], 'same_generation': [V_B]})
         a = self.req('GET', f'/api/listings/{CAR_A}')[1]
         self.assertEqual({m['level'] for m in a['maintenance']}, {'engine', 'generation'})
         self.assertEqual({r['component'] for r in a['repair_risks']}, {'Water pump', 'Rear axle bushings'})
@@ -780,11 +780,11 @@ class AppTest(unittest.TestCase):
         self.assertTrue(any(t.startswith('not checked for over') for t in lst[CAR_B]))
         self.assertIn('variant var.tax missing: annual tax from the BMF Kfz-Steuer-Rechner', mod[V_B])   # an estimate is not the calculator
         self.assertIn('variant var.identity missing: HSN/TSN, gearbox, body, emissions class, CO2', mod[V_B2])
-        self.assertIn('variant var.gearbox missing: automatic gearbox weak points checked for this variant', mod[V_B2])
-        self.assertFalse(any('var.gearbox' in t for t in mod[V_A]))           # manual gearbox: the generation's checks suffice
+        self.assertIn('gearbox gbx.oil missing: DCT / automatic / CVT oil service: interval and workshop price (or a check: lifetime fill)', mod[V_B2])
+        self.assertFalse(any('gbx.oil' in t for t in mod[V_A]))               # a manual gearbox owes no oil service (#164)
         self.assertIn('generation gen.recalls missing: recall search (KBA / manufacturer)', mod[V_A])
         self.assertEqual({x['vehicle_id']: x['state'] for x in d['models']}[V_A], 'incomplete')
-        self.assertEqual(set(d['catalogue']), {'generations', 'engines', 'variants'})
+        self.assertEqual(set(d['catalogue']), {'generations', 'engines', 'gearboxes', 'variants'})
         e_a = {x['id']: x for x in d['catalogue']['engines']}[E_A]
         self.assertIn('eng.coolant', e_a['missing'])
         self.assertIn('eng.oil', e_a['accepted'])                               # a DIY price from a C source
@@ -929,6 +929,32 @@ class AppTest(unittest.TestCase):
         self.assertEqual((d['manual'], d['weights']['power'], d['derived_weights']['power']), (True, 2, 5))
         self.req('POST', '/api/parameters', {'ranking_weights': None})                 # back to the answers
         self.assertEqual(self.req('GET', '/api/ranking')[1]['manual'], False)
+
+    def test_gearbox_level_164(self):
+        """Issue #164: a shared gearbox level; its rows reach every variant that uses it, its checks decide the GEARBOX part,
+        only gearbox-capable tables take gearbox_id, and admins write it to the catalogue."""
+        st, r = self.agent('POST', 'gearboxes', {'code': 'DQ200', 'type': 'DCT', 'gears': 7})
+        self.assertEqual(st, 201)
+        self.assertEqual(self.agent('POST', 'gearboxes', {'code': 'X', 'type': 'AUTOMATIC'})[0], 400)       # fixed code
+        self.assertEqual(self.req('GET', '/api/gearboxes')[1][-1]['owner_id'], None)                    # catalogue row
+        # a gearbox weak point on the shared manual reaches every variant using it
+        st, _ = self.agent('POST', 'reliability_items', {'gearbox_id': GB_M, 'component': 'Clutch', 'part': 'GEARBOX', 'severity': 'MEDIUM',
+                                                          'source_id': SRC_GUIDE, 'inspection_action': 'Test the clutch bite point'})
+        self.assertEqual(st, 201)
+        for car in (CAR_A, CAR_B):
+            d = self.req('GET', f'/api/listings/{car}')[1]
+            self.assertIn(('Clutch', 'gearbox'), {(x['component'], x['level']) for x in d['reliability']})
+            self.assertEqual(d['reliability_parts']['GEARBOX'], 7)
+            self.assertEqual(d['gearbox_row']['code'], 'MT5')
+        # two levels at once, or a gearbox on a table without that level, is refused
+        self.assertEqual(self.agent('POST', 'reliability_items', {'gearbox_id': GB_M, 'engine_id': E_A, 'component': 'x', 'part': 'GEARBOX', 'source_id': SRC_GUIDE})[0], 400)
+        self.assertEqual(self.agent('POST', 'tax_data', {'gearbox_id': GB_M, 'annual_tax_eur': 1, 'source_id': SRC_GUIDE})[0], 400)
+        # the GEARBOX part is known only with its checks on the gearbox (not on the generation any more)
+        c = sqlite3.connect(config.DB)
+        chk = c.execute("SELECT id FROM research_checks WHERE gearbox_id=? AND task='rel.GEARBOX.adac'", (GB_M,)).fetchone()[0]
+        c.close()
+        self.assertEqual(self.agent('PATCH', f'research_checks/{chk}', {'archived': 1})[0], 200)
+        self.assertIsNone(self.req('GET', f'/api/listings/{CAR_A}')[1]['reliability_parts']['GEARBOX'])
 
     def test_phase_windows_153(self):
         """Issue #153: a generation row with a first-registration window applies only to cars registered inside it."""
@@ -1082,7 +1108,7 @@ class AppTest(unittest.TestCase):
         st, s = self.agent('GET', 'schema')
         self.assertEqual(st, 200)
         self.assertIn('engines', s['writable_tables'])
-        self.assertEqual(s['scope_columns'], ['vehicle_id', 'engine_id', 'generation_id'])
+        self.assertEqual(s['scope_columns'], ['vehicle_id', 'engine_id', 'generation_id', 'gearbox_id'])
         self.assertEqual(s['code_formats']['listing_events.kind'], '[a-z][a-z_]*')
         self.assertIn('WET BELT', s['fixed_codes']['engines.timing_drive'])
         self.assertEqual(self.agent('POST', 'listing_events', {'listing_id': CAR_A, 'event_date': '2026-11-03', 'kind': 'Decision', 'text': 'x'})[0], 400)

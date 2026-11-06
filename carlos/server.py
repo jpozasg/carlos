@@ -328,6 +328,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(rows(c, 'SELECT * FROM generations ORDER BY make, model, start_year, id'))
             elif path == '/api/engines':
                 self.send_json(rows(c, 'SELECT * FROM engines ORDER BY id'))
+            elif path == '/api/gearboxes':  # the shared gearbox level (#164)
+                self.send_json(rows(c, 'SELECT * FROM gearboxes ORDER BY id'))
             elif path == '/api/parameters':
                 self.send_json(p)
             elif path == '/api/ui/check':

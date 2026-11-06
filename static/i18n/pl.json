@@ -565,7 +565,13 @@
   "RUNNING": "W trakcie",
   "DONE": "Gotowe",
   "FAILED": "Nieudane",
-  "CANCELLED": "Anulowane"
+  "CANCELLED": "Anulowane",
+  "gearbox": "skrzynia biegów",
+  "MANUAL": "Manualna",
+  "DCT": "Dwusprzęgłowa (DCT)",
+  "AT": "Automatyczna (konwerter momentu)",
+  "CVT": "CVT",
+  "SINGLE-SPEED": "Jednobiegowa"
  },
  "cv_ruler": "Na pierwszy rzut oka",
  "versus_title": "Zostawić czy zmienić?",
@@ -899,5 +905,10 @@
  "ch_table": "Tabela",
  "ch_action": "Akcja",
  "ch_when": "Kiedy",
- "ch_older": "Starsze"
+ "ch_older": "Starsze",
+ "level_gearbox": "skrzynia biegów",
+ "same_gearbox": "Ta sama skrzynia biegów",
+ "gears": "Biegi",
+ "gearbox_type": "Typ",
+ "no_gearbox": "Brak powiązanej skrzyni biegów"
 }

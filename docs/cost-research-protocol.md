@@ -16,7 +16,9 @@ Research agents never use a browser, never touch another listing or another acco
 ## Data levels: where a row goes
 Every knowledge row is written to exactly one level and inherited by every car below it:
 - **engine** (`level='engine'`): oil and filters, spark plugs, timing drive, coolant, drive belt, engine faults (chain rattle, oil consumption, turbo, injectors, wet belt), engine-related repair risks, engine-level consumption only when no variant page exists.
-- **generation**: HU/AU, brakes, wipers, bulbs, battery, suspension, body rust, electrics, interior; chassis repair risks; tyre size when every engine shares it.
+- **gearbox** (`level='gearbox'`, issue #164): every variant references one shared gearbox (`gearbox()` creates or reuses it by code, e.g. DQ200 7-speed DSG, MQ200 5-speed manual, Aisin AW TF-60SC; type `MANUAL`, `DCT`, `AT`, `CVT` or `SINGLE-SPEED`; gears; maker). Gearbox faults follow the gearbox type, not the model, so they live here once and every model using it inherits them: clutch and dual-mass flywheel, mechatronics, synchros, torque converter, CVT belt, gearbox oil service (`GEARBOX_OIL` job for DCT/AT/CVT), gearbox repair risks.
+- **generation**: HU/AU, brakes, wipers, bulbs, battery, suspension, steering, body rust, body electrics and infotainment, interior; chassis repair risks; tyre size when every engine shares it. Variant exceptions (4×4, sport suspension, a body style's rear axle) go on the variant; a phase (fixed at the facelift) gets a date window.
+- **Where each reliability part lives** (#164): `ENGINE` on the engine (including engine-related electrics: alternator, start-stop battery, injection electronics; for hybrids and EVs the high-voltage battery, motor, inverter and charger, the "drive unit"); `GEARBOX` on the gearbox; `CHASSIS` on the generation (variant exceptions, windows); body `ELECTRICS` on the generation (windows per phase).
 - **variant** (default): the exact HSN/TSN data: consumption (the autokostencheck page of the variant), tax, insurance, tyre size when it differs per engine.
 Before writing, read `variant(V)`: rows already inherited must not be written again. If a car shares an engine code or a generation with an existing row, reuse it (`GET /api/engines`, `GET /api/generations`) instead of creating a second one.
 
@@ -104,7 +106,7 @@ Start with `todo(listing_id=L)` and `todo(vehicle_id=V)`, read the listing (`lis
 - **ACCEPTED**: present, but `ESTIMATED` or from a C/D source. A row found one level too low (an engine job on the variant) counts as ACCEPTED at most, and the to-do says to move it.
 - **VERIFIED**: a verified, official or primary row from an A/B source; for a check, an A/B source.
 
-A level is **researched** when no item is MISSING and **verified** when every item is VERIFIED. The confidence criterion is the mean grade of the variant's, its engine's, its generation's and its listing's items (VERIFIED 1, ACCEPTED 0.5, MISSING 0).
+A level is **researched** when no item is MISSING and **verified** when every item is VERIFIED. The confidence criterion is the mean grade of the variant's, its engine's, its gearbox's, its generation's and its listing's items (VERIFIED 1, ACCEPTED 0.5, MISSING 0).
 
 **Checks** (`check(level, id, task, source_id, result, notes)`, table `research_checks`) record a task done on one level: `FOUND`, `NONE FOUND` ("consulted, nothing to report": a clean part counts as researched) or `N/A` (does not apply, e.g. no facelift). Write one per source consulted, also when the source lists nothing.
 
@@ -131,8 +133,10 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `var.consumption` | variant | `Autokostencheck average` with sample size, min and max (electric: `EVDB real consumption`, kWh/100 km, a value only) | C |
 | `var.tyres` | variant (or its generation) | size, price per tyre, tread life | – |
 | `var.tax` | variant | a tax row from the BMF Kfz-Steuer-Rechner (`tax_official_calculator`) | A |
-| `var.gearbox` | variant (automatics) | check: weak points of this automatic gearbox | C |
-| `rel.<PART>.<source>` | engine (ENGINE) or generation (GEARBOX, CHASSIS, ELECTRICS) | check per part and source: `adac`, `tuev` (B), `guide` (C) and, for ENGINE, `engine_specific` (C). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
+| `gbx.identity` | gearbox | code, type and number of gears | – |
+| `gbx.oil` | gearbox (DCT, AT, CVT) | the `GEARBOX_OIL` job with an interval and the workshop price, or a check `NONE FOUND` (lifetime fill) | – |
+| `gbx.risks` | gearbox | gearbox repair risks, every one priced, or a check `NONE FOUND` | – |
+| `rel.<PART>.<source>` | engine (ENGINE), gearbox (GEARBOX, since contract 5) or generation (CHASSIS, ELECTRICS) | check per part and source: `adac`, `tuev` (B), `guide` (C) and, for ENGINE, `engine_specific` (C). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
 | `lst.insurance` | listing | a quote younger than 60 days (the reference car: the premium the owner pays) | – |
 | `lst.tax_covered` | listing | a tax row whose registration window covers the car's first registration (an electric car exempt for the whole period needs none) | – |
 | `lst.valuation` | listing | a `resale_end` valuation | – |

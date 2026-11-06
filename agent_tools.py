@@ -119,12 +119,13 @@ def log(listing_id, kind, text, source_id=None):
 
 
 # ---------------------------------------------------------------- data levels (issue #44)
-LEVEL_COLUMNS = {'variant': 'vehicle_id', 'engine': 'engine_id', 'generation': 'generation_id'}
+LEVEL_COLUMNS = {'variant': 'vehicle_id', 'engine': 'engine_id', 'generation': 'generation_id', 'gearbox': 'gearbox_id'}
 
 
 def scope(v, level='variant'):
-    """The column that attaches a knowledge row to a level. `v` is the variant id (vehicles.id); with level 'engine'
-    or 'generation' the row is attached to that variant's engine or generation, so every variant sharing it
+    """The column that attaches a knowledge row to a level. `v` is the variant id (vehicles.id); with level 'engine',
+    'gearbox' (maintenance, risks, reliability, checks; #164) or 'generation' the row is attached to that variant's engine,
+    gearbox or generation, so every variant sharing it
     inherits the row. Pass an explicit id with level_id=... in the helpers when you have it."""
     if level == 'variant':
         return {'vehicle_id': v}
@@ -140,6 +141,13 @@ def variant(v):
 def engine(**row):
     """Register an engine (code, description, fuel_type, displacement_cc, power_kw/ps, aspiration, injection, timing_drive)."""
     return post('engines', row)
+
+
+def gearbox(code, **row):
+    """The shared gearbox with this code (#164: DQ200, MQ200, ...): reused when it exists, else registered with type
+    (MANUAL, DCT, AT, CVT, SINGLE-SPEED), gears, maker, description, status. Link it with PATCH vehicles {gearbox_id}."""
+    hit = [g for g in get('/api/gearboxes') if (g.get('code') or '').strip().lower() == code.strip().lower()]
+    return min(g['id'] for g in hit) if hit else post('gearboxes', {'code': code, **row})
 
 
 def generation(**row):

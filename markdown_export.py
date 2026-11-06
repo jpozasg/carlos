@@ -49,6 +49,7 @@ def render(u, p):
              '## 2. Model and generation', '',
              f"- **Generation:** {val(u['generation'])}, on sale {val(u['generation_start_year'])}–{val(u['generation_end_year'])}; facelift {val(u['facelift_year'])}",
              f"- **Engine:** {val(u['engine_code'])} {u['engine_description'] or ''} · {val(u['displacement_cc'], 'cm³')} · {val(u['power_ps'], 'PS')} · {val(u['transmission'])}",
+             f"- **Gearbox:** {val(u.get('gearbox_code'))} · {val(u.get('gearbox_type'))} · {val(u.get('gearbox_gears'), 'gears', 0)}",
              f"- **Fuel / emissions:** {val(u['fuel_type'])} · {val(u['emissions_standard'])} · {val(u['co2_g_km'], 'g CO₂/km', 0)}",
              f"- **HSN/TSN:** {val(u['hsn'])} / {val(u['tsn'])}",
              f"- **Technical status:** {val(u['technical_status'])}", f"- **Model notes:** {val(u['vehicle_notes'])}", '',

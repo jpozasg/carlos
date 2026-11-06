@@ -72,11 +72,14 @@ def todo(c, p, ranked):
         loose = [r['id'] for r in know.of('reliability_items', v) if r.get('part') is None]
         if loose:
             t.append(f"reliability items without a part (reliability_items.part), reliability unknown: ids {loose}")
+        if v.get('gearbox_id') is None:
+            t.append('variant has no gearbox (vehicles.gearbox_id): link or create its gearbox (#164)')
         models.append({'vehicle_id': v['id'], 'engine_id': v['engine_id'], 'generation_id': v['generation_id'],
-                       'name': variant_name(v), 'state': research.state(items), 'todo': t})
+                       'gearbox_id': v.get('gearbox_id'), 'name': variant_name(v), 'state': research.state(items), 'todo': t})
     # each catalogue level on its own rows only, so "researched" does not depend on the listing that triggered it
     labels = (('generations', 'generations', 'generation', lambda r: f"{r['make']} {r['model']} {r['name']}"),
               ('engines', 'engines', 'engine', lambda r: r['code']),
+              ('gearboxes', 'gearboxes', 'gearbox', lambda r: r['code']),
               ('variants', 'vehicles', 'variant', lambda r: r['trim'] or f"#{r['id']}"))
     catalogue = {name: [{'id': r['id'], 'name': label(r), **without_items(research.summary(contract.level(lvl, r)))}
                         for r in level[table].values()] for name, table, lvl, label in labels}

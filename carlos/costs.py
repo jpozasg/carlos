@@ -213,12 +213,14 @@ def check_budget(p):
         raise ValueError('budget_ideal_eur must not be greater than budget_max_eur')
 
 
-UNITS_SQL = '''SELECT l.*, v.generation_id, v.engine_id, v.trim, v.transmission, v.body_style, v.model_year,
+UNITS_SQL = '''SELECT l.*, v.generation_id, v.engine_id, v.gearbox_id, v.trim, v.transmission, v.body_style, v.model_year,
   v.emissions_standard, v.co2_g_km, v.hsn, v.tsn, v.technical_status, v.notes vehicle_notes,
   g.make, g.model, g.name generation, g.start_year generation_start_year, g.end_year generation_end_year, g.facelift_year,
   e.code engine_code, e.family engine_family, e.description engine_description, e.fuel_type, e.displacement_cc, e.cylinders,
-  e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive, e.battery_usable_kwh, e.ac_charge_kw, e.dc_charge_kw
+  e.power_kw, e.power_ps, e.aspiration, e.injection, e.timing_drive, e.battery_usable_kwh, e.ac_charge_kw, e.dc_charge_kw,
+  x.code gearbox_code, x.type gearbox_type, x.gears gearbox_gears
 FROM listings l JOIN vehicles v ON v.id=l.vehicle_id JOIN generations g ON g.id=v.generation_id JOIN engines e ON e.id=v.engine_id
+  LEFT JOIN gearboxes x ON x.id=v.gearbox_id
 ORDER BY l.is_reference DESC, l.id'''
 
 
@@ -396,7 +398,7 @@ def tco_rows(c, p):
     ref_sale = vals.get(ref['id'], {}).get('sale_today') if ref else None
     out = []
     for u in units:
-        v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
+        v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id'], 'gearbox_id': u['gearbox_id']}
         # a new car is registered when bought: today stands in for its first registration (tax window, EV exemption)
         new = is_new(u)
         reg = u['first_registration'] or (today.isoformat()[:7] if new else None)
@@ -594,7 +596,7 @@ def listing_detail(c, listing_id, p, ranked):
     if u is None:
         return None
     q = lambda sql: rows(c, sql, (listing_id,))
-    v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
+    v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id'], 'gearbox_id': u['gearbox_id']}
     know = Knowledge(c)
     reg = u['first_registration'] or (datetime.date.today().isoformat()[:7] if is_new(u) else None)  # as in the ranking
     u.update(valuations=q('SELECT * FROM valuations WHERE listing_id=? ORDER BY id'),
@@ -609,9 +611,10 @@ def listing_detail(c, listing_id, p, ranked):
              tyres=know.of('tyre_data', v),
              engine_row=rows(c, 'SELECT * FROM engines WHERE id=?', (v['engine_id'],))[0],
              generation_row=rows(c, 'SELECT * FROM generations WHERE id=?', (v['generation_id'],))[0],
-             sources=rows(c, 'SELECT * FROM sources WHERE vehicle_id=? OR engine_id=? OR generation_id=? '
+             gearbox_row=(rows(c, 'SELECT * FROM gearboxes WHERE id=?', (v['gearbox_id'],)) or [None])[0],
+             sources=rows(c, 'SELECT * FROM sources WHERE vehicle_id=? OR engine_id=? OR generation_id=? OR gearbox_id=? '
                              'OR id IN (SELECT source_id FROM listing_events WHERE listing_id=?) OR id=? ORDER BY id',
-                          (v['id'], v['engine_id'], v['generation_id'], listing_id, u['source_id'])))
+                          (v['id'], v['engine_id'], v['generation_id'], v['gearbox_id'], listing_id, u['source_id'])))
     u['research_levels'] = research.levels(u['research'])
     months = p['ownership_years'] * 12
     restarted = frozenset(r['maintenance_item_id'] for r in u['maintenance_resets'])

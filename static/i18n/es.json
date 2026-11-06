@@ -563,7 +563,13 @@
   "RUNNING": "Investigándose",
   "DONE": "Hecho",
   "FAILED": "Fallido",
-  "CANCELLED": "Cancelado"
+  "CANCELLED": "Cancelado",
+  "gearbox": "caja de cambios",
+  "MANUAL": "Manual",
+  "DCT": "Doble embrague (DCT)",
+  "AT": "Automática (convertidor de par)",
+  "CVT": "CVT",
+  "SINGLE-SPEED": "Una velocidad"
  },
  "cv_ruler": "De un vistazo",
  "versus_title": "¿Quedarte o cambiar?",
@@ -897,5 +903,10 @@
  "ch_table": "Tabla",
  "ch_action": "Acción",
  "ch_when": "Cuándo",
- "ch_older": "Anteriores"
+ "ch_older": "Anteriores",
+ "level_gearbox": "caja de cambios",
+ "same_gearbox": "Misma caja de cambios",
+ "gears": "Marchas",
+ "gearbox_type": "Tipo",
+ "no_gearbox": "Aún sin caja de cambios vinculada"
 }

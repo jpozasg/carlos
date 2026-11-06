@@ -563,7 +563,13 @@
   "RUNNING": "Wird recherchiert",
   "DONE": "Erledigt",
   "FAILED": "Fehlgeschlagen",
-  "CANCELLED": "Abgebrochen"
+  "CANCELLED": "Abgebrochen",
+  "gearbox": "Getriebe",
+  "MANUAL": "Schaltgetriebe",
+  "DCT": "Doppelkupplung (DCT)",
+  "AT": "Wandlerautomatik",
+  "CVT": "CVT",
+  "SINGLE-SPEED": "Eingang"
  },
  "cv_ruler": "Auf einen Blick",
  "versus_title": "Behalten oder wechseln?",
@@ -897,5 +903,10 @@
  "ch_table": "Tabelle",
  "ch_action": "Aktion",
  "ch_when": "Wann",
- "ch_older": "Ältere"
+ "ch_older": "Ältere",
+ "level_gearbox": "Getriebe",
+ "same_gearbox": "Gleiches Getriebe",
+ "gears": "Gänge",
+ "gearbox_type": "Bauart",
+ "no_gearbox": "Noch kein Getriebe verknüpft"
 }
