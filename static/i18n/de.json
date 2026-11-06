@@ -359,6 +359,7 @@
  "rs_accepted": "{n} geschätzt oder C/D-Quelle",
  "rs_move": "Eine Ebene höher verschieben",
  "part_unknown": "nicht recherchiert",
+ "part_too_new": "zu neu für Statistiken",
  "levels_hint": "eine Zeile, die einem Motor oder einer Generation zugeordnet ist, gilt für jede Variante, die ihn bzw. sie teilt",
  "models_title": "Modelle",
  "models_lead": "Marke → Modell → Generation → Motor → Variante. Wartung, Risiken und Schwachstellen sind der passenden Ebene zugeordnet und werden von jeder darunterliegenden Variante geerbt.",

@@ -60,6 +60,9 @@ PRIMARY_CONSUMPTION_EV = 'Spritmonitor average'
 # Kfz-Steuer of electric cars (§ 3d KraftStG as amended by the 8. KraftStÄndG, in force 2026-01-01): first registered by
 # this month → exempt for 10 years, until this month at the latest (year, month)
 EV_TAX_EXEMPT_REGISTERED_BY, EV_TAX_EXEMPT_UNTIL = (2030, 12), (2035, 12)
+# a new car (issue #150): no first registration and under this mileage (delivery/demo km); its first HU is due 36 months
+# after registration, then every 24 (StVZO Anlage VIII 2.1)
+NEW_CAR_MAX_KM, NEW_CAR_FIRST_HU_MONTHS = 100, 36
 OWNER_CONSUMPTION = 'Owner measured average'
 # Insurance: the reference car uses the premium the user actually pays (USER DATA) over comparison quotes.
 USER_PREMIUM = 'USER DATA'

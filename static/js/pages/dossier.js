@@ -67,12 +67,14 @@ function scoreBox(d) {
 // reliability as its own element (issue #80): total out of 36 and one meter per part out of 9; each part starts at 9
 // and loses its 3 worst points, so higher is better: ≥6 green, ≥3 amber, below 3 red
 const relBand = v => v >= 6 ? 'good' : v >= 3 ? 'avg' : 'poor';
+// an unknown part: not researched yet, or too new for any reliability statistic (issue #150)
+const partUnknown = (d, k) => (d.reliability_too_new || []).includes(k) ? 'part_too_new' : 'part_unknown';
 function relBox(d) {
   const total = (d.metrics || {}).reliability;
   const tip = `<span class="tipicon" tabindex="0" role="img" aria-label="${esc(t('plate_rel_note'))}" data-tip="${esc(t('plate_rel_note'))}">${INFO_SVG}</span>`;
   const head = `<div class="rb-head">${t('plate_reliability')} ${tip}<span class="rb-total num">${total == null ? PEND() : t('plate_rel_total', { n: num(total, 1) })}</span></div>`;
   return `<div class="relbox">${head}<div class="rb-rows">${PARTS.map(k => { const v = (d.reliability_parts || {})[k];
-    if (v == null) return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter"></span><span class="rb-val small muted">${t('part_unknown')}</span>`;
+    if (v == null) return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter"></span><span class="rb-val small muted">${t(partUnknown(d, k))}</span>`;
     return `<span class="rb-part">${esc(t('part_' + k))}</span><span class="rb-meter rb-${relBand(v)}" role="img" aria-label="${esc(t('part_' + k))} ${num(v, 1)} / 9"><i style="width:${Math.max(2, v / 9 * 100)}%"></i></span><span class="rb-val num">${num(v, 1)}</span>`; }).join('')}</div></div>`;
 }
 // the cost per month, the other key figure, as a strip at the top of the plate (issue #80)
@@ -181,7 +183,7 @@ function reliabilityCard(d) {
   const det = Object.fromEntries((d.reliability_detail || []).map(x => [x.id, x]));
   const state = r => { const x = det[r.id] || {};
     return x.excluded ? `<span class="tag good">${t('rel_recall_done')}</span>` : x.counted ? `<span class="tag">${t('rel_counted')} −${num(x.points, 1)}</span>` : `<span class="small muted">${t('rel_not_counted')}</span>`; };
-  const group = (part, rows) => rows.length ? `<h4 class="small" style="margin:12px 0 4px">${part ? esc(t('part_' + part)) : esc(t('rel_no_part'))}${part ? ` <span class="muted num">${(d.reliability_parts || {})[part] == null ? t('part_unknown') : `${num(d.reliability_parts[part], 1)} / 9 ${t('rel_pts')}`}</span>` : ''}</h4>
+  const group = (part, rows) => rows.length ? `<h4 class="small" style="margin:12px 0 4px">${part ? esc(t('part_' + part)) : esc(t('rel_no_part'))}${part ? ` <span class="muted num">${(d.reliability_parts || {})[part] == null ? t(partUnknown(d, part)) : `${num(d.reliability_parts[part], 1)} / 9 ${t('rel_pts')}`}</span>` : ''}</h4>
     <ul class="check">${rows.sort((a, b) => (det[b.id]?.points || 0) - (det[a.id]?.points || 0)).map(r => `<li><span class="ico pend" aria-hidden="true">i</span><div><b>${esc(r.component)}</b> · ${esc(r.issue ?? '')}<div class="small" style="margin:4px 0">${sevTag(r.severity)} ${lvlTag(r.level)}${r.is_recall ? ` <span class="tag warn">${t('rel_recall')}</span>` : ''} ${state(r)}</div>${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}</div></li>`).join('')}</ul>` : '';
   const total = (d.metrics || {}).reliability;
   return `<div class="card"><h3>${t('reliability')} ${total == null ? '' : `<span class="muted small num">${t('plate_rel_total', { n: num(total, 1) })}</span>`}</h3><p class="small muted" style="margin-top:0">${t('rel_lead')}</p>

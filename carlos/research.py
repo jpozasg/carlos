@@ -146,7 +146,9 @@ def evaluate(level, row, rows, sources):
             continue
         found = list(cands(ctx)) if cands else []
         found += [r for r in rows('research_checks') if r['task'] == iid and r['result'] in results and r['contract_version'] >= since]
-        out.append({'id': iid, 'level': lvl, 'title': title, 'grade': grade_rows(found, sources, min_q)})
+        # na_only: every result is N/A (the source does not cover this model yet, e.g. too new for ADAC/TÜV statistics)
+        out.append({'id': iid, 'level': lvl, 'title': title, 'grade': grade_rows(found, sources, min_q),
+                    'na_only': bool(found) and all(x.get('result') == 'N/A' for x in found)})
     return out
 
 
@@ -211,10 +213,24 @@ class Contract:
         return out
 
 
-def known_parts(items):
-    """Reliability parts whose required source checks are all present (owner decision: otherwise the part is unknown)."""
-    return {p for p in config.RELIABILITY_PARTS
-            if all(i['grade'] != 'MISSING' for i in items if i['id'].startswith(f'rel.{p}.') or p == 'GEARBOX' and i['id'] == 'var.gearbox')}
+def known_parts(items, evidence=frozenset()):
+    """Reliability parts whose required source checks are all present (owner decision: otherwise the part is unknown).
+    A part whose long-term statistics (the ADAC and TÜV checks) are both N/A (the model is too new for them) is unknown
+    too, never a clean record, unless a weak point was documented for it (`evidence`: parts with reliability rows; a
+    buying guide finding nothing about a brand-new model is no track record; issue #150)."""
+    known = set()
+    for p in config.RELIABILITY_PARTS:
+        its = [i for i in items if i['id'].startswith(f'rel.{p}.') or p == 'GEARBOX' and i['id'] == 'var.gearbox']
+        stats = [i for i in its if i['id'] in (f'rel.{p}.adac', f'rel.{p}.tuev')]
+        if all(i['grade'] != 'MISSING' for i in its) and (p in evidence or not stats or not all(i.get('na_only') for i in stats)):
+            known.add(p)
+    return known
+
+
+def too_new_parts(items, evidence=frozenset()):
+    """The parts unknown only because no source covers the model yet (shown as such in the dossier)."""
+    return [p for p in config.RELIABILITY_PARTS if p not in known_parts(items, evidence)
+            and p in known_parts([{**i, 'na_only': False} for i in items], evidence)]
 
 
 def listing_items(u, rows, today):

@@ -359,6 +359,7 @@
  "rs_accepted": "{n} estimados o de fuente C/D",
  "rs_move": "Súbelo un nivel",
  "part_unknown": "sin investigar",
+ "part_too_new": "demasiado nuevo para estadísticas",
  "levels_hint": "una fila asociada a un motor o a una generación se aplica a todas las variantes que lo comparten",
  "models_title": "Modelos",
  "models_lead": "Marca → modelo → generación → motor → variante. El mantenimiento, los riesgos y los puntos de atención se asocian al nivel correcto y los heredan todas las variantes inferiores.",

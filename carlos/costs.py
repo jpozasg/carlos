@@ -15,14 +15,26 @@ def occurrences(interval_km, interval_months, km, months, restarted=False):
     return max(km / interval_km if interval_km else 0, months / interval_months if interval_months else 0)
 
 
-def maintenance_plan(items, km, months, restarted=frozenset()):
+def is_new(u):
+    """A new car (issue #150): never registered and only delivery kilometres."""
+    return not u.get('first_registration') and u.get('mileage_km') is not None and u['mileage_km'] < config.NEW_CAR_MAX_KM
+
+
+def due(i, km, months, restarted, new=False):
+    """Occurrences of one job: a new car's schedule starts at 0 (whole intervals), and its first HU is at 36 months."""
+    if new and i.get('job') == 'HU' and i['interval_months']:
+        return 0 if months < config.NEW_CAR_FIRST_HU_MONTHS else 1 + (months - config.NEW_CAR_FIRST_HU_MONTHS) // i['interval_months']
+    return occurrences(i['interval_km'], i['interval_months'], km, months, new or i['id'] in restarted)
+
+
+def maintenance_plan(items, km, months, restarted=frozenset(), new=False):
     """Per-job view of the item schedule over the period (what maintenance_cost adds up): occurrences, price used,
     cost and DIY hours; cost None when a due job has no price."""
     plan = []
     for i in items:
         if not i['active'] or i['schedule'] != 'ITEM' or not (i['interval_km'] or i['interval_months']):
             continue
-        n = occurrences(i['interval_km'], i['interval_months'], km, months, i['id'] in restarted)
+        n = due(i, km, months, restarted, new)
         price = i['diy_parts_cost_eur'] if i['diy'] else i['reference_cost_eur']
         plan.append({'id': i['id'], 'item': i['item'], 'level': i.get('level'), 'interval_km': i['interval_km'],
                      'interval_months': i['interval_months'], 'diy': i['diy'], 'price_eur': price, 'occurrences': round(n, 3),
@@ -58,7 +70,7 @@ def risk_plan(risks, km_now, km_period):
     return out
 
 
-def maintenance_cost(items, km, months, restarted=frozenset()):
+def maintenance_cost(items, km, months, restarted=frozenset(), new=False):
     """(cost, diy_hours) of scheduled maintenance over the period; (None, None) without data.
     Item schedules (schedule='ITEM') are costed one by one: DIY parts when the owner does the job (diy=1), otherwise the
     workshop reference; an item with an unknown price that falls due makes the total unknown (never 0). Without item
@@ -69,7 +81,7 @@ def maintenance_cost(items, km, months, restarted=frozenset()):
         return scheduled_maintenance([i for i in active if i['schedule'] == 'PACKAGE'], km, months), None
     total, hours = 0.0, 0.0
     for i in items_:
-        n = occurrences(i['interval_km'], i['interval_months'], km, months, i['id'] in restarted)
+        n = due(i, km, months, restarted, new)
         if not n:
             continue
         price = i['diy_parts_cost_eur'] if i['diy'] else i['reference_cost_eur']
@@ -370,7 +382,10 @@ def tco_rows(c, p):
     out = []
     for u in units:
         v = {'id': u['vehicle_id'], 'engine_id': u['engine_id'], 'generation_id': u['generation_id']}
-        cons, ins_row, tax_row = know.consumption(v, u['fuel_type']), know.insurance(v, u['is_reference']), know.tax(v, u['first_registration'])
+        # a new car is registered when bought: today stands in for its first registration (tax window, EV exemption)
+        new = is_new(u)
+        reg = u['first_registration'] or (today.isoformat()[:7] if new else None)
+        cons, ins_row, tax_row = know.consumption(v, u['fuel_type']), know.insurance(v, u['is_reference']), know.tax(v, reg)
         electric = u['fuel_type'] == 'Electric'
         annual_tax = (tax_row or {}).get('annual_tax_eur')
         u.update(consumption=cons['value_num'] if cons else None, consumption_unit=cons['unit'] if cons else None,
@@ -397,12 +412,12 @@ def tco_rows(c, p):
         def running(km_, months_):
             """The running components over km_ and months_ (the ownership period, or a lease's term)."""
             # an electric car's tax only for the months after its exemption: fully exempt = a known 0 by law, no row needed
-            taxable = ev_tax_months(u['first_registration'], today, months_) if electric else months_
-            maint, maint_hours = maintenance_cost(m_rows, km_, months_, restarted)
+            taxable = ev_tax_months(reg, today, months_) if electric else months_
+            maint, maint_hours = maintenance_cost(m_rows, km_, months_, restarted, new)
             risk, risk_hours = expected_repairs(r_rows, u['mileage_km'], km_)
             wear = tyre_cost(know.tyres(v), km_)
             # the jobs whose price for this account's DIY choice is missing, named for the to-do
-            unpriced = ([need(x) for x in maintenance_plan(m_rows, km_, months_, restarted) if x['cost_eur'] is None] if maint is None else []) + \
+            unpriced = ([need(x) for x in maintenance_plan(m_rows, km_, months_, restarted, new) if x['cost_eur'] is None] if maint is None else []) + \
                 ([need(x) for x in risk_plan(r_rows, u['mileage_km'], km_) if x['expected_eur'] is None] if risk is None and u['mileage_km'] is not None else [])
             return {'fuel': u['consumption'] * km_ / 100 * energy if u['consumption'] is not None and energy else None,
                     'tax': None if taxable is None else 0.0 if taxable == 0 else annual_tax * taxable / 12 if annual_tax is not None else None,
@@ -456,7 +471,7 @@ def tco_rows(c, p):
                               **({'lease': det['lease']} if u['offer'] == 'lease' else {})},
                  initial_outlay=(u['price_eur'] - ref_sale['expected_eur'] if not u['is_reference'] and ref_sale
                                  and u['price_eur'] is not None and u['offer'] == 'purchase' else None))
-        age = age_years(u['first_registration'], today)
+        age = 0.0 if new else age_years(u['first_registration'], today)
         counts = u['inspection_counts']
         items = contract.resolved(v['id'])
         rel_rows = know.of('reliability_items', v)
@@ -464,7 +479,9 @@ def tco_rows(c, p):
                                             'weak_points': {r['id'] for r in rel_rows}, 'checked': set(checks.get(u['id'], {})),
                                             'captured': u['id'] in captured}, today)
         u['research'] = items
-        rel_total, rel_parts, u['reliability_detail'] = reliability(rel_rows, checks.get(u['id'], {}), research.known_parts(items))
+        evidence = {r['part'] for r in rel_rows if r.get('part')}
+        rel_total, rel_parts, u['reliability_detail'] = reliability(rel_rows, checks.get(u['id'], {}), research.known_parts(items, evidence))
+        u['reliability_too_new'] = research.too_new_parts(items, evidence)
         u['reliability_parts'] = rel_parts
         rc = recall_checks.get(u['id'], {})
         insp_ok, insp_problem = counts.get('OK', 0) - rc.get('OK', 0), counts.get('PROBLEM', 0) - rc.get('PROBLEM', 0)
@@ -582,7 +599,7 @@ def listing_detail(c, listing_id, p, ranked):
     u['research_levels'] = research.levels(u['research'])
     months = p['ownership_years'] * 12
     restarted = frozenset(r['maintenance_item_id'] for r in u['maintenance_resets'])
-    u['maintenance_plan'] = maintenance_plan(u['maintenance'], u['period_km'], months, restarted)
+    u['maintenance_plan'] = maintenance_plan(u['maintenance'], u['period_km'], months, restarted, is_new(u))
     u['repair_risks'] = risk_plan(sorted(know.of('repair_risks', v), key=lambda r: (r['km_from'], r['id'])), u['mileage_km'], u['period_km'])
     # the dossier lists the sources these rows cite too (shared sources such as the HU fee have no vehicle)
     have = {s['id'] for s in u['sources']}

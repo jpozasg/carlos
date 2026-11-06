@@ -99,9 +99,9 @@ def validate(cap):
     if not isinstance(cap.get('vehicle_id'), int) or isinstance(cap.get('vehicle_id'), bool):
         raise ValueError('vehicle_id is required: register the model in vehicles first')
     for k in ('price_eur', 'mileage_km'):
-        v = cap.get(k)
-        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0):
-            raise ValueError(f'{k} must be a positive number or null (unknown), never 0')
+        v = cap.get(k)  # a new car's mileage is 0 (issue #150); a price is never 0
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0 or v == 0 and k == 'price_eur'):
+            raise ValueError(f'{k} must be a positive number or null (unknown); only a new car\'s mileage may be 0')
     if not isinstance(cap.get('attributes', {}), dict):
         raise ValueError('attributes must be an object with every feature exactly as shown')
     if not isinstance(cap.get('listing', {}), dict):
