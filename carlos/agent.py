@@ -2,7 +2,7 @@
 import hashlib, json, math, os, re, time
 from pathlib import Path
 from . import config, research
-from .auth import _KNOW, ARCHIVABLE, MODEL, OWNED
+from .auth import _KNOW, _LISTING_CHILDREN, ARCHIVABLE, MODEL, OWNED
 
 # Format of controlled codes written by the agent (English: upper-case statuses, snake_case kinds).
 CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_events', 'kind'): r'[a-z][a-z_]*',
@@ -132,6 +132,20 @@ def check_writable(c, table, row_id, data):
     if table in ADMIN_TABLES or (table == 'sources' and (level or shared)):
         raise NotAllowed(f'{table}: research and listings are written by the shared research worker (an admin token); '
                          'request the research instead (AGENTS.md)')
+
+
+def row_owner(c, table, row_id, data):
+    """The account a row belongs to (issue #143): its own owner_id, or its listing's; None for catalogue rows and new rows
+    that name no listing."""
+    if row_id is not None and (table in OWNED or table in _KNOW):
+        r = c.execute(f'SELECT owner_id FROM main.{table} WHERE id=?', (row_id,)).fetchone()
+        return r[0] if r else None
+    if row_id is not None and table in _LISTING_CHILDREN:
+        r = c.execute(f'SELECT l.owner_id FROM main.{table} x JOIN main.listings l ON l.id=x.listing_id WHERE x.id=?', (row_id,)).fetchone()
+        return r[0] if r else None
+    lid = data.get('listing_id') if isinstance(data, dict) and table in _LISTING_CHILDREN else None
+    r = c.execute('SELECT owner_id FROM main.listings WHERE id=?', (lid,)).fetchone() if isinstance(lid, int) else None
+    return r[0] if r else None
 
 
 def resolve_variant(c, data, owner_id):
