@@ -54,9 +54,13 @@ TAX_OFFICIAL_SOURCE = 'tax_official_calculator'  # sources.source_type of the BM
 # Fuel consumption: one real-world source for every car, the reference included, so the owner's driving style does not
 # favour or penalise the own car (user decision 2026-11-03). The owner's own figure is kept as a cross-check only.
 PRIMARY_CONSUMPTION = 'Autokostencheck average'
-# Electric cars (owner decision 2026-11-05): one real-world source for every electric car, in kWh/100 km. autokostencheck
-# often has 1–2 reports per electric variant; Spritmonitor has larger samples. The rule is "the same source per drivetrain".
-PRIMARY_CONSUMPTION_EV = 'Spritmonitor average'
+# Electric cars: one source for every electric car, in kWh/100 km (the same source per drivetrain). Spritmonitor blocks
+# automated readers (Cloudflare) and autokostencheck has no real-world EV averages, so the owner chose (2026-11-06, #154)
+# ev-database.org's modelled real-world consumption of the exact variant and battery: vehicle side, without charging losses.
+PRIMARY_CONSUMPTION_EV = 'EVDB real consumption'
+# Charging losses (ADAC: 6–10 % at a wallbox, 13–24 % at a household socket): every kWh in the battery costs this much
+# more at the meter; a household socket adds costs.SOCKET_EXTRA_LOSS on top (the extra over a wallbox), never twice.
+EV_CHARGING_LOSS = 0.08
 # Kfz-Steuer of electric cars (§ 3d KraftStG as amended by the 8. KraftStÄndG, in force 2026-01-01): first registered by
 # this month → exempt for 10 years, until this month at the latest (year, month)
 EV_TAX_EXEMPT_REGISTERED_BY, EV_TAX_EXEMPT_UNTIL = (2030, 12), (2035, 12)

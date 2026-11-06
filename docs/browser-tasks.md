@@ -62,8 +62,9 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
 - Build the capture JSONs with a script from the saved file. Non-breaking spaces (`\xa0`) appear in values such as `59\xa0kW`. Then run `capture_listing.py` with `--dry-run`, then for real.
 - The listing links shared by the user may contain `action=parkItem`; always strip it.
 
-## Spritmonitor (consumption)
-- spritmonitor.de shows a Cloudflare "Verify you are human" checkbox in the agent's tab. Do not click it; ask the user to pass it or provide the figures. Plain fetches return 403.
+## Electric car consumption: ev-database.org
+- ev-database.org opens with a plain fetch (WebFetch) or in the browser, no bot check; robots.txt allows it. Find the exact variant and battery (e.g. `https://ev-database.org/car/1164/Renault-Zoe-ZE50-R110`) and read the "Vehicle Consumption" line of the real-world section (Wh/km). If WebFetch does not return that line, read the page in the browser.
+- spritmonitor.de is not used: it shows a Cloudflare "Verify you are human" check in the agent's tab (never click it) and plain fetches return 403.
 
 ## Tax: BMF Kfz-Steuer-Rechner
 - URL: https://www.bundesfinanzministerium.de/Web/DE/Service/Apps_Rechner/KfzRechner/KfzRechner.html (consent banner: "Ablehnen").
