@@ -776,6 +776,7 @@ class AppTest(unittest.TestCase):
         """A DONE report with contract items missing goes back to the queue (attempts + 1), the third time FAILED; a complete
         listing is DONE; a usage-limit release is not an attempt."""
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/9'})
+        self.sql_write("UPDATE research_requests SET unit=NULL")   # a legacy single-run request: the whole listing is graded
         done = lambda rid: self.req('POST', f'/api/worker/requests/{rid}', {'status': 'DONE', 'listing_id': CAR_A, 'result': 'ok'})[1]
         claim = lambda: self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']
         self.gaps[:] = ['gen.hu', 'var.tyres']
@@ -877,6 +878,38 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'maintenance_items', {**job, 'job': 'CABIN_FILTER', 'generation_id': G1})[0], 201)
         st, ok = self.agent('POST', 'maintenance_items', {**job, 'generation_id': G1, 'distinct_of': [r['conflict'][0]['id']], 'notes': 'gearbox oil'})
         self.assertEqual(st, 201, ok)
+
+    def test_units_218(self):
+        """A listing request is split into units stage by stage; a unit with nothing missing is SKIPPED, the server re-grades each
+        unit, missing items re-queue it, and the parent is DONE when the stages are over."""
+        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/9'})
+        claim = lambda: self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']
+        finish = lambda r, **d: self.req('POST', f'/api/worker/requests/{r["id"]}', {'status': 'DONE', **d})[1]
+        parts = lambda: {p['unit']: p['status'] for p in self.req('GET', '/api/requests')[1][0]['parts']}
+        self.gaps[:] = ['var.tyres', 'gen.hu', 'lst.checklist']
+        cap = claim()
+        self.assertEqual(cap['unit'], 'CAPTURE')
+        self.assertEqual(finish(cap, listing_id=CAR_A)['status'], 'WAITING')
+        self.assertEqual(parts(), {'VARIANT': 'QUEUED'})                      # the next stages exist only when this one is closed
+        v = claim()
+        self.assertEqual((v['unit'], v['missing'], v['listing_id']), ('VARIANT', ['var.tyres'], CAR_A))
+        self.gaps[:] = ['gen.hu', 'lst.checklist']
+        self.assertEqual(finish(v)['status'], 'DONE')
+        self.assertEqual(parts(), {'VARIANT': 'DONE', 'GENERATION': 'SKIPPED', 'GEN_MAINTENANCE': 'QUEUED', 'ENGINE': 'SKIPPED', 'GEARBOX': 'SKIPPED'})
+        m = claim()
+        self.assertEqual(m['unit'], 'GEN_MAINTENANCE')
+        self.assertEqual(finish(m)['status'], 'QUEUED')                       # gen.hu still missing: another attempt
+        m = claim(); self.assertEqual(m['attempts'], 1)
+        self.gaps[:] = ['lst.checklist']
+        self.assertEqual(finish(m)['status'], 'DONE')
+        self.assertEqual(parts()['TAX'], 'SKIPPED')
+        last = claim()
+        self.assertEqual(last['unit'], 'LISTING')
+        self.gaps[:] = []
+        self.assertEqual(finish(last)['status'], 'DONE')
+        top = self.req('GET', '/api/requests')[1][0]
+        self.assertEqual((top['status'], top['listing_id']), ('DONE', CAR_A))
+        self.assertEqual(self.req('GET', '/api/admin/requests')[1][0]['children'][0]['unit'], 'VARIANT')
 
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
