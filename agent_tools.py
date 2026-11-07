@@ -184,12 +184,13 @@ def check(level, level_id, task, source_id, result, notes=None):
 
 
 def checklist_from_reliability(listing_id):
-    """One checklist item per weak point of the model, linked by reliability_item_id (capture_listing does this at
+    """One checklist item per weak point of the model (reliability item, fault with an inspection_action, recall row; #223), linked by
+    reliability_item_id / fault_id / recall_id; idempotent, so run it again after adding faults or recalls (capture_listing does this at
     capture time). A recall gets its own item naming the recall, because its result decides whether it counts."""
     u = listing(listing_id)
     added = 0
-    for item, rel_id in checklist_items(u.get('reliability', []), u.get('inspection', [])):
-        post('inspection_items', {'listing_id': listing_id, 'item': item, 'status': 'PENDING', 'reliability_item_id': rel_id})
+    for item, link in checklist_items(u, u.get('inspection', [])):
+        post('inspection_items', {'listing_id': listing_id, 'item': item, 'status': 'PENDING', **link})
         added += 1
     return added
 

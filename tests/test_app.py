@@ -823,6 +823,31 @@ class AppTest(unittest.TestCase):
         # archiving is always allowed
         self.assertEqual(self.agent('PATCH', f"faults/{first['id']}", {'archived': 1})[0], 200)
 
+    def test_checklist_covers_faults_and_recalls_223(self):
+        """A fault with an inspection_action and a recall row each get a checklist item (linked by fault_id / recall_id); until then
+        lst.checklist is MISSING, afterwards met; a fault without an action is not required; the helper is idempotent."""
+        from capture_listing import checklist_items
+        grade = lambda: {i['id']: i['grade'] for i in self.units()[CAR_A]['research']}['lst.checklist']
+        fault = {'component': 'Water pump seal', 'part': 'ENGINE', 'consequence': 'COST', 'existence': 'REPORTED', 'engine_id': E_A,
+                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 100, 'labor_eur': 100, 'source_id': SRC_GUIDE}
+        st, f = self.agent('POST', 'faults', {**fault, 'inspection_action': 'Look for coolant traces at the water pump'})
+        self.assertEqual(st, 201, f)
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'component': 'Oil cooler leak'})[0], 201)   # no action: no item
+        st, rc = self.agent('POST', 'recalls', {'engine_id': E_A, 'code': 'R1', 'defect': 'Wiring harness', 'safety': 1, 'source_id': SRC_GUIDE})
+        self.assertEqual(st, 201, rc)
+        self.assertEqual(grade(), 'MISSING')
+        d = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        todo = checklist_items(d, d['inspection'])
+        links = [l for _, l in todo]
+        self.assertIn({'fault_id': f['id']}, links)
+        self.assertIn({'recall_id': rc['id']}, links)
+        self.assertEqual(len([l for l in links if 'fault_id' in l]), 1)
+        for text, link in todo:
+            self.assertEqual(self.agent('POST', 'inspection_items', {'listing_id': CAR_A, 'item': text, 'status': 'PENDING', **link})[0], 201)
+        self.assertNotEqual(grade(), 'MISSING')
+        d = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertEqual(checklist_items(d, d['inspection']), [])   # idempotent
+
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
             self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{i}'})
