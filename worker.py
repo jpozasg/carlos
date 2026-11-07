@@ -74,6 +74,7 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku'):
     req = api.call('POST', '/api/worker/claim', {'worker': name})['request']
     if not req:
         return False
+    print(f'request {req["id"]}: picked up {req.get("url")} (model {model})', flush=True)
     # print mode stops background tasks 10 min after the last turn, which left request 4 hanging (issue #137): wait for them
     env = {**os.environ, 'CAR_API': api.base, 'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS': '0'}
     if req.get('request_token') and is_worker(api):  # the run only ever sees the per-request token (#141)
