@@ -4,7 +4,7 @@ import { S } from '../app.js';
 import { get, post, patch } from '../api.js';
 import { t } from '../i18n.js';
 import { $, esc, toast, empty, safeUrl } from '../ui.js';
-import { statusTag } from '../requests.js';
+import { statusTag, partsHtml } from '../requests.js';
 
 let root, users = [], reqs = [], lastInvite = null, workers = [], lastToken = null, changes = [];
 const WS = { idle: '', working: 'good', error: 'bad', down: 'bad', deactivated: '' };
@@ -12,7 +12,7 @@ const uname = id => esc(users.find(u => u.id === id)?.username ?? (id == null ? 
 function workersHtml() {
   const rows = workers.map(w => `<tr><td><b>${esc(w.name)}</b></td><td><span class="tag ${WS[w.status] ?? ''}">${esc(t('ws_' + w.status))}</span></td>
     <td class="small">${esc(w.last_seen ?? '—')}</td>
-    <td class="small">${w.url ? `<a href="${safeUrl(w.url)}" target="_blank" rel="noopener">${esc(w.url)}</a><div class="muted">${esc(w.username ?? '')}${w.listing_id ? ` · #${w.listing_id}` : ''}</div>` : '—'}</td>
+    <td class="small">${w.url ? `<a href="${safeUrl(w.url)}" target="_blank" rel="noopener">${esc(w.url)}</a><div class="muted">${esc(w.username ?? '')}${w.listing_id ? ` · #${w.listing_id}` : ''}${w.unit ? ` · ${t('wk_on', { u: esc(t('rp_' + w.unit)) })}` : ''}${w.parent_id ? ` · request #${w.parent_id}` : ''}</div>` : '—'}</td>
     <td class="small">${w.last_error ? `${esc(w.last_error)}<div class="muted">${esc(w.last_error_at ?? '')}</div>` : '—'}</td>
     <td class="row"><button class="btn ghost sm" type="button" data-wtoken="${w.id}">${t('worker_regen')}</button><button class="btn ghost sm" type="button" data-wactive="${w.id}" data-to="${w.is_active ? 0 : 1}">${w.is_active ? t('deactivate') : t('activate')}</button></td></tr>`).join('');
   return `<h3>${t('workers')}</h3><p class="small muted">${t('workers_lead')}</p>
@@ -39,7 +39,7 @@ function draw() {
     <h3 style="margin-top:24px">${t('req_queue')}</h3><p class="small muted">${t('req_queue_lead')}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('req_requested')}</th><th>${t('username')}</th><th>${t('req_url')}</th><th>${t('status')}</th><th>${t('req_result')}</th></tr></thead><tbody>${reqs.map(r => `<tr><td class="small">${esc(r.requested_at)}</td><td>${esc(r.username)}</td>
       <td class="small"><a href="${safeUrl(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a>${r.note ? `<div class="muted">${esc(r.note)}</div>` : ''}</td><td>${statusTag(r.status)}${r.worker ? `<div class="small muted">${esc(r.worker)} · ${esc(r.claimed_at ?? '')}</div>` : ''}${r.requested_by ? `<div class="small muted">${t('req_by', { u: uname(r.requested_by) })}</div>` : ''}</td>
-      <td class="small">${r.listing_id ? `#${r.listing_id} ` : ''}${esc((r.result || '').split('\n')[0])}</td></tr>`).join('') || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>${changesHtml()}</div>`;
+      <td class="small">${partsHtml(r, r.children, true)}${r.listing_id ? `#${r.listing_id} ` : ''}${esc((r.result || '').split('\n')[0])}</td></tr>`).join('') || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>${changesHtml()}</div>`;
 }
 async function reload() { [users, reqs, workers, changes] = await Promise.all([get('/api/admin/users'), get('/api/admin/requests'), get('/api/admin/workers'), get('/api/admin/changes?limit=50')]); draw(); }
 function bind() {

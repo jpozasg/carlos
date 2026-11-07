@@ -20,6 +20,9 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 
 Admins get a **view as** switcher in the header (issue #142): picking an account sets the `carlos_view` cookie and reloads; every page then shows that account as its owner sees it, under a banner "Viewing as …" with a way back. The first-run wizard never opens while viewing as another account.
 
+## Research requests and their parts (#218 phase 2)
+`static/js/requests.js` (`partsHtml`): a request lists its parts in stage order (Capture, Variant, Generation, Maintenance, Engine, Gearbox, Tax, Listing) from `parts` (Compare, users: done / in progress / waiting / pending / failed, SKIPPED counts as done, "n of m parts done", missing-item count on a failed part) or `children` (Accounts page, admins: the real status incl. SKIPPED "already existed", "done by request #N", "waits for request #N", worker, attempt, collapsible missing item ids, result). Capture is the parent row. A server without these fields shows only the request status. Workers show their current `unit` and `parent_id`. Each part has an icon and text, never colour alone.
+
 ## Rules
 - **One theme** (issue #181): the default "cluster" look, with light, dark or automatic mode. Its tokens are the custom properties in `tokens.css` (`:root[data-theme="cluster"]`, plus the light variant under `[data-mode="light"]`) and a few decorative rules at the end of `app.css`. The data-viz series colours (`--s1`…`--s8`) are one validated palette.
 - To add a language: add it to `LANGS` in `i18n.js`, translate `en.json` into `i18n/<code>.json` (same keys, same structure), and add the locale to the `Intl` formatting through `LANGS`.
