@@ -187,7 +187,7 @@ Any missing input makes that component unknown, and the TCO incomplete. The reli
 
 Rules: every fault has a price, existence grade and curve; every "fixed from" window has an A/B source; every recall has a window or "unknown"; no shared row carries a window derived from one listing's mileage **[review]**.
 
-**Worker workflow** (Sonnet, through the queue):
+**Worker workflow** (Haiku, through the queue):
 1. Resolve the listing's variant by HSN/TSN + engine code; create missing levels.
 2. Work **top-down**: global → families → engine/gearbox → generation → body style/options → variant → market → listing.
 3. **Skip** any level already researched; **claim** a level before researching it **[review]**.
