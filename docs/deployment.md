@@ -1,6 +1,6 @@
 # Deployment
 
-Carlos is one Python process with SQLite; it listens on 127.0.0.1:8000 only. A reverse proxy with HTTPS makes it reachable from other devices (phone at a viewing). Designed for a Raspberry Pi 2B with an 8 GB card: the whole installation (code, database, photos, backups) must stay under 500 MB; the API refuses photos beyond 450 MB (`GET /api/storage`).
+Carlos is one Python process with SQLite; it listens on 127.0.0.1:8000 only. A reverse proxy with HTTPS makes it reachable from other devices (phone at a viewing). Designed for a Raspberry Pi 2B with an 8 GB card: the whole installation (code, database, photos, backups) must stay under 1 GB; the API refuses photos beyond 900 MB (`GET /api/storage`).
 
 ## Layout
 ```

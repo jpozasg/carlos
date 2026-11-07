@@ -433,7 +433,7 @@ def save_media(c, listing_id, body, query):
     if dup:
         return dup['id'], False
     if storage_usage(max_age=0)['total_bytes'] + len(body) > config.STORAGE_BUDGET:
-        raise QuotaExceeded('Storage budget exhausted (450 of 500 MB); free space before archiving more photos')
+        raise QuotaExceeded('Storage budget exhausted (900 of 1024 MB); free space before archiving more photos')
     snapshot = query.get('snapshot_id', [None])[0]
     if snapshot and c.execute('SELECT 1 FROM listing_snapshots WHERE id=? AND listing_id=?', (int(snapshot), listing_id)).fetchone() is None:
         raise ValueError(f'snapshot_id={snapshot} is not a capture of listing {listing_id}')
