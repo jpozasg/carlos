@@ -66,6 +66,7 @@ Every account owns its listings, parameters, preferences, private rows (insuranc
 ## Development
 - Tests: `python -m unittest -v` (a synthetic database is built from `schema.sql`; no real data is touched).
 - Integrity of a real database: `python -c "import sqlite3; c=sqlite3.connect('data/cars.sqlite'); print(c.execute('PRAGMA integrity_check').fetchone(), c.execute('PRAGMA foreign_key_check').fetchall())"` → `('ok',) []`.
+- Duplicate faults (#221): `python -m carlos.consistency --duplicates [database]` (read-only) lists faults a variant would carry twice and sibling-engine lift candidates; cleanup is an archive of the duplicate (never a delete) after re-pointing `listing_history.fault_id` and `fixed_fault_id`, with the owner's OK.
 - Schema changes go through `migrations/NNN_*.sql` numbered above the baseline version in the header of `schema.sql` (applied at startup with a backup, foreign keys checked before the commit), then `python migrate.py --schema` regenerates `schema.sql`. A new database is created from `schema.sql` directly, so the repository only needs the migrations written after the baseline.
 - Layout: `app.py` entry point; `carlos/` package (`server.py` HTTP and routing, `auth.py` accounts, `costs.py` calculation, `ranking.py`, `agent.py` write API, `todo.py`, `models.py`, `db.py`, `config.py`); `markdown_export.py` dossiers; `migrate.py`; `agent_tools.py` and `capture_listing.py` for agents; `static/` the front end (`docs/frontend.md`); `tests/`; `docs/`.
 - Contributing: `CONTRIBUTING.md`. Licence: AGPL-3.0 (`LICENSE`).
