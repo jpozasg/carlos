@@ -419,6 +419,13 @@ class Handler(BaseHTTPRequestHandler):
             d = self.read_json()
             if not isinstance(d, dict) or any(not re.fullmatch(r'[a-z][a-z0-9_]{0,49}', str(k)) for k in d) or len(d) > 50:
                 raise ValueError('Expected an object of preference_key (snake_case) → value')
+            if 'insurance_worker_quotes' in d:  # consent for the worker's insurance quotes is the account's own decision
+                if re.match(r'Bearer ', self.headers.get('Authorization', '') or ''):
+                    raise NotAllowed('Consent to worker insurance quotes can only be changed by the account itself (Settings), never with a token')
+                if d['insurance_worker_quotes'] not in (None, '', 'yes'):
+                    raise ValueError("insurance_worker_quotes: 'yes' or empty (off)")
+                if d['insurance_worker_quotes'] == 'yes':
+                    d = {**d, 'insurance_worker_quotes': f'yes {datetime.date.today().isoformat()}'}
             with c:
                 for k, v in d.items():
                     if v is None or str(v).strip() == '':
@@ -489,8 +496,8 @@ class Handler(BaseHTTPRequestHandler):
             auth.scope(s, owner_id, curator=True)
             row = next((r for r in ranked_rows(s, params(s))[0] if r['id'] == listing_id), None)
             if row is None:  # fail closed: a listing that cannot be graded is not done
-                return sorted(research_units.UNIT_OF)
-            return [i['id'] for i in row.get('research', []) if i.get('grade') == 'MISSING' and i['id'] != 'lst.insurance']
+                return sorted(research_units.UNIT_OF) + ['lst.insurance']
+            return [i['id'] for i in row.get('research', []) if i.get('grade') == 'MISSING']  # callers choose what they need
         finally:
             s.close()
 
