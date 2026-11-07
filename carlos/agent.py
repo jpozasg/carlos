@@ -63,6 +63,12 @@ class NotAllowed(Exception):
     pass
 
 
+class Conflict(Exception):
+    """409: the row would duplicate an existing one (#221); `payload` is the JSON answer."""
+    def __init__(self, payload):
+        super().__init__(payload['error']); self.payload = payload
+
+
 class QuotaExceeded(Exception):
     pass
 
@@ -258,13 +264,50 @@ def linked_accounts(c, table, row_id):
     return [o for (o,) in c.execute(_LISTING_LEVELS, lv)]
 
 
+FAULT_GUARD_KEYS = (*config.LEVEL_COLUMNS, 'part', 'component', 'applies_from', 'applies_to', 'archived')
+
+
+def guard_duplicate_fault(c, data, row_id, distinct):
+    """409 when a fault would be costed twice (#221). `distinct_of` (the conflicting ids) plus a reason in `notes` overrides it;
+    the server prefixes the notes so the decision stays visible in the log."""
+    if row_id is not None:
+        if not any(k in data for k in FAULT_GUARD_KEYS) or data.get('archived') == 1:
+            return
+        old = c.execute('SELECT * FROM faults_all WHERE id=?', (row_id,)).fetchone()
+        merged = {**(dict(old) if old else {}), **data}
+        if any(k in data for k in config.LEVEL_COLUMNS):  # a re-scope replaces the level
+            merged = {**merged, **{k: data.get(k) for k in config.LEVEL_COLUMNS}}
+    else:
+        merged = data
+    from . import consistency
+    found = consistency.fault_conflicts(c, merged, row_id)
+    if not found:
+        return
+    ids = [f['id'] for f in found]
+    if distinct is None:
+        first = found[0]
+        raise Conflict({'error': f"faults: a similar {first['part']} fault already applies to cars of this level: "
+                                 f"#{first['id']} '{first['component']}' ({first['level']} {first['level_id']}). PATCH it (add evidence in notes, "
+                                 f"re-scope it with one PATCH), or resend with distinct_of={ids} and the reason in notes",
+                        'conflict': found})
+    if not isinstance(distinct, list) or not set(ids) <= set(distinct):
+        raise ValueError(f'distinct_of must list every conflicting fault id: {ids}')
+    reason = str(data.get('notes') or '').strip()
+    if not reason or any(reason == (f['notes'] or '').strip() for f in found):
+        raise ValueError('distinct_of needs notes saying why this is a different fault (not a copy of the other row\'s notes)')
+    data['notes'] = f"Distinct from fault {', '.join('#%d' % i for i in ids)}: {reason}"
+
+
 def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
     """Inserts (row_id None) or updates a row of this account in one transaction and records it in change_log.
     Admin inserts of generations, engines, variants and level sources go to the shared catalogue (owner_id NULL);
     knowledge rows follow their level, except an account's own premium or USER DATA figure, which stays private.
     `actor` is who wrote it (the admin acting for the account), for the change log."""
+    distinct = data.pop('distinct_of', None) if table == 'faults' and isinstance(data, dict) else None
     data = clean_row(c, table, data, insert=row_id is None)
     check_parents(c, table, data)
+    if table == 'faults':
+        guard_duplicate_fault(c, data, row_id, distinct)
     with c:
         if row_id is None:
             if table in OWNED:

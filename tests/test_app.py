@@ -189,7 +189,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(st, 201, f)
         self.assertEqual(self.agent('POST', 'faults', {**fault, 'engine_family_id': fam, 'gearbox_id': gb})[0], 400)  # two levels
         self.assertEqual(self.agent('POST', 'faults', {**fault, 'gearbox_id': gb, 'curve_km': [[200000, 0.4], [100000, 0.1]]})[0], 400)
-        self.assertEqual(self.agent('POST', 'faults', {**fault, 'gearbox_id': gb, 'usage_multiplier': 1.5})[0], 400)  # needs a source
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'component': 'Gearbox whine', 'gearbox_id': gb, 'usage_multiplier': 1.5})[0], 400)  # needs a source
         self.assertEqual(self.agent('POST', 'maintenance_items', {'item': 'HU', 'job': 'HU', 'interval_months': 24, 'schedule': 'ITEM',
                                                                   'reference_cost_eur': 140, 'status': 'OFFICIAL FEE LEVEL',
                                                                   'source_id': SRC_GUIDE})[0], 201)  # global default
@@ -303,7 +303,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'faults', {**base, 'frequency_band': 'systemic', 'shape': 'WEAR_KM'})[0], 400)  # no trace
         forum = self.agent('POST', 'sources', {'title': 'Forum', 'quality': 'D', 'engine_id': E_A})[1]['id']
         self.assertEqual(self.agent('POST', 'faults', {**base, 'frequency_band': 'widespread', 'shape': 'WEAR_KM', 'source_id': forum})[0], 400)
-        st, f3 = self.agent('POST', 'faults', {**base, 'frequency_band': 'common', 'shape': 'RANDOM', 'source_id': forum})
+        st, f3 = self.agent('POST', 'faults', {**base, 'component': 'Oil pump drive', 'frequency_band': 'common', 'shape': 'RANDOM', 'source_id': forum})
         self.assertEqual(st, 201)
         self.assertGreater({x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[f3['id']]['probability'], 0)
         # market model: depreciation = price − the end value at the owner's end age and km, less the private-sale discount
@@ -794,6 +794,34 @@ class AppTest(unittest.TestCase):
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/10'})
         self.gaps[:] = []
         self.assertEqual(done(claim()['id'])['status'], 'DONE')
+
+    def test_duplicate_fault_guard_221(self):
+        """The same fault filed twice is refused (409) when one catalogue variant would carry both; distinct_of overrides it with a reason."""
+        from carlos import consistency
+        self.assertTrue(consistency.same_fault('Timing chain stretch', 'timing-chain stretch N47'))
+        self.assertFalse(consistency.same_fault('Timing chain', 'Timing belt'))
+        base = {'component': 'Timing chain stretch', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
+                'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
+                'source_id': SRC_GUIDE}
+        st, first = self.agent('POST', 'faults', {**base, 'engine_id': E_A, 'notes': 'guide'})
+        self.assertEqual(st, 201, first)
+        # the generation reaches the same cars as the engine (through a variant): refused, with the existing row
+        st, r = self.agent('POST', 'faults', {**base, 'component': 'timing chain stretching', 'generation_id': G1})
+        self.assertEqual((st, [x['id'] for x in r['conflict']], r['conflict'][0]['level']), (409, [first['id']], 'engine'))
+        # a different fault and another part are not conflicts; an open-ended row overlaps any window
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'component': 'Turbo failure', 'generation_id': G1})[0], 201)
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'applies_from': '2000-01', 'applies_to': '2001-01', 'engine_id': E_A})[0], 409)
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'part': 'CHASSIS', 'generation_id': G1})[0], 201)
+        # distinct_of: needs every conflicting id and a reason of its own; the decision is written into notes
+        dup = {**base, 'generation_id': G1}
+        self.assertEqual(self.agent('POST', 'faults', {**dup, 'distinct_of': [999], 'notes': 'x'})[0], 400)
+        self.assertEqual(self.agent('POST', 'faults', {**dup, 'distinct_of': [first['id']]})[0], 400)           # no reason
+        self.assertEqual(self.agent('POST', 'faults', {**dup, 'distinct_of': [first['id']], 'notes': 'guide'})[0], 400)  # copy of the other notes
+        st, ok = self.agent('POST', 'faults', {**dup, 'distinct_of': [first['id']], 'notes': 'the tensioner, not the chain'})
+        self.assertEqual(st, 201, ok)
+        self.assertEqual(self.sql('SELECT notes FROM faults WHERE id=?', (ok['id'],))[0][0], f"Distinct from fault #{first['id']}: the tensioner, not the chain")
+        # archiving is always allowed
+        self.assertEqual(self.agent('PATCH', f"faults/{first['id']}", {'archived': 1})[0], 200)
 
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
