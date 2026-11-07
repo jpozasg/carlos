@@ -848,6 +848,21 @@ class AppTest(unittest.TestCase):
         d = self.req('GET', f'/api/listings/{CAR_A}')[1]
         self.assertEqual(checklist_items(d, d['inspection']), [])   # idempotent
 
+    def test_duplicate_detector_221(self):
+        """The read-only detector lists faults a variant would carry twice, not distinct-marked ones, and sibling-engine lift candidates."""
+        from carlos import consistency
+        ins = "INSERT INTO faults (component, part, consequence, existence, source_id, {}, notes) VALUES (?, 'ENGINE', 'COST', 'REPORTED', ?, ?, ?)"
+        self.sql_write(ins.format('engine_id'), ('Timing chain stretch', SRC_GUIDE, E_A, None))
+        self.sql_write(ins.format('generation_id'), ('Timing chain stretching', SRC_GUIDE, G1, None))
+        self.sql_write(ins.format('generation_id'), ('Turbo failure', SRC_GUIDE, G1, None))
+        with sqlite3.connect(config.DB) as c:
+            c.row_factory = sqlite3.Row
+            pairs, lifts = consistency.duplicates(c)
+            self.assertEqual(list(pairs), [(1, 2)])
+            c.execute("UPDATE faults SET notes='Distinct from fault #1: tensioner' WHERE id=2")
+            self.assertEqual(consistency.duplicates(c)[0], {})
+            self.assertIn('Double counted: 0', consistency.duplicates_report(c))
+
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
             self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{i}'})

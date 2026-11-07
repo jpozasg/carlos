@@ -128,3 +128,62 @@ def fault_conflicts(c, n, row_id=None):
                         'applies_from': x['applies_from'], 'applies_to': x['applies_to'], 'frequency_band': x['frequency_band'],
                         'source_id': x['source_id'], 'notes': x['notes'], 'match': why})
     return out
+
+
+def _distinct(x, y):
+    """One row's notes say it is a different fault from the other (the #221 `distinct_of` decision)."""
+    return any((a['notes'] or '').startswith('Distinct from fault') and f"#{b['id']}" in a['notes'] for a, b in ((x, y), (y, x)))
+
+
+def duplicates(c):
+    """Read-only (#221): (double_counted, lift_candidates). double_counted: pairs of faults a catalogue variant would carry
+    together that read as one fault (same part, similar name, overlapping window), minus fixed_fault_id links and rows
+    marked distinct; each with the variants it hits. lift_candidates: the same fault on two engines of one engine family or two
+    gearboxes of one gearbox family (never on one car, so not double counted: maybe one row on the family)."""
+    faults = db.rows(c, 'SELECT * FROM faults WHERE archived=0')
+    opts = {}
+    for o in c.execute('SELECT id, generation_id FROM options WHERE generation_id IS NOT NULL'):
+        opts.setdefault(o['generation_id'], []).append(o['id'])
+    pairs = {}
+    for v in db.variants(c, 'WHERE v.owner_id IS NULL'):
+        v = {**v, 'option_ids': opts.get(v['generation_id'], [])}
+        here = db.for_variant(faults, v)
+        for i, x in enumerate(here):
+            for y in here[i + 1:]:
+                if (x['part'] == y['part'] and x['id'] != y['id'] and same_fault(x['component'], y['component']) and _overlap(x, y)
+                        and x.get('fixed_fault_id') != y['id'] and y.get('fixed_fault_id') != x['id'] and not _distinct(x, y)):
+                    pairs.setdefault((min(x['id'], y['id']), max(x['id'], y['id'])), []).append(db.variant_name(v))
+    lifts = []
+    for col, table in (('engine_id', 'engines'), ('gearbox_id', 'gearboxes')):
+        fam = {r['id']: r['family_id'] for r in c.execute(f'SELECT id, family_id FROM {table}') if r['family_id']}
+        on = [f for f in faults if f.get(col) in fam]
+        for i, x in enumerate(on):
+            for y in on[i + 1:]:
+                if (fam[x[col]] == fam[y[col]] and x[col] != y[col] and x['part'] == y['part'] and same_fault(x['component'], y['component'])):
+                    lifts.append((x['id'], y['id'], f'{table[:-1]} family {fam[x[col]]}'))
+    return pairs, lifts
+
+
+def duplicates_report(c):
+    pairs, lifts = duplicates(c)
+    by_id = {f['id']: f for f in db.rows(c, 'SELECT * FROM faults')}
+    out = [f'# Fault duplicates (#221)', '', f'## Double counted: {len(pairs)}', '']
+    for (a, b), names in sorted(pairs.items()):
+        x, y = by_id[a], by_id[b]
+        keeper = min((x, y), key=lambda f: (f['existence'] != 'CONFIRMED', f['id']))
+        out.append(f"- #{a} '{x['component']}' ({config.LEVELS[next(k for k in config.LEVEL_COLUMNS if x.get(k) is not None)]}) and "
+                   f"#{b} '{y['component']}' ({config.LEVELS[next(k for k in config.LEVEL_COLUMNS if y.get(k) is not None)]}): "
+                   f"{len(names)} variants, e.g. {names[0]}; suggested keeper #{keeper['id']}")
+    out += ['', f'## Lift candidates (same fault in sibling engines or gearboxes): {len(lifts)}', '']
+    out += [f"- #{a} and #{b} ({why})" for a, b, why in lifts]
+    return '\n'.join(out) + '\n'
+
+
+if __name__ == '__main__':  # python -m carlos.consistency --duplicates [db]
+    import sqlite3, sys
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    if '--duplicates' not in sys.argv:
+        raise SystemExit('usage: python -m carlos.consistency --duplicates [database]')
+    con = sqlite3.connect(f'file:{args[0] if args else config.DB}?mode=ro', uri=True)
+    con.row_factory = sqlite3.Row
+    print(duplicates_report(con))
