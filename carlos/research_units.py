@@ -1,8 +1,9 @@
 """Units of a research request (#218 phase 2): which contract items (carlos/research.py ITEMS and the listing items) each
-unit owns, and in which stages the units run after the listing is captured. `lst.insurance` is the owner's and never queued."""
-UNITS = ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING')
-BROWSER_UNITS = ('CAPTURE', 'TAX')
-STAGES = (('VARIANT',), ('GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX'), ('TAX',), ('LISTING',))
+unit owns, and in which stages the units run after the listing is captured. `lst.insurance` is the INSURANCE unit (browser, only for accounts that opted in, see research_requests.advance)."""
+UNITS = ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING', 'INSURANCE')
+BROWSER_UNITS = ('CAPTURE', 'TAX', 'INSURANCE')
+# INSURANCE last: the slowest and most often blocked browser step runs after everything else is written
+STAGES = (('VARIANT',), ('GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX'), ('TAX',), ('LISTING',), ('INSURANCE',))
 
 _PARTS = ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')
 UNIT_ITEMS = {
@@ -17,6 +18,7 @@ UNIT_ITEMS = {
     'GEARBOX': ['gbx.service', 'gbx.clutch', 'gbx.risks', 'gfam.risks', 'rel.GEARBOX.gearbox_specific'],
     'TAX': ['var.tax', 'lst.tax_covered'],
     'LISTING': ['lst.valuation', 'lst.purchase_sale', 'lst.checklist'],
+    'INSURANCE': ['lst.insurance'],
 }
 UNIT_OF = {i: u for u, ids in UNIT_ITEMS.items() for i in ids}
 # the variant column a unit is keyed on (NULL = never shared between requests); the listing id for CAPTURE and LISTING

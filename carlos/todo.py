@@ -93,6 +93,11 @@ QUOTE_PREFS = ('insurance_holder_gender', 'insurance_holder_birth_date', 'insura
                'insurance_holder_marital', 'insurance_claims_3y', 'insurance_usage', 'insurance_parking', 'insurance_start_date')
 
 
+def quote_profile_gaps(p, prefs):
+    """The parameters and preferences a comparison-site quote still needs from the account (empty: complete)."""
+    return [k for k in QUOTE_PARAMS if p.get(k) in (None, '')] + [k for k in QUOTE_PREFS if not prefs.get(k)]
+
+
 def account_todo(c, p, today):
     """Gaps of the account itself: setup, ranking answers, fuel price, the profile an insurance quote needs."""
     prefs = {r[0]: r[1] for r in c.execute('SELECT preference_key, preference_value FROM project_preferences')}
@@ -110,7 +115,9 @@ def account_todo(c, p, today):
             age = days_since(p.get(k + '_date'), today)
             if p.get(k + '_eur_kwh') is not None and (age is None or age > config.STALE_FUEL_PRICE_DAYS):
                 t.append(f'{k.replace("_", " ")} price older than {config.STALE_FUEL_PRICE_DAYS} days or undated (Settings)')
-    missing = [k for k in QUOTE_PARAMS if p.get(k) in (None, '')] + [k for k in QUOTE_PREFS if not prefs.get(k)]
+    missing = quote_profile_gaps(p, prefs)
+    if not prefs.get('insurance_worker_quotes'):
+        t.append('insurance quotes by the worker are not enabled (Settings); quote in a live session or switch it on')
     if missing:
         t.append('insurance profile incomplete for quotes (ask the user or the setup Drivers/Insurance steps): ' + ', '.join(missing))
     return t

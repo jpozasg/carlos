@@ -4,6 +4,7 @@ Every query names main.research_requests and filters by owner itself: the table 
 import json, re, secrets
 from .auth import digest
 from . import research_units as ru
+from .todo import quote_profile_gaps
 
 MAX_ATTEMPTS = 3         # a listing still incomplete after this many DONE reports is FAILED with the missing items (#218)
 MAX_OPEN = 5             # QUEUED + RUNNING per account: keeps one account from flooding the shared worker
@@ -164,13 +165,15 @@ def finish(c, rid, data, missing=None):
     ids = None  # contract items still missing (None: nothing to grade)
     if not follow_up and unit and not capture:
         ids = _unit_ids(missing(req['owner_id'], lid) if missing else sorted(ru.UNIT_OF), unit)  # no grader: fail closed
+        if unit == 'INSURANCE' and status == 'FAILED':
+            ids = None  # a blocked comparison site or withdrawn consent: no retry loop against an anti-bot wall
     elif not follow_up and capture:
         if status == 'DONE':
             ids = _unit_ids(missing(req['owner_id'], lid), 'CAPTURE') if missing else []
             if not c.execute('SELECT vehicle_id FROM main.listings WHERE id=?', (lid,)).fetchone()[0]:
                 ids = ids + ['listing.variant']  # captured but no variant attached: the units cannot start
     elif not follow_up and status == 'DONE' and missing:
-        ids = missing(req['owner_id'], lid)
+        ids = [i for i in missing(req['owner_id'], lid) if i != 'lst.insurance']  # a legacy whole-listing run never quotes
     if ids:
         n = req['attempts'] + 1
         again = n < MAX_ATTEMPTS
@@ -185,7 +188,8 @@ def finish(c, rid, data, missing=None):
         if not again:
             _closed(c, rid, missing)
         return _row(c, rid)
-    done = status == 'DONE' or bool(unit and not capture)  # a unit with nothing missing is done, whatever the agent said
+    blocked = unit == 'INSURANCE' and status == 'FAILED'  # reported blocked or consent withdrawn: final, not graded
+    done = status == 'DONE' or bool(unit and not capture and not blocked)  # a unit with nothing missing is done, whatever the agent said
     with c:
         c.execute("UPDATE main.research_requests SET status=?, listing_id=?, result=?, finished_at=datetime('now'), "
                   "request_token_hash=NULL WHERE id=?",
@@ -238,6 +242,19 @@ def release_shared(c, x, missing=None):
             advance(c, w['parent_id'], missing)
 
 
+def _insurance_skip(c, parent):
+    """Why the INSURANCE unit does not run for this request (None: it runs). Order: reference car (its premium is the owner's
+    USER DATA), the account's consent (Settings, preference insurance_worker_quotes), a complete insurance profile."""
+    if c.execute('SELECT is_reference FROM main.listings WHERE id=?', (parent['listing_id'],)).fetchone()[0]:
+        return "Reference car: the premium is the owner's USER DATA"
+    prefs = {r[0]: r[1] for r in c.execute('SELECT preference_key, preference_value FROM main.project_preferences WHERE owner_id=?', (parent['owner_id'],))}
+    if not prefs.get('insurance_worker_quotes'):
+        return 'Insurance quotes not enabled for this account (Settings)'
+    row = c.execute('SELECT * FROM main.project_parameters WHERE owner_id=?', (parent['owner_id'],)).fetchone()
+    gaps = quote_profile_gaps(dict(row) if row else {}, prefs)
+    return f"Insurance profile incomplete: {', '.join(gaps)}" if gaps else None
+
+
 def advance(c, parent_id, missing):
     """Creates the next stage of a unit-split request when its units are closed (#218): one child per unit with contract items
     still MISSING (QUEUED, or WAITING for an identical open unit of another request); a unit with nothing missing is SKIPPED
@@ -263,18 +280,21 @@ def advance(c, parent_id, missing):
                 level = v[ru.LEVEL_COLUMN[u]] if v and u in ru.LEVEL_COLUMN else None
                 other = c.execute("SELECT id FROM main.research_requests WHERE unit=? AND level_id=? AND parent_id IS NOT NULL AND parent_id<>? "
                                   "AND status IN ('QUEUED','RUNNING')", (u, level, parent_id)).fetchone() if uids and level is not None else None
-                st = 'SKIPPED' if not uids else 'WAITING' if other else 'QUEUED'
+                why = _insurance_skip(c, p) if u == 'INSURANCE' and uids else None
+                st = 'SKIPPED' if not uids or why else 'WAITING' if other else 'QUEUED'
                 c.execute("INSERT INTO main.research_requests (owner_id, url, note, requested_by, kind, listing_id, parent_id, unit, level_id, "
                           "shared_id, status, missing, result, finished_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (p['owner_id'], p['url'], p['note'], p['requested_by'], p['kind'], p['listing_id'], parent_id, u,
                            level if uids else None, other[0] if other else None, st, json.dumps(uids),
-                           'Already researched' if st == 'SKIPPED' else None, None))
+                           why or ('Already researched' if st == 'SKIPPED' else None), None))
                 opened = opened or st != 'SKIPPED'
         if opened:
             return
     kids = [dict(k) for k in c.execute("SELECT unit, status, missing FROM main.research_requests WHERE parent_id=?", (parent_id,))]
-    failed = [k for k in kids if k['status'] not in ('DONE', 'SKIPPED')]
-    text = ('Open for the owner: lst.insurance' if not failed else
+    failed = [k for k in kids if k['status'] not in ('DONE', 'SKIPPED') and k['unit'] != 'INSURANCE']  # a blocked quote never fails a car
+    ins = next((k for k in c.execute("SELECT status, result FROM main.research_requests WHERE parent_id=? AND unit='INSURANCE'", (parent_id,))), None)
+    open_ins = ' Insurance open: ' + (ins['result'] or ins['status'].lower()) if ins and ins['status'] != 'DONE' else ''
+    text = (('Done.' + open_ins) if not failed else
             'Units failed: ' + '; '.join(f"{k['unit']} ({k['status'].lower()}: {', '.join(json.loads(k['missing'] or '[]'))})" for k in failed))
     with c:
         c.execute("UPDATE main.research_requests SET status=?, result=?, finished_at=datetime('now') WHERE id=?",
