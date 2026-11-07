@@ -10,7 +10,7 @@ The headless run gets only the per-request token of the request it works on (the
 catalogue, dead when the request ends). Without WORKER_TOKEN the worker falls back to AGENT_TOKEN (an admin token) and
 the X-Carlos-Account header, the way it worked before #141.
 Run: python worker.py [--once]   (--once: handle at most one request, then exit)"""
-import os, re, shlex, socket, subprocess, sys, time
+import datetime, os, re, shlex, socket, subprocess, sys, time
 from pathlib import Path
 from capture_listing import Api, ApiError, load_token
 
@@ -45,6 +45,30 @@ def command(cmd, model):
     return parts
 
 
+LIMIT = re.compile(r"hit your [\w-]+ limit|usage limit|rate.?limit|overloaded|API Error: (?:429|5\d\d)", re.I)
+RESET = re.compile(r"resets (\d{1,2})(?::(\d{2}))?\s*(am|pm)", re.I)
+
+
+class UsageLimit(Exception):
+    """The run stopped on a usage/rate limit or a transient API error: the request went back to the queue (#206)."""
+    def __init__(self, seconds, message):
+        super().__init__(message); self.seconds = seconds
+
+
+def pause_seconds(text, now=None, fallback=1800):
+    """Seconds until the reset time named in "resets 4am", else `fallback`.
+    shortcut: the zone in brackets is ignored (local clock assumed), fine while the worker runs where the owner works."""
+    m = RESET.search(text)
+    if not m:
+        return fallback
+    now = now or datetime.datetime.now()
+    hour = int(m[1]) % 12 + (12 if m[3].lower() == 'pm' else 0)
+    at = now.replace(hour=hour, minute=int(m[2] or 0), second=0, microsecond=0)
+    if at <= now:
+        at += datetime.timedelta(days=1)
+    return int((at - now).total_seconds()) + 60
+
+
 def work_one(api, name, cmd, logs, timeout_s, model='haiku'):
     """Claims and handles one request; False when the queue is empty."""
     req = api.call('POST', '/api/worker/claim', {'worker': name})['request']
@@ -75,6 +99,11 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku'):
             result = {'status': 'FAILED', 'result': f'Timed out after {timeout_s // 60} minutes'}
             break
     log.write_text(out, encoding='utf-8')
+    tail = '\n'.join(out.splitlines()[-30:])
+    if result['status'] == 'FAILED' and p.returncode and LIMIT.search(tail):  # not the request's fault: queue it again and pause
+        api.call('POST', f'/api/worker/requests/{req["id"]}', {'status': 'QUEUED', 'result': 'Released: ' + tail.splitlines()[-1][:200]})
+        print(f'request {req["id"]}: back in the queue (usage limit or API error)', flush=True)
+        raise UsageLimit(pause_seconds(tail), tail.splitlines()[-1][:200])
     try:
         api.call('POST', f'/api/worker/requests/{req["id"]}', result)
     except ApiError as e:  # e.g. the reported listing is not the requester's: record a failure instead
@@ -110,6 +139,11 @@ def main(argv=None):
         beat(api, 'idle')
         try:
             worked = work_one(api, name, cmd, logs, timeout_s, model)
+        except UsageLimit as e:  # wait for the reset with a heartbeat every minute, then claim again
+            left = e.seconds
+            while left > 0 and '--once' not in argv:
+                beat(api, 'error', f'paused: {e}'[:200]); time.sleep(min(60, left)); left -= 60
+            worked = True
         except (ApiError, OSError) as e:  # site unreachable or a bad answer: report and keep polling
             print(f'worker: {e}', file=sys.stderr, flush=True)
             beat(api, 'error', str(e))

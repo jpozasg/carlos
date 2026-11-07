@@ -91,11 +91,17 @@ def claim(c, worker, worker_id=None):
 
 def finish(c, rid, data):
     status, result = data.get('status'), (str(data.get('result') or '').strip()[-4000:] or None)
-    if status not in ('DONE', 'FAILED'):
-        raise ValueError('status: DONE or FAILED')
+    if status not in ('DONE', 'FAILED', 'QUEUED'):
+        raise ValueError('status: DONE, FAILED or QUEUED (release)')
     req = c.execute("SELECT owner_id, status FROM main.research_requests WHERE id=?", (rid,)).fetchone()
     if req is None or req['status'] != 'RUNNING':
         raise ValueError('Only a RUNNING request can be finished')
+    if status == 'QUEUED':  # the run could not work (usage limit, API error): back in the queue, not a failure (#206)
+        with c:
+            c.execute("UPDATE main.research_requests SET status='QUEUED', claimed_at=NULL, worker=NULL, request_token_hash=NULL, "
+                      "result=COALESCE(result || char(10), '') || ? WHERE id=?", (result or 'Released by the worker', rid))
+            c.execute("UPDATE main.workers SET state='idle', request_id=NULL WHERE request_id=?", (rid,))
+        return dict(c.execute(f'SELECT {COLS} FROM main.research_requests WHERE id=?', (rid,)).fetchone())
     lid = data.get('listing_id')
     follow_up = c.execute('SELECT kind FROM main.research_requests WHERE id=?', (rid,)).fetchone()[0] == 'FOLLOW_UP'
     if status == 'DONE' and not follow_up:  # the listing must exist and belong to the account that asked
