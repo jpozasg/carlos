@@ -33,6 +33,10 @@ PURCHASE_SALE_DEFAULTS = (    # (item, amount, shared source title prefix, note)
     ('Pre-purchase check (motoring club, members)', 159.00, 'Pre-purchase check', 'Recommended before buying; cheaper inspection-organisation checks exist (~79 €).'),
 )
 
+REFERENCE_SALE_DEFAULTS = (   # the owned car is not bought: only its deregistration when it is sold (office fee, the dearer way)
+    ('Deregistration (Außerbetriebsetzung)', 15.90, 'Registration fees', 'Registration office fee; online it is 2.10 €.'),
+)
+
 
 # ---------------------------------------------------------------- basic API calls
 def get(path):
@@ -305,7 +309,7 @@ def purchase_sale_defaults(listing_id):
     dealer has no pre-purchase check (factory warranty, nothing to inspect; issue #150)."""
     u = listing(listing_id)
     have = {c['item'] for c in u.get('unit_costs', []) if c['category'] == 'purchase_sale'}
-    for name, amount, prefix, note in PURCHASE_SALE_DEFAULTS:
+    for name, amount, prefix, note in (REFERENCE_SALE_DEFAULTS if u.get('is_reference') else PURCHASE_SALE_DEFAULTS):
         if name not in have and not (prefix == 'Pre-purchase check' and is_new(u)):
             post('unit_costs', {'listing_id': listing_id, 'category': 'purchase_sale', 'item': name, 'parts_eur': amount,
                                 'labor_eur': None, 'status': 'ESTIMATED', 'source_id': shared_source(prefix), 'notes': note})
