@@ -896,6 +896,22 @@ class AppTest(unittest.TestCase):
         self.assertEqual(worker.command('claude --model opus -p', 'haiku'), ['claude', '--model', 'opus', '-p'])
         self.assertEqual(worker.command("sh -c 'x'", 'haiku'), ['sh', '-c', 'x'])
 
+    def test_worker_usage_limit_206(self):
+        import datetime, worker
+        from capture_listing import Api
+        logs = Path(self.tmp.name) / 'logs'
+        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/206'})
+        cmd = "sh -c 'echo You have hit your 5-hour limit · resets 4am; exit 1'"
+        with self.assertRaises(worker.UsageLimit):
+            worker.work_one(Api(self.base, TOKEN), 'test', cmd, logs, 30)
+        r = self.req('GET', '/api/requests')[1][0]
+        self.assertEqual((r['status'], r['worker']), ('QUEUED', None))          # released, not FAILED
+        self.assertIn('Released', r['result'])
+        self.assertEqual(worker.pause_seconds('x', fallback=5), 5)
+        now = datetime.datetime(2026, 11, 7, 23, 0)
+        self.assertEqual(worker.pause_seconds("resets 4am (Europe/Berlin)", now), 5 * 3600 + 60)
+        self.assertEqual(worker.pause_seconds("resets 11:30pm", now), 30 * 60 + 60)
+
     def test_insurance_quotes(self):
         quote = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 850, 'premium_min_eur': 700,
                  'insurer': 'Test Insurer', 'tariff': 'Basic', 'quote_date': fx.TODAY, 'source_id': SRC_QUOTE,
