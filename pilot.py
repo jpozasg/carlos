@@ -10,7 +10,7 @@ database, compared with pilot_compare.py before the real reset and the full re-r
                                       the rest when the account's 5 open requests are full
   python pilot.py commands [--dir DIR]  prints the commands to start the servers and the owner's workers
 
-The four pilot cars: PureTech wet belt, EA211, a DSG and a full hybrid."""
+The three pilot cars: PureTech wet belt, a DSG and a full hybrid."""
 import os
 import shutil
 import sqlite3
@@ -24,10 +24,10 @@ from carlos import config
 
 ACCOUNT = 5     # kept by the reset: only the source of the pilot cars' URLs and photos
 REQUESTER = 4   # carlostester: the account the pilot requests and the researched cars belong to (owner, 2026-11-07)
-# Four cars (owner, 2026-11-07: several of the original ads went offline): wet belt, EA211, full hybrid and a DSG. CARS: listings
+# Three cars per round (owner, 2026-11-07; several of the original ads went offline): wet belt, full hybrid and a DSG. CARS: listings
 # of account ACCOUNT whose ad is still online (the URL is read from the stored listing); EXTRA: ads found on mobile.de to replace
 # the ones that went offline (name -> URL).
-CARS = {40: 'Peugeot 208 1.2 PureTech (wet belt)', 54: 'VW Polo 1.2 TSI (EA211)', 60: 'Toyota Yaris 1.5 Hybrid'}
+CARS = {40: 'Peugeot 208 1.2 PureTech (wet belt)', 60: 'Toyota Yaris 1.5 Hybrid'}
 EXTRA = {'DSG car (VW group 1.4/1.8 TSI DSG, mobile.de 2026-11-07)': 'https://suchen.mobile.de/fahrzeuge/details.html?id=461123277'}
 RUNS = {'a': 8021, 'b': 8022}
 
