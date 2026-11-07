@@ -911,6 +911,50 @@ class AppTest(unittest.TestCase):
         self.assertEqual((top['status'], top['listing_id']), ('DONE', CAR_A))
         self.assertEqual(self.req('GET', '/api/admin/requests')[1][0]['children'][0]['unit'], 'VARIANT')
 
+    def test_insurance_unit_245(self):
+        """INSURANCE is the last stage: SKIPPED without the account's consent, for a reference car or an incomplete profile;
+        queued with consent and a complete profile; a failed quote never fails the car; consent is set only by the account itself."""
+        from carlos import todo
+        st, ck = self.login()
+        self.assertEqual(self.req('POST', '/api/preferences', {'insurance_worker_quotes': 'yes'})[0], 403)           # a token cannot consent
+        self.assertEqual(self.req('POST', '/api/preferences', {'insurance_worker_quotes': 'maybe'}, token=None, cookie=ck)[0], 400)
+        claim = lambda: self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']
+        run = lambda: [self.req('POST', f'/api/worker/requests/{c["id"]}', {'status': 'DONE', 'listing_id': CAR_A})[1] for c in [claim()]][0]
+        parts = lambda: {p['unit']: p['status'] for p in self.req('GET', '/api/requests')[1][0]['parts']}
+        def go():
+            self.sql_write("UPDATE research_requests SET status='CANCELLED'")
+            self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{go.n}'}); go.n += 1
+            self.gaps[:] = ['lst.insurance']
+            run()                                                              # capture done; only the quote is missing
+        go.n = 20
+        go()
+        self.assertEqual(parts()['INSURANCE'], 'SKIPPED')                     # no consent
+        self.assertIn('not enabled', [c for c in self.req('GET', '/api/admin/requests')[1][0]['children'] if c['unit'] == 'INSURANCE'][0]['result'])
+        self.assertEqual(self.req('GET', '/api/requests')[1][0]['status'], 'DONE')
+        # consent (own login) but no complete profile
+        self.assertEqual(self.req('POST', '/api/preferences', {'insurance_worker_quotes': 'yes'}, token=None, cookie=ck)[0], 200)
+        self.assertRegex(self.sql("SELECT preference_value FROM project_preferences WHERE preference_key='insurance_worker_quotes'")[0][0], r'^yes \d{4}-\d\d-\d\d$')
+        go()
+        self.assertEqual(parts()['INSURANCE'], 'SKIPPED')
+        self.assertIn('profile incomplete', [c for c in self.req('GET', '/api/admin/requests')[1][0]['children'] if c['unit'] == 'INSURANCE'][0]['result'])
+        # complete profile: the unit is queued; the agent's failure (blocked site) ends it without failing the car
+        sets = ', '.join(f"{k}='x'" for k in todo.QUOTE_PARAMS if k != 'annual_km')
+        self.sql_write(f"UPDATE project_parameters SET {sets}, annual_km=10000 WHERE owner_id=1")
+        for k in todo.QUOTE_PREFS:
+            self.sql_write("INSERT OR REPLACE INTO project_preferences (owner_id, preference_key, preference_value) VALUES (1, ?, 'x')", (k,))
+        go()
+        self.assertEqual(parts()['INSURANCE'], 'QUEUED')
+        ins = claim()
+        self.assertEqual(ins['unit'], 'INSURANCE')
+        self.assertEqual(self.req('POST', f'/api/worker/requests/{ins["id"]}', {'status': 'FAILED', 'result': 'blocked by CHECK24'})[1]['status'], 'FAILED')
+        top = self.req('GET', '/api/requests')[1][0]
+        self.assertEqual(top['status'], 'DONE')
+        self.assertIn('Insurance open', top['result'])
+        # the reference car is never quoted (its premium is the owner's USER DATA)
+        self.sql_write("UPDATE listings SET is_reference=1 WHERE id=?", (CAR_A,))
+        go()
+        self.assertEqual(parts()['INSURANCE'], 'SKIPPED')
+
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
             self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{i}'})

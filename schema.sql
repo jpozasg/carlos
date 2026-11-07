@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=37). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=38). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -451,7 +451,7 @@ CREATE TABLE "research_requests" (
  flag_id INTEGER REFERENCES review_flags(id),
  attempts INTEGER NOT NULL DEFAULT 0, missing TEXT,
  parent_id INTEGER REFERENCES "research_requests"(id),
- unit TEXT CHECK (unit IS NULL OR unit IN ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING')),
+ unit TEXT CHECK (unit IS NULL OR unit IN ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING', 'INSURANCE')),
  level_id INTEGER,
  shared_id INTEGER REFERENCES "research_requests"(id));
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
