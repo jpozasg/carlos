@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=36). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=37). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -266,19 +266,6 @@ CREATE TABLE catalogue_links (
  created_at TEXT NOT NULL DEFAULT (datetime('now')),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
 );
-CREATE TABLE research_requests (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- owner_id INTEGER NOT NULL REFERENCES users(id),
- url TEXT NOT NULL,
- note TEXT,
- status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN ('QUEUED', 'RUNNING', 'DONE', 'FAILED', 'CANCELLED')),
- requested_at TEXT NOT NULL DEFAULT (datetime('now')),
- claimed_at TEXT,
- finished_at TEXT,
- worker TEXT,
- listing_id INTEGER REFERENCES listings(id),
- result TEXT
-, requested_by INTEGER REFERENCES users(id), request_token_hash TEXT, kind TEXT NOT NULL DEFAULT 'LISTING' CHECK (kind IN ('LISTING', 'FOLLOW_UP')), flag_id INTEGER REFERENCES review_flags(id), attempts INTEGER NOT NULL DEFAULT 0, missing TEXT);
 CREATE TABLE workers (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  name TEXT NOT NULL UNIQUE,
@@ -447,14 +434,31 @@ CREATE TABLE "listings" (
  hu_claim TEXT, service_history_claim TEXT, equipment TEXT,
  listing_date TEXT, last_checked TEXT, listing_status TEXT, notes TEXT
 , is_reference INTEGER NOT NULL DEFAULT 0 CHECK (is_reference IN (0, 1)), first_registration TEXT, verdict TEXT, owner_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id), battery_soh_claim REAL CHECK (battery_soh_claim IS NULL OR (battery_soh_claim > 0 AND battery_soh_claim <= 100)), lease_kind TEXT CHECK (lease_kind IS NULL OR lease_kind IN ('km', 'residual', 'abo')), lease_monthly_eur REAL CHECK (lease_monthly_eur IS NULL OR lease_monthly_eur > 0), lease_term_months INTEGER CHECK (lease_term_months IS NULL OR lease_term_months > 0), lease_km_per_year INTEGER CHECK (lease_km_per_year IS NULL OR lease_km_per_year > 0), lease_down_payment_eur REAL CHECK (lease_down_payment_eur IS NULL OR lease_down_payment_eur >= 0), lease_fees_eur REAL CHECK (lease_fees_eur IS NULL OR lease_fees_eur >= 0), lease_extra_km_eur REAL CHECK (lease_extra_km_eur IS NULL OR lease_extra_km_eur >= 0), lease_fewer_km_eur REAL CHECK (lease_fewer_km_eur IS NULL OR lease_fewer_km_eur >= 0), lease_includes TEXT, build_date TEXT, engine_code_seen TEXT, hsn TEXT, tsn TEXT, trim TEXT, distance_km REAL CHECK (distance_km IS NULL OR distance_km >= 0), seller_type TEXT CHECK (seller_type IS NULL OR seller_type IN ('DEALER', 'PRIVATE')), warranty INTEGER CHECK (warranty IS NULL OR warranty IN (0, 1)), hu_until TEXT CHECK (hu_until IS NULL OR hu_until GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'), service_history TEXT CHECK (service_history IS NULL OR service_history IN ('YES', 'NO', 'CLAIMED')), accident_free TEXT CHECK (accident_free IS NULL OR accident_free IN ('YES', 'NO', 'CLAIMED')), seller_rating REAL CHECK (seller_rating IS NULL OR seller_rating BETWEEN 0 AND 5), seller_reviews INTEGER CHECK (seller_reviews IS NULL OR seller_reviews >= 0), postal_code TEXT CHECK (postal_code IS NULL OR postal_code GLOB '[0-9][0-9][0-9][0-9][0-9]'));
+CREATE TABLE "research_requests" (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ owner_id INTEGER NOT NULL REFERENCES users(id),
+ url TEXT NOT NULL,
+ note TEXT,
+ status TEXT NOT NULL DEFAULT 'QUEUED' CHECK (status IN ('QUEUED', 'RUNNING', 'WAITING', 'DONE', 'SKIPPED', 'FAILED', 'CANCELLED')),
+ requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+ claimed_at TEXT,
+ finished_at TEXT,
+ worker TEXT,
+ listing_id INTEGER REFERENCES listings(id),
+ result TEXT,
+ requested_by INTEGER REFERENCES users(id), request_token_hash TEXT,
+ kind TEXT NOT NULL DEFAULT 'LISTING' CHECK (kind IN ('LISTING', 'FOLLOW_UP')),
+ flag_id INTEGER REFERENCES review_flags(id),
+ attempts INTEGER NOT NULL DEFAULT 0, missing TEXT,
+ parent_id INTEGER REFERENCES "research_requests"(id),
+ unit TEXT CHECK (unit IS NULL OR unit IN ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING')),
+ level_id INTEGER,
+ shared_id INTEGER REFERENCES "research_requests"(id));
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_risks_scope ON repair_risks (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_reliability_scope ON reliability_items (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_catalogue_links_owner ON catalogue_links (owner_id);
 CREATE INDEX idx_vehicles_hsn_tsn ON vehicles (hsn, tsn);
-CREATE INDEX research_requests_owner ON research_requests (owner_id, status);
-CREATE INDEX research_requests_queue ON research_requests (status, id);
-CREATE INDEX research_requests_token ON research_requests (request_token_hash);
 CREATE UNIQUE INDEX ux_engine_families_name ON engine_families (upper(name));
 CREATE UNIQUE INDEX ux_gearbox_families_name ON gearbox_families (upper(name));
 CREATE UNIQUE INDEX ux_gearboxes_code ON gearboxes (upper(code));
@@ -469,3 +473,9 @@ CREATE INDEX idx_listings_vehicle ON listings (vehicle_id);
 CREATE UNIQUE INDEX ux_generations_key ON generations (make, model, name) WHERE owner_id IS NULL;
 CREATE UNIQUE INDEX ux_engines_key ON engines (code, power_kw) WHERE owner_id IS NULL;
 CREATE UNIQUE INDEX ux_vehicles_key ON vehicles (hsn, tsn, engine_id) WHERE owner_id IS NULL AND hsn IS NOT NULL;
+CREATE INDEX research_requests_owner ON research_requests (owner_id, status);
+CREATE INDEX research_requests_queue ON research_requests (status, id);
+CREATE INDEX research_requests_token ON research_requests (request_token_hash);
+CREATE UNIQUE INDEX research_requests_child ON research_requests (parent_id, unit) WHERE parent_id IS NOT NULL;
+CREATE UNIQUE INDEX research_requests_open_unit ON research_requests (unit, level_id)
+ WHERE parent_id IS NOT NULL AND level_id IS NOT NULL AND status IN ('QUEUED', 'RUNNING');

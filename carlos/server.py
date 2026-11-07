@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
-from . import auth, config, research, research_requests as rq
+from . import auth, config, research, research_requests as rq, research_units
 from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, row_owner, save_media,
                     storage_usage, table_columns)
@@ -488,7 +488,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             auth.scope(s, owner_id, curator=True)
             row = next((r for r in ranked_rows(s, params(s))[0] if r['id'] == listing_id), None)
-            return [i['id'] for i in (row or {}).get('research', []) if i.get('grade') == 'MISSING' and i['id'] != 'lst.insurance']
+            if row is None:  # fail closed: a listing that cannot be graded is not done
+                return sorted(research_units.UNIT_OF)
+            return [i['id'] for i in row.get('research', []) if i.get('grade') == 'MISSING' and i['id'] != 'lst.insurance']
         finally:
             s.close()
 
