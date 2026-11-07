@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=35). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=36). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -49,7 +49,7 @@ CREATE TABLE "inspection_items" (
  item TEXT NOT NULL,
  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'OK', 'PROBLEM', 'N/A')),
  checked_date TEXT, notes TEXT
-, reliability_item_id INTEGER REFERENCES reliability_items(id), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)));
+, reliability_item_id INTEGER REFERENCES reliability_items(id), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), fault_id INTEGER REFERENCES faults(id), recall_id INTEGER REFERENCES recalls(id));
 CREATE TABLE maintenance_resets (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),

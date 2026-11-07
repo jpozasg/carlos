@@ -294,7 +294,7 @@ def listing_items(u, rows, today):
     add('lst.valuation', 'resale value at the end of the period', 'resale_end' in rows['valuations'])
     if not u['is_reference']:
         add('lst.purchase_sale', 'purchase costs of this car', any(x['category'] == 'purchase_sale' for x in rows['unit_costs']))
-        add('lst.checklist', 'a checklist item for every weak point', rows['weak_points'] <= rows['checked'])
+        add('lst.checklist', 'a checklist item for every recall and every weak point with an inspection action', rows['weak_points'] <= rows['checked'])
         add('lst.capture', 'listing captured', rows['captured'])
         add('lst.photos', 'photos archived', bool(u['photo_count']))
     return items

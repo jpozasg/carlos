@@ -58,7 +58,7 @@ Being built from `docs/target-design.md`; the old tables (`reliability_items`, `
 | `valuations` | `kind` `sale_today` (reference only) or `resale_end`, `horizon_years`, `low_eur`, `expected_eur`, `high_eur`, `status`, `valued_date`, `source_id`. |
 | `unit_costs` | certain one-off costs of this car: `category` maintenance (a scheduled job due at purchase, with a CERTAIN REPAIR reset) / repairs (a present fault) / tyres / purchase_sale; `item` names the job, `item`, `parts_eur`, `labor_eur`, `diy_hours`, `status`, `source_id`. |
 | `maintenance_resets` | a scheduled job done at the start of ownership (`basis` CERTAIN REPAIR / SELLER CLAIM / DOCUMENTED): the schedule restarts for this listing. |
-| `inspection_items` | the checklist: `item`, `status` PENDING / OK / PROBLEM / N/A, `checked_date`, `notes`, `reliability_item_id` (the weak point the check comes from; for a recall its result decides whether the recall counts). |
+| `inspection_items` | the checklist: `item`, `status` PENDING / OK / PROBLEM / N/A, `checked_date`, `notes`, `reliability_item_id` / `fault_id` / `recall_id` (the one weak point the check comes from, #223; for a recall its result decides whether the recall counts, a fault's does not: its probability already assumes it has not failed). A fault gets an item only when it has an `inspection_action`; `checklist_from_reliability(L)` adds the missing items and is safe to repeat. |
 | `listing_events` | the log, the agent's memory: `event_date`, `kind` (found, verification, correction, price, decision, user_data, warning, archive, photos, viewing), `text` (English), `source_id`. |
 | `change_log` | audit trail of every write through the API (`table_name`, `row_id`, `action`, `old_json`, `new_json`, `user_id`). |
 

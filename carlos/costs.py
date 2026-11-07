@@ -569,9 +569,14 @@ def tco_rows(c, p):
     # checks stay out of the inspection criterion so an open recall is not counted twice
     recall_ids = {r['id'] for r in know.t['reliability_items'] if r.get('is_recall')}
     checks, recall_checks = {}, {}
-    for r in c.execute('SELECT listing_id, reliability_item_id, status FROM inspection_items WHERE reliability_item_id IS NOT NULL'):
-        checks.setdefault(r['listing_id'], {})[r['reliability_item_id']] = r['status']
-        if r['reliability_item_id'] in recall_ids:
+    check_texts = {}  # listing -> check texts on its list (a fault with the same action text is covered by it, #223)
+    for r in c.execute('SELECT listing_id, reliability_item_id, fault_id, recall_id, item, status FROM inspection_items'):
+        check_texts.setdefault(r['listing_id'], set()).add(r['item'].strip())
+        key = r['reliability_item_id'] or (f"F{r['fault_id']}" if r['fault_id'] else f"R{r['recall_id']}" if r['recall_id'] else None)
+        if key is None:
+            continue
+        checks.setdefault(r['listing_id'], {})[key] = r['status']
+        if r['recall_id'] or r['reliability_item_id'] in recall_ids:
             recall_checks.setdefault(r['listing_id'], {}).setdefault(r['status'], 0)
             recall_checks[r['listing_id']][r['status']] += 1
     for m in c.execute('SELECT listing_id, file_path FROM listing_media ORDER BY id'):  # the first upload is the cover
@@ -713,14 +718,17 @@ def tco_rows(c, p):
         rel_rows = know.of('reliability_items', v, win)
         rel_checks = dict(checks.get(u['id'], {}))
         rel_rows = rel_rows + [{'id': f"F{f['id']}", 'component': f['component'], 'severity': fault_severity(f), 'part': f['part'],
-                                'is_recall': False, 'level': f['level'], 'source_id': f['source_id']} for f in f_rows] + \
+                                'is_recall': False, 'inspection_action': (f.get('inspection_action') or '').strip(), 'level': f['level'], 'source_id': f['source_id']} for f in f_rows] + \
             [{'id': f"R{r['id']}", 'component': r['code'] + ': ' + r['defect'], 'severity': 'HIGH' if r['safety'] else 'MEDIUM',
               'part': r['part'], 'is_recall': True, 'level': r['level'], 'source_id': r['source_id']} for r in rc_rows]
         for rid, st in recall_status.items():  # done or not affected (VIN check): the recall stops counting
             if st in ('DONE', 'NOT AFFECTED'):
                 rel_checks[f'R{rid}'] = 'OK'
         items += research.listing_items(u, {'insurance': know.of('insurance_data', v) + quotes.get(u['id'], []), 'tax': {'exempt': True} if electric and taxable == 0 else tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
-                                            'weak_points': {r['id'] for r in rel_rows}, 'checked': set(checks.get(u['id'], {})),
+                                            # a recall always needs its check; any other weak point only when it has an action (#223)
+                                            'weak_points': {r['id'] for r in rel_rows if r.get('is_recall') or (r.get('inspection_action') or '').strip()},
+                                            'checked': set(rel_checks) | {r['id'] for r in rel_rows if not r.get('is_recall') and
+                                                         (r.get('inspection_action') or '').strip() in check_texts.get(u['id'], ())},
                                             'captured': u['id'] in captured}, today)
         u['research'] = items
         evidence = {r['part'] for r in rel_rows if r.get('part')}

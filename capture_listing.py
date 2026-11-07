@@ -176,20 +176,36 @@ def read_photo(photo, base_dir):
     return body, mime
 
 
-def checklist_items(reliability_rows, existing):
-    """(item text, reliability_item_id) for the weak points that have no checklist item yet. One item per weak point,
-    keyed by reliability_item_id; a recall's item names the recall so each recall has its own check (issue #54)."""
-    linked = {i.get('reliability_item_id') for i in existing}
-    texts = {i['item'] for i in existing}
+LINK_COLUMNS = ('reliability_item_id', 'fault_id', 'recall_id')
+
+
+def checklist_items(detail, existing):
+    """(item text, link) for the weak points that have no checklist item yet; link = {column: id} (reliability_item_id,
+    fault_id or recall_id). `detail` is the listing detail: its reliability items, faults (fault_plan) and recalls (#223).
+    A reliability item and a fault get their `inspection_action` (none, no item); a recall row always gets an item naming
+    the recall (issue #54); one item per weak point; the same check text is not listed twice."""
+    linked = {(c, i[c]) for i in existing if not i.get('archived') for c in LINK_COLUMNS if i.get(c) is not None}
+    texts = {i['item'].strip() for i in existing if not i.get('archived')}
     out = []
-    for r in sorted(reliability_rows, key=lambda r: r['id']):
-        action = (r.get('inspection_action') or '').strip()
-        if not action or r['id'] in linked:
+    weak = [('reliability_item_id', r) for r in sorted(detail.get('reliability', []), key=lambda r: r['id'])] + \
+           [('fault_id', f) for f in sorted(detail.get('fault_plan', []), key=lambda f: f['id'])] + \
+           [('recall_id', r) for r in sorted(detail.get('recalls', []), key=lambda r: r['id'])]
+    for col, r in weak:
+        if (col, r['id']) in linked:
             continue
-        text = f"Recall: {r['component']} — {action}" if r.get('is_recall') else action
-        if text in texts and not r.get('is_recall'):
+        action = (r.get('inspection_action') or '').strip()
+        recall = col == 'recall_id' or bool(r.get('is_recall'))
+        if col == 'recall_id':
+            text = f"Recall {r['code']}: {r['defect']} — dealer VIN check that it was done"
+        elif recall:
+            text = f"Recall: {r['component']} — {action or 'dealer VIN check that it was done'}"
+        elif not action:
+            continue
+        else:
+            text = action
+        if text in texts and not recall:
             continue  # the same check already on the list for another weak point
-        out.append((text, r['id']))
+        out.append((text, {col: r['id']}))
         texts.add(text)
     return out
 
@@ -261,9 +277,8 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
     # checklist from the model's reliability items (new listings only; re-captures keep the user's ticks)
     if existing is None:
         d = {} if dry_run else api.call('GET', f'/api/listings/{lid}')
-        for item, rel_id in checklist_items(d.get('reliability', []), []) + ([(SOH_CHECK, None)] if d.get('fuel_type') == 'Electric' else []):
-            write('POST', '/api/agent/inspection_items', {'listing_id': lid, 'item': item, 'status': 'PENDING',
-                                                          'reliability_item_id': rel_id}, 'checklist item')
+        for item, link in checklist_items(d, []) + ([(SOH_CHECK, {})] if d.get('fuel_type') == 'Electric' else []):
+            write('POST', '/api/agent/inspection_items', {'listing_id': lid, 'item': item, 'status': 'PENDING', **link}, 'checklist item')
         if dry_run:
             log('[dry-run] checklist items from the model reliability_items.inspection_action')
 

@@ -148,7 +148,7 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `lst.insurance` | listing | a quote younger than 60 days (the reference car: the premium the owner pays) | – |
 | `lst.tax_covered` | listing | a tax row whose registration window covers the car's first registration (an electric car exempt for the whole period needs none) | – |
 | `lst.valuation` | listing | a `resale_end` valuation | – |
-| `lst.purchase_sale`, `lst.checklist`, `lst.capture`, `lst.photos` | listing (for sale) | purchase costs; a checklist item for every weak point; a capture; archived photos | – |
+| `lst.purchase_sale`, `lst.checklist`, `lst.capture`, `lst.photos` | listing (for sale) | purchase costs; a checklist item for every recall and every weak point or fault with an `inspection_action` (run `checklist_from_reliability` again after adding faults); a capture; archived photos | – |
 
 Changing the contract: add the item to `research.py` and this table in the same PR (a test checks the ids); a new item makes every level it applies to incomplete at once. When an item's rule gets stricter, raise its `since` to the new `CONTRACT_VERSION`, so checks recorded against the older contract stop counting.
 
