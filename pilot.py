@@ -6,7 +6,7 @@ database, compared with pilot_compare.py before the real reset and the full re-r
                                       applies the migrations and the research reset (account 5 kept) and copies the
                                       pilot cars' photos; never writes the real database
   python pilot.py queue [--dir DIR]   with both pilot servers running, queues the pilot cars as research requests
-                                      for account 5 on each (admin token: AGENT_TOKEN or .env); re-run it to queue
+                                      for the carlostester account on each (admin token: AGENT_TOKEN or .env) for the REQUESTER account (carlostester); re-run it to queue
                                       the rest when the account's 5 open requests are full
   python pilot.py commands [--dir DIR]  prints the commands to start the servers and the owner's workers
 
@@ -23,7 +23,8 @@ import research_reset
 from capture_listing import Api, ApiError, load_token
 from carlos import config
 
-ACCOUNT = 5
+ACCOUNT = 5     # kept by the reset: only the source of the pilot cars' URLs and photos
+REQUESTER = 4   # carlostester: the account the pilot requests and the researched cars belong to (owner, 2026-11-07)
 CARS = {40: 'Peugeot 208 1.2 PureTech (wet belt)', 54: 'VW Polo 1.2 TSI (EA211)', 64: 'VW Golf Sportsvan 1.4 TSI (EA211)',
         47: 'VW Golf VI 1.4 (EA111)', 56: 'Seat Leon ST 1.8 TSI DSG', 60: 'Toyota Yaris 1.5 Hybrid'}
 RUNS = {'a': 8021, 'b': 8022}
@@ -50,19 +51,25 @@ def setup(d):
         print(f'run {run}: {dst} ready ({len(files)} photos)')
 
 
+def client(port, account):
+    os.environ['CARLOS_ACCOUNT'] = str(account)  # Api reads the account header when it is created
+    return Api(f'http://127.0.0.1:{port}', load_token())
+
+
 def queue():
-    os.environ['CARLOS_ACCOUNT'] = str(ACCOUNT)
     for run, port in RUNS.items():
-        api = Api(f'http://127.0.0.1:{port}', load_token())
+        api, source = client(port, REQUESTER), client(port, ACCOUNT)  # source: the kept listings of account 5, read only
         asked = {r['url'] for r in api.call('GET', '/api/requests')  # open or already a pilot request (history kept by the reset)
                  if r['status'] in ('QUEUED', 'RUNNING') or (r['note'] or '').startswith('Pilot run')}
         for lid, name in CARS.items():
-            url = api.call('GET', f'/api/listings/{lid}').get('url') or f'carlos://listing/{lid}'
+            url = source.call('GET', f'/api/listings/{lid}').get('url')
+            if not url:
+                print(f'run {run}: skipped {lid} {name} (the listing has no URL)'); continue
             if url in asked:
                 continue
             try:
-                api.call('POST', '/api/requests', {'url': url, 'note': f'Pilot run {run} (#167): {name}. Listing {lid} '
-                         'already exists without a variant: research its model and attach it.'})
+                api.call('POST', '/api/requests', {'url': url, 'note': f'Pilot run {run} (#167): {name}. Capture this listing '
+                         'and research its model.'})
                 print(f'run {run}: queued {lid} {name}')
             except ApiError as e:
                 print(f'run {run}: not queued {lid} ({e}); run `python pilot.py queue` again later')
