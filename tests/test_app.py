@@ -863,6 +863,21 @@ class AppTest(unittest.TestCase):
             self.assertEqual(consistency.duplicates(c)[0], {})
             self.assertIn('Double counted: 0', consistency.duplicates_report(c))
 
+    def test_duplicate_guard_recalls_and_jobs_221(self):
+        """The 409 also covers a recall with the same code and a maintenance job with the same job code on levels one car carries."""
+        rc = {'code': 'R1', 'defect': 'Wiring', 'safety': 1, 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'recalls', {**rc, 'engine_id': E_A})[0], 201)
+        st, r = self.agent('POST', 'recalls', {**rc, 'code': ' r1 ', 'generation_id': G1})
+        self.assertEqual((st, r['conflict'][0]['level']), (409, 'engine'))
+        self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'R2', 'generation_id': G1})[0], 201)
+        job = {'item': 'Oil', 'job': 'COOLANT', 'interval_km': 10000, 'schedule': 'ITEM', 'diy': 0, 'reference_cost_eur': 10, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'maintenance_items', {**job, 'engine_id': E_A})[0], 201)
+        st, r = self.agent('POST', 'maintenance_items', {**job, 'item': 'Coolant change', 'generation_id': G1})
+        self.assertEqual(st, 409, r)
+        self.assertEqual(self.agent('POST', 'maintenance_items', {**job, 'job': 'CABIN_FILTER', 'generation_id': G1})[0], 201)
+        st, ok = self.agent('POST', 'maintenance_items', {**job, 'generation_id': G1, 'distinct_of': [r['conflict'][0]['id']], 'notes': 'gearbox oil'})
+        self.assertEqual(st, 201, ok)
+
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
             self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{i}'})

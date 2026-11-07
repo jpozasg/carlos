@@ -105,29 +105,58 @@ def _overlap(a, b):
             and (b.get('applies_to') is None or a.get('applies_from') is None or a['applies_from'] <= b['applies_to']))
 
 
-def fault_conflicts(c, n, row_id=None):
-    """Existing faults that a new or changed fault `n` would be costed together with (#221): same part, a name that
-    reads as the same fault, windows that overlap, and at least one catalogue variant that carries both (its own level
-    always counts). Not a conflict: the row itself, a fixed_fault_id pair. Reads the connection's visible faults."""
-    level = next((k for k in config.LEVEL_COLUMNS if n.get(k) is not None), None)
-    variants = [v for v in db.variants(c, 'WHERE v.owner_id IS NULL')]
+def _carriers(c, n):
+    """Catalogue variants (with the options of their generation) that carry a knowledge row `n` (its own level included)."""
     opts = {}
     for o in c.execute('SELECT id, generation_id FROM options WHERE generation_id IS NOT NULL'):
         opts.setdefault(o['generation_id'], []).append(o['id'])
-    mine = [v for v in ({**v, 'option_ids': opts.get(v['generation_id'], [])} for v in variants) if db.applies(n, v)]
+    return [v for v in ({**v, 'option_ids': opts.get(v['generation_id'], [])} for v in db.variants(c, 'WHERE v.owner_id IS NULL'))
+            if db.applies(n, v)]
+
+
+# table -> (columns that must be equal, how two rows are "the same", what the 409 shows)
+def _same_recall(a, b):
+    return 'same recall code' if str(a.get('code') or '').strip().upper() == str(b.get('code') or '').strip().upper() else None
+
+
+def _same_job(a, b):
+    return 'same job' if a.get('job') and a.get('job') == b.get('job') else None
+
+
+GUARDED = {'faults': (('part',), lambda a, b: same_fault(a.get('component'), b.get('component')), 'component'),
+           'recalls': ((), _same_recall, 'code'),
+           'maintenance_items': ((), _same_job, 'item')}
+
+
+def conflicts(c, table, n, row_id=None):
+    """Existing rows of `table` that a new or changed row `n` would be costed together with (#221): the table's notion of
+    "the same" (faults: same part, similar name; recalls: same code; maintenance items: same job, global defaults excluded),
+    overlapping windows, and at least one catalogue variant that carries both (its own level always counts). Not a
+    conflict: the row itself, a fixed_fault_id pair. Reads the connection's visible rows."""
+    keys, same, label = GUARDED[table]
+    level = next((k for k in config.LEVEL_COLUMNS if n.get(k) is not None), None)
+    if level is None:
+        return []
+    mine = _carriers(c, n)
     out = []
-    for x in db.rows(c, 'SELECT * FROM faults WHERE archived=0 AND part=?', (n.get('part'),)):
-        if x['id'] == row_id or n.get('fixed_fault_id') == x['id'] or x.get('fixed_fault_id') == row_id and row_id is not None:
+    for x in db.rows(c, f'SELECT * FROM {table} WHERE archived=0'):
+        if x['id'] == row_id or any(n.get(k) != x[k] for k in keys):
             continue
-        why = same_fault(n.get('component'), x['component'])
+        if table == 'faults' and (n.get('fixed_fault_id') == x['id'] or row_id is not None and x.get('fixed_fault_id') == row_id):
+            continue
+        why = same(n, x)
         if not why or not _overlap(n, x):
             continue
-        xl = next(k for k in config.LEVEL_COLUMNS if x.get(k) is not None)
-        if (xl == level and x[xl] == n[level]) or any(db.applies(x, v) for v in mine):
-            out.append({'id': x['id'], 'level': config.LEVELS[xl], 'level_id': x[xl], 'part': x['part'], 'component': x['component'],
-                        'applies_from': x['applies_from'], 'applies_to': x['applies_to'], 'frequency_band': x['frequency_band'],
-                        'source_id': x['source_id'], 'notes': x['notes'], 'match': why})
+        xl = next((k for k in config.LEVEL_COLUMNS if x.get(k) is not None), None)
+        if xl is not None and ((xl == level and x[xl] == n[level]) or any(db.applies(x, v) for v in mine)):
+            out.append({'id': x['id'], 'level': config.LEVELS[xl], 'level_id': x[xl], 'part': x.get('part'), 'component': x.get(label),
+                        'applies_from': x.get('applies_from'), 'applies_to': x.get('applies_to'),
+                        'frequency_band': x.get('frequency_band'), 'source_id': x.get('source_id'), 'notes': x.get('notes'), 'match': why})
     return out
+
+
+def fault_conflicts(c, n, row_id=None):
+    return conflicts(c, 'faults', n, row_id)
 
 
 def _distinct(x, y):
