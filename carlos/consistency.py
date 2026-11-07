@@ -3,8 +3,8 @@ statistics say about the model at an age class (its figure ÷ the class average 
 predict for it (the yearly chance of any of its faults at that age ÷ the catalogue average for that age class). When one
 says clearly more trouble and the other clearly less, the generation gets a STATS_MISMATCH review flag and a follow-up
 research request is queued for a worker. Nothing is scaled automatically. Reads the main tables (the whole catalogue)."""
-import json
-from . import config
+import difflib, json, re, unicodedata
+from . import config, db
 from .costs import curve_at, shape_curves
 from .research_requests import follow_up
 
@@ -68,3 +68,63 @@ def check(c):
                 follow_up(c, fid, f'Review flag {fid} (generation {s["generation_id"]}): {why}. {what}.')
                 new.append(fid)
     return new
+
+
+# --- the same fault filed twice (#221) ---
+_STOP = {'the', 'a', 'an', 'of', 'and', 'with', 'on', 'in', 'at', 'to', 'for'}
+
+
+def _words(text):
+    t = unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode().lower()
+    out = []
+    for w in re.findall(r'[a-z0-9]+', t):
+        if w in _STOP or re.search(r'\d', w):  # a word with a digit is an engine/gearbox code: the level already names it
+            continue
+        out.append(w[:-1] if len(w) > 3 and w.endswith('s') else w)
+    return out
+
+
+def same_fault(a, b):
+    """Whether two component names describe one fault: equal after normalising, word overlap >= 0.6 or text similarity >= 0.8.
+    Returns the reason (a short string) or None. shortcut: wording only, until component codes exist (#221 phase 3)."""
+    wa, wb = _words(a), _words(b)
+    if not wa or not wb:
+        return None
+    if wa == wb:
+        return 'same name'
+    sa, sb = set(wa), set(wb)
+    if len(sa & sb) / len(sa | sb) >= 0.6:
+        return 'similar words'
+    ratio = difflib.SequenceMatcher(None, ' '.join(wa), ' '.join(wb)).ratio()
+    return f'similar name {ratio:.2f}' if ratio >= 0.8 else None
+
+
+def _overlap(a, b):
+    """applies_from/applies_to windows (YYYY-MM, NULL = open) share at least one month."""
+    return ((a.get('applies_to') is None or b.get('applies_from') is None or b['applies_from'] <= a['applies_to'])
+            and (b.get('applies_to') is None or a.get('applies_from') is None or a['applies_from'] <= b['applies_to']))
+
+
+def fault_conflicts(c, n, row_id=None):
+    """Existing faults that a new or changed fault `n` would be costed together with (#221): same part, a name that
+    reads as the same fault, windows that overlap, and at least one catalogue variant that carries both (its own level
+    always counts). Not a conflict: the row itself, a fixed_fault_id pair. Reads the connection's visible faults."""
+    level = next((k for k in config.LEVEL_COLUMNS if n.get(k) is not None), None)
+    variants = [v for v in db.variants(c, 'WHERE v.owner_id IS NULL')]
+    opts = {}
+    for o in c.execute('SELECT id, generation_id FROM options WHERE generation_id IS NOT NULL'):
+        opts.setdefault(o['generation_id'], []).append(o['id'])
+    mine = [v for v in ({**v, 'option_ids': opts.get(v['generation_id'], [])} for v in variants) if db.applies(n, v)]
+    out = []
+    for x in db.rows(c, 'SELECT * FROM faults WHERE archived=0 AND part=?', (n.get('part'),)):
+        if x['id'] == row_id or n.get('fixed_fault_id') == x['id'] or x.get('fixed_fault_id') == row_id and row_id is not None:
+            continue
+        why = same_fault(n.get('component'), x['component'])
+        if not why or not _overlap(n, x):
+            continue
+        xl = next(k for k in config.LEVEL_COLUMNS if x.get(k) is not None)
+        if (xl == level and x[xl] == n[level]) or any(db.applies(x, v) for v in mine):
+            out.append({'id': x['id'], 'level': config.LEVELS[xl], 'level_id': x[xl], 'part': x['part'], 'component': x['component'],
+                        'applies_from': x['applies_from'], 'applies_to': x['applies_to'], 'frequency_band': x['frequency_band'],
+                        'source_id': x['source_id'], 'notes': x['notes'], 'match': why})
+    return out

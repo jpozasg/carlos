@@ -55,7 +55,8 @@ CAPTURE_FORMAT = '''Capture JSON (null = unknown, never 0):
 
 
 class ApiError(Exception):
-    pass
+    def __init__(self, message, code=None, body=None):
+        super().__init__(message); self.code, self.body = code, body  # body: the parsed JSON answer (409 conflicts, #221)
 
 
 class Api:
@@ -72,13 +73,15 @@ class Api:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.load(resp)
         except urllib.error.HTTPError as e:
+            body = None
             try:
-                msg = json.load(e).get('error')
+                body = json.load(e)
+                msg = body.get('error')
             except ValueError:
                 msg = e.reason
             if e.code == 401:
                 msg = f'{msg}. The token in .env (or AGENT_TOKEN) is no longer valid: a new token created in Settings replaces it; paste the new one'
-            raise ApiError(f'{method} {path}: HTTP {e.code}: {msg}') from None
+            raise ApiError(f'{method} {path}: HTTP {e.code}: {msg}', e.code, body) from None
 
 
 def load_token():

@@ -14,7 +14,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from capture_listing import Api, checklist_items, load_token  # noqa: E402
+from capture_listing import Api, ApiError, checklist_items, load_token  # noqa: E402
 
 API_BASE = os.environ.get('CAR_API', 'http://127.0.0.1:8000')
 api = Api(API_BASE, load_token())
@@ -232,6 +232,13 @@ def risk(v, component, km_from, km_to, probability, parts, labor, diy, hours, so
                                  'applies_from': applies_from, 'applies_to': applies_to})
 
 
+class DuplicateFault(ApiError):
+    """The server found a similar fault already applying to this level (#221); `existing` lists it. Extend it (PATCH), re-scope it,
+    or call fault(..., distinct_of=[ids], notes='why it is a different fault'). Never retried automatically."""
+    def __init__(self, e):
+        super().__init__(str(e), e.code, e.body); self.existing = e.body['conflict']
+
+
 def fault(v, component, part, consequence, existence, source_id, band=None, shape=None, curve_km=None, curve_age=None,
           parts=None, labor=None, diy_parts=None, hours=None, level='variant', **more):
     """A design fault (#168) on one level: a frequency band (systemic, widespread, common, occasional, rare; by 200,000 km
@@ -240,6 +247,17 @@ def fault(v, component, part, consequence, existence, source_id, band=None, shap
     for 'systemic'), fixed_fault_id, warranty_km/years/share, applies_from/to, quote, probability_basis, usage_flags, notes."""
     if parts is None and labor is None and diy_parts is None:
         raise ValueError(f'{component}: every fault needs a price; estimate one and say how in notes')
+    try:
+        return _post_fault(v, component, part, consequence, existence, source_id, band, shape, curve_km, curve_age,
+                           parts, labor, diy_parts, hours, level, more)
+    except ApiError as e:
+        if e.code == 409 and isinstance(e.body, dict) and e.body.get('conflict'):
+            raise DuplicateFault(e) from None
+        raise
+
+
+def _post_fault(v, component, part, consequence, existence, source_id, band, shape, curve_km, curve_age,
+                parts, labor, diy_parts, hours, level, more):
     return post('faults', {**scope(v, level), 'component': component, 'part': part, 'consequence': consequence,
                            'existence': existence, 'source_id': source_id, 'frequency_band': band, 'shape': shape,
                            'curve_km': curve_km, 'curve_age': curve_age, 'parts_eur': parts, 'labor_eur': labor,

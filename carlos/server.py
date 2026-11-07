@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
 from . import auth, config, research, research_requests as rq
-from .agent import (AGENT_TABLES, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
+from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, row_owner, save_media,
                     storage_usage, table_columns)
 from .costs import budget, check_budget, days_since, listing_detail, tco_rows
@@ -257,6 +257,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'error': str(e)}, 404)
         except QuotaExceeded as e:
             self.send_json({'error': str(e)}, 507)
+        except Conflict as e:
+            self.send_json(e.payload, 409)
         except (ValueError, sqlite3.Error) as e:  # JSONDecodeError is a ValueError; CHECK/FK violations are sqlite3.Error
             self.send_json({'error': str(e)}, 400)
         finally:
