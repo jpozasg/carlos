@@ -13,12 +13,14 @@ from pathlib import Path
 
 from carlos import auth, config, db
 
-ACCOUNT = 5
+ACCOUNT = 4  # carlostester: the account the pilot requests and cars belong to (pilot.py REQUESTER)
 BANDS = list(config.FREQUENCY_BANDS)  # ordered from the most to the least frequent
-LEVELS = (('vehicle_id', 'vehicles', ('hsn', 'tsn', 'engine_id')), ('engine_id', 'engines', ('code', 'power_kw')),
-          ('engine_family_id', 'engine_families', ('name',)), ('gearbox_id', 'gearboxes', ('code',)),
-          ('gearbox_family_id', 'gearbox_families', ('name',)), ('generation_id', 'generations', ('make', 'model', 'name')),
-          ('body_style_id', 'body_styles', ('generation_id', 'name')), ('option_id', 'options', ('name',)))
+# Level keys that two independent runs write the same way. Free-text names (generation name, engine code) differ between runs,
+# so levels are paired by what identifies the car: make and model, displacement and power, HSN/TSN.
+LEVELS = (('vehicle_id', 'vehicles', ('hsn', 'tsn')), ('engine_id', 'engines', ('displacement_cc', 'power_kw')),
+          ('engine_family_id', 'engine_families', ()), ('gearbox_id', 'gearboxes', ('type',)),
+          ('gearbox_family_id', 'gearbox_families', ()), ('generation_id', 'generations', ('make', 'model')),
+          ('body_style_id', 'body_styles', ()), ('option_id', 'options', ()))
 
 
 def ro(path):
@@ -44,8 +46,9 @@ def match(a, b, key):
     """Pairs rows of two runs: same part, most similar name (ratio ≥ 0.6); the rest stays unmatched."""
     pairs, rest = [], list(b)
     for x in a:
-        best = max(((difflib.SequenceMatcher(None, key(x).lower(), key(y).lower()).ratio(), y) for y in rest
-                    if x.get('part') == y.get('part')), default=(0, None), key=lambda t: t[0])
+        # same part; a name ratio >= 0.6, or >= 0.35 when both sit on the same level (runs word one fault differently)
+        best = max(((difflib.SequenceMatcher(None, key(x).lower(), key(y).lower()).ratio() + (0.25 if x.get('level') == y.get('level') else 0), y)
+                    for y in rest if x.get('part') == y.get('part')), default=(0, None), key=lambda t: t[0])
         if best[0] >= 0.6:
             pairs.append((x, best[1])); rest.remove(best[1])
     return pairs, [x for x in a if all(x is not p[0] for p in pairs)], rest
@@ -110,20 +113,21 @@ def report(pa, pb):
     for run, c in (('A', a), ('B', b)):
         lines += [f"- {run} {m['level']}: {m['rate_year']} %/year, {m['rate_10k_km']} %/10,000 km, bands {m['band_counts']}"
                   for m in facts(c, 'market_models')]
-    fails = lambda c: [f"#{r['id']} {r['result'][:120]!r}" for r in c.execute(
-        "SELECT * FROM research_requests WHERE status='FAILED' AND note LIKE 'Pilot run%'")]
-    lines += ['', '## Worker failures', f'- A: {fails(a) or "none"}', f'- B: {fails(b) or "none"}']
+    fails = lambda c: [f"#{r['id']} {r['unit'] or ''} {r['status']} after {r['attempts']} attempts: {(r['result'] or '')[:120]!r}" for r in c.execute(
+        "SELECT * FROM research_requests WHERE id>=16 AND (status='FAILED' OR attempts>0) ORDER BY id")]
+    lines += ['', '## Worker failures and retries (units that FAILED or needed more than one run)', f'- A: {fails(a) or "none"}', f'- B: {fails(b) or "none"}']
+    urls = lambda c: {r['url']: r['id'] for r in c.execute('SELECT id, url FROM listings WHERE owner_id=?', (ACCOUNT,)) if r['url']}
+    ia, ib = urls(a), urls(b)
     a.close(); b.close()
     ua, ub = costs(pa), costs(pb)
-    from pilot import CARS
-    pilot = sorted(i for i in CARS if i in ua and i in ub)
-    lines += ['', '## Pilot cars (account 5)', '| Listing | Car | € / month A / B | Complete | Score A / B | Rank A / B |',
-              '|---|---|---|---|---|---|']
-    for i in pilot:
-        x, y = ua[i], ub[i]
-        f = lambda v: '—' if v is None else f'{v:.0f}'
-        lines.append(f"| {i} | {CARS[i]} | {f(x['known_cost_per_month'])} / {f(y['known_cost_per_month'])} | "
-                     f"{x['tco_complete']} / {y['tco_complete']} | {f(x.get('score'))} / {f(y.get('score'))} | {x.get('rank')} / {y.get('rank')} |")
+    lines += ['', '## Pilot cars (account 4)', '| Car | € / month A / B | Complete | Missing A / B | Rank A / B |', '|---|---|---|---|---|']
+    f = lambda v: '—' if v is None else f'{v:.0f}'
+    miss = lambda u: ','.join(i['id'] for i in u.get('research', []) if i['grade'] == 'MISSING') or 'none'
+    for url in sorted(ia.keys() & ib.keys()):
+        x, y = ua.get(ia[url]), ub.get(ib[url])
+        if x and y:
+            lines.append(f"| {x.get('title') or url[-20:]} | {f(x['known_cost_per_month'])} / {f(y['known_cost_per_month'])} | "
+                         f"{x['tco_complete']} / {y['tco_complete']} | {miss(x)} / {miss(y)} | {x.get('rank')} / {y.get('rank')} |")
     return '\n'.join(lines)
 
 
