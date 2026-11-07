@@ -12,9 +12,9 @@ ENV = ROOT / '.env'
 STATIC = ROOT / 'static'
 HOST, PORT = '127.0.0.1', int(os.environ.get('CARLOS_PORT') or 8000)
 
-# Raspberry Pi with 8 GB: the whole project (database, photos, backups) must stay under 500 MB.
-STORAGE_LIMIT = 500 * 1024 ** 2
-STORAGE_BUDGET = 450 * 1024 ** 2  # headroom for backups and database growth
+# Raspberry Pi with 8 GB: the whole project (database, photos, backups) must stay under 1 GB (owner, 2026-11-07).
+STORAGE_LIMIT = 1024 * 1024 ** 2
+STORAGE_BUDGET = 900 * 1024 ** 2  # headroom for backups and database growth
 MAX_IMAGE_BYTES = 1_500_000  # shortcut: no resizing without Pillow; the capturer must download the ~1024 px version
 IMAGE_TYPES = {b'\xff\xd8\xff': ('image/jpeg', 'jpg'), b'\x89PNG': ('image/png', 'png'), b'RIFF': ('image/webp', 'webp')}
 

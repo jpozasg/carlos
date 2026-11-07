@@ -75,7 +75,7 @@ Admins create accounts and invite links (`POST /api/admin/users`); the person se
 - Schema changes only through `migrations/NNN_*.sql` (applied at startup with a backup and a foreign-key check before the commit; applied migrations are history, never edited); then `python migrate.py --schema` regenerates `schema.sql`.
 - After every change: `python -m unittest` and the integrity check (`README.md`). Report the files changed and the tests run.
 - The server listens on 127.0.0.1 only; HTTPS and remote access come from the reverse proxy (`docs/deployment.md`). No secrets in the repository (`.env` is ignored).
-- The whole installation (code and data directory) must stay under 500 MB; photos are refused beyond 450 MB.
+- The whole installation (code and data directory) must stay under 1 GB; photos are refused beyond 900 MB (owner decision 2026-11-07).
 
 ## Git workflow
 Every change must be traceable to a reason.

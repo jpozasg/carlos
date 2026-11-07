@@ -1528,7 +1528,7 @@ class AppTest(unittest.TestCase):
 
     def test_storage_and_health(self):
         st = self.req('GET', '/api/storage')[1]
-        self.assertEqual(st['limit_bytes'], 500 * 1024 ** 2)
+        self.assertEqual(st['limit_bytes'], 1024 * 1024 ** 2)
         self.assertLess(st['total_bytes'], st['limit_bytes'])
         h = self.req('GET', '/api/health')[1]
         self.assertEqual((h['integrity'], h['listings']), ('ok', 3))
