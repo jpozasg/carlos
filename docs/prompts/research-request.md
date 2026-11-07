@@ -24,5 +24,7 @@ Do all the work yourself in this run, one step after another: do not start backg
 4. Never invent data, never bypass CAPTCHAs, Cloudflare checks, logins or anti-bot protection: if the listing cannot be read, stop and fail the request with the reason.
 5. **Browser:** use Claude in Chrome in a new tab of your own and close it at the end. If no browser is available, or several are connected and none is selected for this run, do not pick one: stop and fail the request with `CARLOS_RESULT failed: browser unavailable (<what the tool said>)` so the owner can fix it and queue the request again.
 
+A continuation run (the prompt ends with a CONTINUATION block) means the server graded the listing and still found items missing: work only on those ids. Your result line is a report; the server re-grades the listing and decides whether the request is done.
+
 End your answer with exactly one last line, nothing after it:
 `CARLOS_RESULT listing_id=<the listing id>` only when the listing is written **and** the to-do check above is met (a request whose research is still open is reported honestly as `CARLOS_RESULT failed: research incomplete: <the first missing items>`, never as a success), or `CARLOS_RESULT failed: <one-line reason>` otherwise.

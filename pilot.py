@@ -6,7 +6,7 @@ database, compared with pilot_compare.py before the real reset and the full re-r
                                       applies the migrations and the research reset (account 5 kept) and copies the
                                       pilot cars' photos; never writes the real database
   python pilot.py queue [--dir DIR]   with both pilot servers running, queues the pilot cars as research requests
-                                      for the carlostester account on each (admin token: AGENT_TOKEN or .env) for the REQUESTER account (carlostester); re-run it to queue
+                                      for the carlostester account on each (admin token: AGENT_TOKEN or .env); re-run it to queue
                                       the rest when the account's 5 open requests are full
   python pilot.py commands [--dir DIR]  prints the commands to start the servers and the owner's workers
 
