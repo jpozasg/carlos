@@ -401,7 +401,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/worker/claim' and method == 'POST':
                 self.send_json({'request': rq.claim(c, self.read_json().get('worker'))})
             elif req and method == 'POST':
-                self.send_json(rq.finish(c, int(req[1]), self.read_json()))
+                self.send_json(rq.finish(c, int(req[1]), self.read_json(), missing=self.missing_items))
             else:
                 self.send_json({'error': 'POST /api/worker/claim or POST /api/worker/requests/<id>'}, 404)
         elif path == '/api/parameters' and method == 'POST':
@@ -480,6 +480,16 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json({'error': 'Endpoint not found'}, 404)
 
+    def missing_items(self, owner_id, listing_id):
+        """The contract items still MISSING on a listing (all but the owner-only insurance quote), graded as the to-do list does (#218)."""
+        s = connect()
+        try:
+            auth.scope(s, owner_id, curator=True)
+            row = next((r for r in ranked_rows(s, params(s))[0] if r['id'] == listing_id), None)
+            return [i['id'] for i in (row or {}).get('research', []) if i.get('grade') == 'MISSING' and i['id'] != 'lst.insurance']
+        finally:
+            s.close()
+
     def worker_api(self, c, method, path, w):
         """A registered worker (issue #141): heartbeat, claim (returns the per-request token), finish its own request."""
         req = re.fullmatch(r'/api/worker/requests/(\d+)', path)
@@ -495,7 +505,7 @@ class Handler(BaseHTTPRequestHandler):
             own = c.execute("SELECT 1 FROM main.research_requests WHERE id=? AND worker=? AND status='RUNNING'", (int(req[1]), w['name'])).fetchone()
             if own is None:
                 raise NotAllowed('A worker finishes only the request it claimed')
-            self.send_json(rq.finish(c, int(req[1]), self.read_json()))
+            self.send_json(rq.finish(c, int(req[1]), self.read_json(), missing=self.missing_items))
         else:
             self.send_json({'error': 'POST /api/worker/heartbeat, /api/worker/claim or /api/worker/requests/<id>'}, 404)
 
