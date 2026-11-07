@@ -1,13 +1,14 @@
 """Research requests (issue #113): accounts queue listing URLs; the shared worker (admin token) claims the oldest,
 researches it with docs/prompts/research-car.md writing as the requester (X-Carlos-Account) and finishes it.
 Every query names main.research_requests and filters by owner itself: the table is not shadowed by auth.scope."""
-import re, secrets
+import json, re, secrets
 from .auth import digest
 
+MAX_ATTEMPTS = 3         # a listing still incomplete after this many DONE reports is FAILED with the missing items (#218)
 MAX_OPEN = 5             # QUEUED + RUNNING per account: keeps one account from flooding the shared worker
 WORKER_DOWN_SECONDS = 180  # a worker polls every 60 s: no heartbeat for three polls = down (issue #141)
 CLAIM_TIMEOUT_HOURS = 3  # a RUNNING request older than this is taken to be abandoned (worker crashed) and can be claimed again
-COLS = 'id, owner_id, url, note, status, requested_at, claimed_at, finished_at, worker, listing_id, result, requested_by, kind, flag_id'
+COLS = 'id, owner_id, url, note, status, requested_at, claimed_at, finished_at, worker, listing_id, result, requested_by, kind, flag_id, attempts, missing'
 
 
 def clean_url(url):
@@ -86,10 +87,16 @@ def claim(c, worker, worker_id=None):
         c.execute('ROLLBACK'); raise
     finally:
         c.isolation_level = ''
-    return {**dict(c.execute(f'SELECT {COLS} FROM main.research_requests WHERE id=?', (row[0],)).fetchone()), 'request_token': raw} if row else None
+    if not row:
+        return None
+    r = dict(c.execute(f'SELECT {COLS} FROM main.research_requests WHERE id=?', (row[0],)).fetchone())
+    r['missing'] = json.loads(r['missing']) if r['missing'] else []
+    return {**r, 'request_token': raw}
 
 
-def finish(c, rid, data):
+def finish(c, rid, data, missing=None):
+    """missing(owner_id, listing_id) -> ids of the contract items still MISSING (the server's own grading, #218): a DONE
+    report with items missing is not accepted; the request goes back to the queue, FAILED after MAX_ATTEMPTS."""
     status, result = data.get('status'), (str(data.get('result') or '').strip()[-4000:] or None)
     if status not in ('DONE', 'FAILED', 'QUEUED'):
         raise ValueError('status: DONE, FAILED or QUEUED (release)')
@@ -108,6 +115,20 @@ def finish(c, rid, data):
         own = c.execute('SELECT owner_id FROM main.listings WHERE id=?', (lid if isinstance(lid, int) else -1,)).fetchone()
         if own is None or own[0] != req['owner_id']:
             raise ValueError("listing_id: DONE needs the id of the listing written into the requester's account")
+    if status == 'DONE' and not follow_up and missing:
+        ids = missing(req['owner_id'], lid)
+        if ids:
+            n = c.execute('SELECT attempts FROM main.research_requests WHERE id=?', (rid,)).fetchone()[0] + 1
+            again = n < MAX_ATTEMPTS
+            note = f'Attempt {n}/{MAX_ATTEMPTS}: {len(ids)} contract items missing: {", ".join(ids)}'
+            with c:
+                c.execute("UPDATE main.research_requests SET status=?, listing_id=?, attempts=?, missing=?, result=?, request_token_hash=NULL, "
+                          "claimed_at=CASE WHEN ? THEN NULL ELSE claimed_at END, worker=CASE WHEN ? THEN NULL ELSE worker END, "
+                          "finished_at=CASE WHEN ? THEN NULL ELSE datetime('now') END WHERE id=?",
+                          ('QUEUED' if again else 'FAILED', lid, n, json.dumps(ids), (result + '\n' if result else '') + note,
+                           again, again, again, rid))
+                c.execute("UPDATE main.workers SET state='idle', request_id=NULL WHERE request_id=?", (rid,))
+            return dict(c.execute(f'SELECT {COLS} FROM main.research_requests WHERE id=?', (rid,)).fetchone())
     with c:
         c.execute("UPDATE main.research_requests SET status=?, listing_id=?, result=?, finished_at=datetime('now'), "
                   "request_token_hash=NULL WHERE id=?", (status, lid if status == 'DONE' else None, result, rid))  # the request token dies

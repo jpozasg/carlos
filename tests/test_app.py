@@ -3,6 +3,7 @@ Run: python -m unittest -v"""
 import datetime, json, os, shutil, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 import migrate
 from carlos import auth, config, server, costs, ranking
 from tests import fixture as fx
@@ -30,6 +31,9 @@ class AppTest(unittest.TestCase):
         config.DATA_DIR, config.DB, config.MD_DIR, config.MEDIA_DIR = d, d / 'cars.sqlite', d / 'dossiers', d / 'media'
         fx.build(config.DB)
         auth.FAILS.clear()
+        self.gaps = []   # the done gate's grading (#218) is stubbed: the fixture cars are not fully researched
+        patcher = mock.patch.object(server.Handler, 'missing_items', lambda h, owner, lid: list(self.gaps))
+        patcher.start(); self.addCleanup(patcher.stop)
         from carlos import agent as agent_mod; agent_mod._STORAGE.update(at=0.0, value=None)
 
     def tearDown(self):
@@ -767,6 +771,29 @@ class AppTest(unittest.TestCase):
         # a RUNNING request abandoned past the timeout is handed out again
         self.sql_write("UPDATE research_requests SET claimed_at=datetime('now', '-4 hours') WHERE id=?", (got[2]['id'],))
         self.assertEqual(self.req('POST', '/api/worker/claim', {'worker': 'desk2'})[1]['request']['id'], got[2]['id'])
+
+    def test_done_gate_218(self):
+        """A DONE report with contract items missing goes back to the queue (attempts + 1), the third time FAILED; a complete
+        listing is DONE; a usage-limit release is not an attempt."""
+        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/9'})
+        done = lambda rid: self.req('POST', f'/api/worker/requests/{rid}', {'status': 'DONE', 'listing_id': CAR_A, 'result': 'ok'})[1]
+        claim = lambda: self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']
+        self.gaps[:] = ['gen.hu', 'var.tyres']
+        r = claim()
+        self.assertEqual((r['attempts'], r['missing']), (0, []))
+        d = done(r['id'])
+        self.assertEqual((d['status'], d['attempts'], d['listing_id'], d['worker']), ('QUEUED', 1, CAR_A, None))
+        r = claim()
+        self.assertEqual((r['attempts'], r['missing']), (1, ['gen.hu', 'var.tyres']))
+        self.req('POST', f'/api/worker/requests/{r["id"]}', {'status': 'QUEUED', 'result': 'usage limit'})   # not an attempt
+        r = claim(); self.assertEqual(r['attempts'], 1)
+        self.assertEqual(done(r['id'])['status'], 'QUEUED')
+        d = done(claim()['id'])
+        self.assertEqual((d['status'], d['attempts']), ('FAILED', 3))
+        self.assertIn('gen.hu, var.tyres', d['result'])
+        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/10'})
+        self.gaps[:] = []
+        self.assertEqual(done(claim()['id'])['status'], 'DONE')
 
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):

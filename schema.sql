@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=34). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=35). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -278,7 +278,7 @@ CREATE TABLE research_requests (
  worker TEXT,
  listing_id INTEGER REFERENCES listings(id),
  result TEXT
-, requested_by INTEGER REFERENCES users(id), request_token_hash TEXT, kind TEXT NOT NULL DEFAULT 'LISTING' CHECK (kind IN ('LISTING', 'FOLLOW_UP')), flag_id INTEGER REFERENCES review_flags(id));
+, requested_by INTEGER REFERENCES users(id), request_token_hash TEXT, kind TEXT NOT NULL DEFAULT 'LISTING' CHECK (kind IN ('LISTING', 'FOLLOW_UP')), flag_id INTEGER REFERENCES review_flags(id), attempts INTEGER NOT NULL DEFAULT 0, missing TEXT);
 CREATE TABLE workers (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  name TEXT NOT NULL UNIQUE,

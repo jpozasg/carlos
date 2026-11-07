@@ -34,6 +34,11 @@ def prompt_for(req):
     for k, v in {'{URL}': req['url'], '{NOTE}': req['note'] or '(none)', '{ACCOUNT}': req['owner_id'],
                  '{REQUEST_ID}': req['id'], '{REPO}': ROOT}.items():
         text = text.replace(k, str(v))
+    if req.get('listing_id') and req.get('missing'):  # continuation after the server's grading (#218)
+        text += (f"\n\nCONTINUATION (attempt {req.get('attempts', 0) + 1}): listing {req['listing_id']} exists, but the server's grading "
+                 f"still finds these contract items MISSING: {', '.join(req['missing'])}.\nGrade the listing again (to-do), work only on "
+                 "these ids, and for every source that cannot be reached record a `NONE FOUND` or `N/A` check with the reason. "
+                 f"End with CARLOS_RESULT listing_id={req['listing_id']}.")
     return text.strip()
 
 
