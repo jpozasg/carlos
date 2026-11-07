@@ -182,6 +182,7 @@ class AppTest(unittest.TestCase):
         gb = self.agent('POST', 'gearboxes', {'code': '0XX', 'family_id': gf, 'type': 'DCT', 'gears': 7})[1]['id']
         self.assertEqual(self.agent('POST', 'gearboxes', {'code': '0YY', 'type': 'ROBOT'})[0], 400)          # fixed code
         self.assertEqual(self.agent('PATCH', f'vehicles/{V_A}', {'gearbox_id': gb})[0], 200)
+        self.sql_write('UPDATE reliability_items SET archived=1')   # the fixture's weak points would conflict (#254)
         fault = {'component': 'Timing chain', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
                  'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
                  'source_id': SRC_GUIDE}
@@ -801,6 +802,7 @@ class AppTest(unittest.TestCase):
         from carlos import consistency
         self.assertTrue(consistency.same_fault('Timing chain stretch', 'timing-chain stretch N47'))
         self.assertFalse(consistency.same_fault('Timing chain', 'Timing belt'))
+        self.sql_write('UPDATE reliability_items SET archived=1')   # the fixture's weak points would conflict (#254)
         base = {'component': 'Timing chain stretch', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
                 'source_id': SRC_GUIDE}
@@ -954,6 +956,21 @@ class AppTest(unittest.TestCase):
         self.sql_write("UPDATE listings SET is_reference=1 WHERE id=?", (CAR_A,))
         go()
         self.assertEqual(parts()['INSURANCE'], 'SKIPPED')
+
+    def test_duplicate_guard_reliability_254(self):
+        """A recall filed on two levels, and a defect filed both as a fault and a reliability item, are refused (409)."""
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        rel = {'component': 'Camshaft adjuster (EA211)', 'issue': 'x', 'severity': 'HIGH', 'part': 'ENGINE', 'is_recall': 1, 'frequency_status': 'PENDING',
+               'inspection_action': 'dealer VIN check', 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'reliability_items', {**rel, 'engine_id': E_A})[0], 201)
+        st, r = self.agent('POST', 'reliability_items', {**rel, 'component': 'Camshaft adjuster (EA211): oil and fuel loss', 'generation_id': G1})
+        self.assertEqual(st, 409, r)
+        self.assertEqual(r['conflict'][0]['table'], 'reliability_items')
+        self.assertEqual(self.agent('POST', 'reliability_items', {**rel, 'component': 'Parking brake', 'part': 'CHASSIS', 'is_recall': 0, 'generation_id': G1})[0], 201)
+        fault = {'component': 'Parking brake cable', 'part': 'CHASSIS', 'consequence': 'COST', 'existence': 'REPORTED', 'generation_id': G1,
+                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 100, 'labor_eur': 100, 'source_id': SRC_GUIDE}
+        st, r = self.agent('POST', 'faults', fault)
+        self.assertEqual((st, r['conflict'][0]['table']), (409, 'reliability_items'))     # already a reliability item: one table only
 
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
