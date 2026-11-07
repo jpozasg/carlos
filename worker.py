@@ -29,8 +29,23 @@ def outcome(output):
     return {'status': 'FAILED', 'result': m[2] if m else 'No CARLOS_RESULT line. Log tail:\n' + '\n'.join(lines[-30:])}
 
 
+def unit_prompt(req):
+    """The short prompt of one research unit (#218 phase 2): shared rules + docs/prompts/units/<unit>.md."""
+    d = ROOT / 'docs' / 'prompts' / 'units'
+    text = (d / '_header.md').read_text(encoding='utf-8') + (d / f'{req["unit"].lower()}.md').read_text(encoding='utf-8')
+    for k, v in {'{UNIT}': req['unit'], '{LISTING_ID}': req.get('listing_id') or '(none yet)', '{LEVEL_ID}': req.get('level_id') or '(none)',
+                 '{PARENT_ID}': req.get('parent_id') or req['id'], '{MISSING}': ', '.join(req.get('missing') or []) or '(all items of the unit)',
+                 '{ATTEMPT}': (req.get('attempts') or 0) + 1, '{PREVIOUS_RESULT}': req.get('result') or '(none)',
+                 '{URL}': req.get('url') or '(see the listing)', '{NOTE}': req.get('note') or '(none)', '{ACCOUNT}': req['owner_id'],
+                 '{REQUEST_ID}': req['id'], '{REPO}': ROOT}.items():
+        text = text.replace(k, str(v))
+    return text.strip()
+
+
 def prompt_for(req):
-    text = (ROOT / 'docs' / 'prompts' / 'research-request.md').read_text(encoding='utf-8').split('\n---\n', 1)[1]
+    if req.get('unit'):
+        return unit_prompt(req)
+    text =(ROOT / 'docs' / 'prompts' / 'research-request.md').read_text(encoding='utf-8').split('\n---\n', 1)[1]
     for k, v in {'{URL}': req['url'], '{NOTE}': req['note'] or '(none)', '{ACCOUNT}': req['owner_id'],
                  '{REQUEST_ID}': req['id'], '{REPO}': ROOT}.items():
         text = text.replace(k, str(v))

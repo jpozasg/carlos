@@ -1,0 +1,8 @@
+## Unit VARIANT (level id = variant, vehicles.id)
+Owns the variant's identity and links: `var.identity` (HSN, TSN, transmission, body style, emissions class, CO2), `var.gearbox_level` (`gearbox_id`; create the `gearboxes` row with code, type, gears and, where one applies, `gearbox_families` / `body_styles` / `engine_families`), `var.consumption`, `var.tyres`, and the generation and engine the variant points to (create them if missing, minimal: the later units fill them).
+Start: `variant({LEVEL_ID})`, `todo(vehicle_id={LEVEL_ID})` and `listing({LISTING_ID})` (HSN/TSN, `engine_code_seen`, trim, first registration). Reuse existing generations and engines (`GET /api/generations`, `GET /api/engines`); create with `generation(...)`, `engine(...)` (combustion: aspiration, injection, timing drive; electric: usable battery kWh, AC/DC kW), then PATCH the variant.
+- Consumption: `consumption(v, value, n, lo, hi, source_id)` with the autokostencheck average of the exact HSN/TSN variant (sample size, min, max); electric: ev-database.org real consumption of the exact variant and battery (Wh/km / 10), `consumption(..., electric=True)`; never Spritmonitor. If the page shows only the stored "Praxisverbrauch", write no value and record the check with the URL.
+- TSN not confirmable from the ad: say *assumed* in `notes`, list the alternatives (one TSN per kW).
+- Tyres: `tyres(v, size, price_per_tyre, source_id, notes)`: one set of all-season tyres, median mid-range price.
+- Protocol steps 1, 3 and 7 (tyres).
+No browser. Last line: `CARLOS_RESULT done: <summary>` or `CARLOS_RESULT failed: <reason>`.
