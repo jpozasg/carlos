@@ -264,7 +264,7 @@ def linked_accounts(c, table, row_id):
     return [o for (o,) in c.execute(_LISTING_LEVELS, lv)]
 
 
-DUPLICATE_GUARDED = ('faults', 'recalls', 'maintenance_items')  # the same row filed twice on levels one car carries (#221)
+DUPLICATE_GUARDED = ('faults', 'recalls', 'maintenance_items', 'reliability_items')  # the same row filed twice on levels one car carries (#221)
 GUARD_KEYS = (*config.LEVEL_COLUMNS, 'part', 'component', 'code', 'job', 'applies_from', 'applies_to', 'archived')
 
 
@@ -288,7 +288,7 @@ def guard_duplicate(c, table, data, row_id, distinct):
     if distinct is None:
         first = found[0]
         raise Conflict({'error': f"{table}: a similar row already applies to cars of this level: "
-                                 f"#{first['id']} '{first['component']}' ({first['level']} {first['level_id']}). PATCH it (add evidence in notes, "
+                                 f"{first['table']} #{first['id']} '{first['component']}' ({first['level']} {first['level_id']}). PATCH it (add evidence in notes, "
                                  f"re-scope it with one PATCH), or resend with distinct_of={ids} and the reason in notes",
                         'conflict': found})
     if not isinstance(distinct, list) or not set(ids) <= set(distinct):

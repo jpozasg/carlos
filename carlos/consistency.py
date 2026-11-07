@@ -95,6 +95,8 @@ def same_fault(a, b):
     sa, sb = set(wa), set(wb)
     if len(sa & sb) / len(sa | sb) >= 0.6:
         return 'similar words'
+    if len(sa & sb) >= 2 and (sa <= sb or sb <= sa):
+        return 'one name contains the other'
     ratio = difflib.SequenceMatcher(None, ' '.join(wa), ' '.join(wb)).ratio()
     return f'similar name {ratio:.2f}' if ratio >= 0.8 else None
 
@@ -125,33 +127,43 @@ def _same_job(a, b):
 
 GUARDED = {'faults': (('part',), lambda a, b: same_fault(a.get('component'), b.get('component')), 'component'),
            'recalls': ((), _same_recall, 'code'),
-           'maintenance_items': ((), _same_job, 'item')}
+           'maintenance_items': ((), _same_job, 'item'),
+           'reliability_items': (('part', 'is_recall'), lambda a, b: same_fault(a.get('component'), b.get('component')), 'component')}
+# a design defect must not be filed in both tables (#254): faults and non-recall reliability items are checked against each other
+ALSO = {'faults': ('reliability_items',), 'reliability_items': ('faults',)}
 
 
 def conflicts(c, table, n, row_id=None):
     """Existing rows of `table` that a new or changed row `n` would be costed together with (#221): the table's notion of
-    "the same" (faults: same part, similar name; recalls: same code; maintenance items: same job, global defaults excluded),
-    overlapping windows, and at least one catalogue variant that carries both (its own level always counts). Not a
-    conflict: the row itself, a fixed_fault_id pair. Reads the connection's visible rows."""
-    keys, same, label = GUARDED[table]
+    "the same" (faults and reliability items: same part, similar name; recalls: same code; maintenance items: same job, global
+    defaults excluded), overlapping windows, and at least one catalogue variant that carries both (its own level always
+    counts). Faults and non-recall reliability items are also checked against each other (#254). Not a conflict: the row
+    itself, a fixed_fault_id pair. Reads the connection's visible rows."""
     level = next((k for k in config.LEVEL_COLUMNS if n.get(k) is not None), None)
     if level is None:
         return []
     mine = _carriers(c, n)
     out = []
-    for x in db.rows(c, f'SELECT * FROM {table} WHERE archived=0'):
-        if x['id'] == row_id or any(n.get(k) != x[k] for k in keys):
-            continue
-        if table == 'faults' and (n.get('fixed_fault_id') == x['id'] or row_id is not None and x.get('fixed_fault_id') == row_id):
-            continue
-        why = same(n, x)
-        if not why or not _overlap(n, x):
-            continue
-        xl = next((k for k in config.LEVEL_COLUMNS if x.get(k) is not None), None)
-        if xl is not None and ((xl == level and x[xl] == n[level]) or any(db.applies(x, v) for v in mine)):
-            out.append({'id': x['id'], 'level': config.LEVELS[xl], 'level_id': x[xl], 'part': x.get('part'), 'component': x.get(label),
-                        'applies_from': x.get('applies_from'), 'applies_to': x.get('applies_to'),
-                        'frequency_band': x.get('frequency_band'), 'source_id': x.get('source_id'), 'notes': x.get('notes'), 'match': why})
+    for t in (table, *(ALSO.get(table, ()) if not n.get('is_recall') else ())):
+        keys, same, label = GUARDED[t]
+        own = t == table
+        for x in db.rows(c, f'SELECT * FROM {t} WHERE archived=0' + ('' if own or t != 'reliability_items' else ' AND is_recall=0')):
+            if own and x['id'] == row_id:
+                continue
+            if own and any(n.get(k) != x[k] for k in keys if k != 'is_recall') or own and 'is_recall' in keys and bool(n.get('is_recall')) != bool(x['is_recall']):
+                continue
+            if not own and n.get('part') != x.get('part'):
+                continue
+            if t == 'faults' and own and (n.get('fixed_fault_id') == x['id'] or row_id is not None and x.get('fixed_fault_id') == row_id):
+                continue
+            why = same(n, x)
+            if not why or not _overlap(n, x):
+                continue
+            xl = next((k for k in config.LEVEL_COLUMNS if x.get(k) is not None), None)
+            if xl is not None and ((xl == level and x[xl] == n[level] and own) or any(db.applies(x, v) for v in mine)):
+                out.append({'id': x['id'], 'table': t, 'level': config.LEVELS[xl], 'level_id': x[xl], 'part': x.get('part'),
+                            'component': x.get(label), 'applies_from': x.get('applies_from'), 'applies_to': x.get('applies_to'),
+                            'frequency_band': x.get('frequency_band'), 'source_id': x.get('source_id'), 'notes': x.get('notes'), 'match': why})
     return out
 
 
