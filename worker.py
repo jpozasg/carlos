@@ -4,7 +4,7 @@ into the requester's account (or why it failed). One request at a time.
 
 Environment: CAR_API (the site, e.g. https://carlos.example.net), WORKER_TOKEN (this worker's token, created by an
 admin on the Accounts page; issue #141), WORKER_NAME (default: the host name; with a worker token the registered name
-counts), POLL_SECONDS (60), CLAUDE_CMD ('claude -p'), WORKER_MODEL ('sonnet': the research runs on Sonnet; added as
+counts), POLL_SECONDS (60), CLAUDE_CMD ('claude -p'), WORKER_MODEL ('haiku': the research runs on Haiku; added as
 --model unless CLAUDE_CMD has one), WORKER_TIMEOUT_MIN (120), WORKER_LOGS (worker-logs/, one log per request).
 The headless run gets only the per-request token of the request it works on (the requester's account and the shared
 catalogue, dead when the request ends). Without WORKER_TOKEN the worker falls back to AGENT_TOKEN (an admin token) and
@@ -38,14 +38,14 @@ def prompt_for(req):
 
 
 def command(cmd, model):
-    """The headless command with --model <model> after the claude executable, unless one is given (owner: research on Sonnet)."""
+    """The headless command with --model <model> after the claude executable, unless one is given (owner: the worker runs on Haiku)."""
     parts = shlex.split(cmd)
     if model and parts and Path(parts[0]).name == 'claude' and not any(p == '--model' or p.startswith('--model=') for p in parts):
         parts[1:1] = ['--model', model]
     return parts
 
 
-def work_one(api, name, cmd, logs, timeout_s, model='sonnet'):
+def work_one(api, name, cmd, logs, timeout_s, model='haiku'):
     """Claims and handles one request; False when the queue is empty."""
     req = api.call('POST', '/api/worker/claim', {'worker': name})['request']
     if not req:
@@ -103,7 +103,7 @@ def main(argv=None):
     api = Api(os.environ.get('CAR_API', 'http://127.0.0.1:8000'), os.environ.get('WORKER_TOKEN') or load_token())
     api.worker = bool(os.environ.get('WORKER_TOKEN'))
     name, cmd = os.environ.get('WORKER_NAME') or socket.gethostname(), os.environ.get('CLAUDE_CMD', 'claude -p')
-    model = os.environ.get('WORKER_MODEL', 'sonnet')
+    model = os.environ.get('WORKER_MODEL', 'haiku')
     logs = os.environ.get('WORKER_LOGS', str(ROOT / 'worker-logs'))
     timeout_s, poll = int(os.environ.get('WORKER_TIMEOUT_MIN', '120')) * 60, int(os.environ.get('POLL_SECONDS', '60'))
     while True:

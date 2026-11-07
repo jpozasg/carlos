@@ -890,11 +890,11 @@ class AppTest(unittest.TestCase):
         self.assertEqual(worker.outcome('noise\nCARLOS_RESULT listing_id=12\n')['listing_id'], 12)
         self.assertEqual(worker.outcome('crashed')['status'], 'FAILED')
         self.assertEqual(worker.outcome('CARLOS_RESULT done: faults complete'), {'status': 'DONE', 'result': 'faults complete'})  # a follow-up (#168)
-        # the research runs on Sonnet (owner, 2026-11-06): --model added after the claude executable unless given
-        self.assertEqual(worker.command('claude -p', 'sonnet'), ['claude', '--model', 'sonnet', '-p'])
-        self.assertEqual(worker.command('claude --chrome -p --', 'sonnet')[:3], ['claude', '--model', 'sonnet'])
-        self.assertEqual(worker.command('claude --model opus -p', 'sonnet'), ['claude', '--model', 'opus', '-p'])
-        self.assertEqual(worker.command("sh -c 'x'", 'sonnet'), ['sh', '-c', 'x'])
+        # the research runs on Haiku (owner, 2026-11-07): --model added after the claude executable unless given
+        self.assertEqual(worker.command('claude -p', 'haiku'), ['claude', '--model', 'haiku', '-p'])
+        self.assertEqual(worker.command('claude --chrome -p --', 'haiku')[:3], ['claude', '--model', 'haiku'])
+        self.assertEqual(worker.command('claude --model opus -p', 'haiku'), ['claude', '--model', 'opus', '-p'])
+        self.assertEqual(worker.command("sh -c 'x'", 'haiku'), ['sh', '-c', 'x'])
 
     def test_insurance_quotes(self):
         quote = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 850, 'premium_min_eur': 700,
