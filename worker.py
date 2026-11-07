@@ -19,9 +19,10 @@ RESULT = re.compile(r'CARLOS_RESULT (?:listing_id=(\d+)|failed: (.*)|done: (.*))
 
 
 def outcome(output):
-    """The finish payload from the agent's last line: CARLOS_RESULT listing_id=<id> | CARLOS_RESULT failed: <reason>."""
+    """The finish payload from the agent's last CARLOS_RESULT line: CARLOS_RESULT listing_id=<id> | CARLOS_RESULT failed: <reason>."""
     lines = [x.strip() for x in output.strip().splitlines()]
-    m = RESULT.fullmatch(lines[-1]) if lines else None
+    hits = [m for m in map(RESULT.fullmatch, lines) if m]  # the last result line, wherever the agent put it
+    m = hits[-1] if hits else None
     if m and m[1]:
         return {'status': 'DONE', 'listing_id': int(m[1]), 'result': 'Listing written by the worker'}
     if m and m[3]:
