@@ -1,6 +1,6 @@
 # Prompt: research and cost one car
 
-Reusable prompt for a research agent (an agent with web access and shell access to this repository). Research requests from the accounts are run by the shared worker with `docs/prompts/research-request.md`, which uses this prompt for the research step. Replace the `{…}` placeholders. One agent per car; several can run in parallel because each writes only its own variant, engine, generation and listing. The main agent captures the listing first and runs the browser steps (tax, insurance) afterwards.
+Reusable prompt for a research agent (an agent with web access and shell access to this repository). Research requests from the accounts are run by the shared worker with `docs/prompts/research-request.md`, which uses this prompt for the research step. Replace the `{…}` placeholders. One agent per car; several can run in parallel because each writes only its own variant, engine, generation and listing. The listing is captured first. Tax (BMF calculator, in the browser) is done by the run that has the browser (the worker's prompt, `research-request.md`); insurance never in a headless run.
 
 ---
 
@@ -15,14 +15,14 @@ python3 -c "from agent_tools import *; import json; print(json.dumps(variant({VE
 python3 -c "from agent_tools import *; print(todo(listing_id={LISTING_ID})); print(todo(vehicle_id={VEHICLE_ID}))"
 ```
 
-**Do:** steps 1–9 of the protocol for this car:
-1. identification of generation, engine (aspiration, injection, timing drive; an electric motor instead: usable battery kWh, AC/DC charging kW) and variant (HSN/TSN);
-2. reliability items at the right level, each with its `part` (ENGINE / GEARBOX / CHASSIS / ELECTRICS: research all four) and every manufacturer recall as its own row with `recall=True`, then the checklist; record every source consulted with `check(level, id, task, source_id, result)` (`rel.<PART>.<source>`, `gen.recalls`, `gen.facelift`, …), `NONE FOUND` when it lists nothing;
+**Do:** steps 1–9 of the protocol for this car. The finished list of what must exist is the research contract (`todo()` and the table in the protocol, "The research contract"); the steps below produce it:
+1. identification of generation, engine (aspiration, injection, timing drive; an electric motor instead: usable battery kWh, AC/DC charging kW) and variant (HSN/TSN, gearbox, body, emissions class, CO2), plus the **levels between them** (data model, "Levels"): the engine family (`engine_families`, engines.`family_id`), the gearbox (`gearboxes`: code, type, gears; the variant's `gearbox_id`), its family (`gearbox_families`) and the body style (`body_styles`) where one applies; reuse existing rows (`GET /api/engines`, `/api/generations`, `GET /api/admin/data/<table>`), create only what is missing;
+2. reliability items at the right level, each with its `part` (ENGINE / GEARBOX / CHASSIS / ELECTRICS: research all four) and every manufacturer recall as its own row with `recall=True`, then the checklist; record every source consulted with `check(level, id, task, source_id, result)` (`rel.<PART>.adac|tuev|guide` on the generation, `rel.ENGINE.engine_specific` on the engine family, `rel.GEARBOX.gearbox_specific` on the gearbox family, `gen.recalls`, `gen.facelift`, …), `NONE FOUND` when it lists nothing; also the generation's TÜV/ADAC figures per age class (`gen.baseline`, `reliability_stats` with the class average, or a check `N/A`) and its Euro NCAP stars and year (`gen.safety`, or a check `N/A`);
 3. consumption: the autokostencheck average of the exact variant; for an electric car the ev-database.org real consumption of the exact variant and battery in kWh/100 km (`consumption(v, value, None, None, None, source_id, electric=True)`; ADAC Ecotest, when one exists, as a cross-check row; never Spritmonitor);
 4. item maintenance schedule at the right level, with HU: every job with its `job=` code and, for a job an owner may do (`config.DIYABLE_JOBS`), both the DIY parts and the workshop price (the research is shared; each account's DIY choice picks one);
-5. repair risks at the right level for the window {MILEAGE_KM} → {MILEAGE_KM} + {PERIOD_KM} km;
+5. faults (`fault()`, protocol "Faults: frequency and shape") on the right level for the window {MILEAGE_KM} → {MILEAGE_KM} + {PERIOD_KM} km: engine family, engine, gearbox family, gearbox, generation (body/chassis), body style; a level with none gets a check `NONE FOUND` (`fam.risks`, `eng.risks`, `gbx.risks`, `gfam.risks`, `gen.risks`, `bdy.risks`); gearbox oil service (`gbx.service`) and clutch (`gbx.clutch`) as jobs or checks;
 6. certain one-off costs of this car: scheduled jobs due at purchase as `maintenance` (timing belt by age, overdue fluids: never `repairs`), present faults as `repairs`, each named in `item`;
-7. tyres;
+7. tyres (`var.tyres`) and, in the browser, the annual tax (`var.tax`, protocol "Tax"; the request prompt says who does it);
 8. purchase/sale defaults and resale;
 9. listing checks, warnings and a final `verification` log entry.
 
@@ -40,9 +40,9 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 
 **Rules:**
 - Never invent data. Unknown = leave out (NULL); every estimate says why. All free text in English.
-- Research with web search/fetch only. Do **not** use a browser, solve CAPTCHAs or work around blocks (some sites block agents; that is expected: say so).
+- Research with web search/fetch. Use the browser only where the request prompt names it (the listing, the tax calculator). Never solve CAPTCHAs or work around blocks (some sites block agents; that is expected: say so and record the check as not possible rather than skipping it).
 - Write only rows for variant {VEHICLE_ID}, engine {ENGINE_ID}, generation {GENERATION_ID} and listing {LISTING_ID}. Do not change other rows, `project_parameters`, shared sources, repository files, git or the schema.
-- Do not do tax or insurance: the main agent does them in the browser. Find the **HSN/TSN** (and the tax calculator inputs: registration period, fuel, displacement, CO2 or emissions class) and report them.
+- Insurance is never done in a headless run (it needs the owner's OK). Tax is done where a browser is available (the request prompt); otherwise report the **HSN/TSN** and the tax calculator inputs (registration period, fuel, displacement, CO2 or emissions class) and leave `var.tax` in the to-do.
 - Every repair risk gets a price: when no price is found, estimate parts and labour (status `ESTIMATED`, say how). Never store a risk without a price.
 - Same sources and depth as for every other car (protocol step 2); severity, status and quality by the rules in `docs/ranking.md`.
 - If a write fails, read the API error, fix the row and retry once. Never use SQLite directly.
@@ -51,9 +51,9 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 - **Risk windows:** follow the window rule in protocol step 5: this car's ownership window for variant rows, a generic window with the probability for that whole window for engine and generation rows that other listings inherit.
 - **Certain costs:** a scheduled job due at purchase is `certain(L, 'maintenance', ...)` plus `restart(..., 'CERTAIN REPAIR', unit_cost_id=...)`, never `repairs`; apply the service-book rule in protocol step 6 (a generic "Scheckheftgepflegt" does not cover the timing belt, coolant, brake fluid or spark plugs).
 - **Consumption:** only the reported average with its number of reports; if the page shows only the stored "Praxisverbrauch" (the average is rendered by JavaScript), write no consumption and report the URL.
-- **Phase windows:** a fault fixed by the facelift or a recall with a build range goes on the generation with `applies_from` / `applies_to` (first registration, `YYYY-MM`) in `reliability()`, `risk()` or `item()`, never as a second generation; ordinary facts of the whole generation get no window.
+- **Phase windows:** a fault fixed by the facelift or a recall with a build range goes on the generation with `applies_from` / `applies_to` (first registration, `YYYY-MM`) in `fault()` or `item()`, never as a second generation; ordinary facts of the whole generation get no window.
 - **Recalls, wear and the checklist:** write only recalls that can apply to this car (engine, gearbox, build window); generic wear (clutch, pads, battery, bulbs) is a priced risk, not a weak point, unless a source flags it for this model; never set a checklist item's status (the owner does that at the viewing).
-- **Search budget:** web searches are limited for the whole session (about 200, shared by all agents running in parallel). Spend them on the four reliability sources, the recalls and the consumption page first; fetch known URLs directly (ADAC Autokatalog, autokostencheck, repareo) instead of searching for them; say in the report which figures you could not source because the budget ran out.
+- **Search effort:** research is the job, so spend what the contract needs; do not stop early to save searches. Fetch known URLs directly (ADAC Autokatalog, autokostencheck, repareo) instead of searching for them. When a source truly cannot be reached, say so in the report and record the check (`NONE FOUND` with the reason in `notes`, or `N/A`); never leave an item silently open.
 - **Never delete.** Do not call `delete()`; if a row you wrote is wrong, PATCH it, or `archive()` it and write the right one. Deleting needs the owner's confirmation, which only the main agent can ask for.
 
 **Pitfalls the research agents ran into (2026-11-05/06):**
@@ -63,6 +63,8 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 - **Brand-new models:** ADAC/TÜV statistics do not cover them; `N/A`, not a clean record.
 - **Coolant "lifetime" fills and similar:** a forum post is quality D; say so and prefer the manufacturer schedule.
 - **Unit and code traps:** fuel type is a fixed code (a free-text "Petrol (full hybrid)" silently breaks the contract); `quote_profile` must be JSON; 0 km is valid in a capture.
+
+**Done means the contract is met, not that you ran out of steps.** After writing, run `todo(vehicle_id={VEHICLE_ID})` and `todo(listing_id={LISTING_ID})` again, fix every item they list, and repeat until only these remain: the owner's verdict, the insurance quote (`lst.insurance`), a TSN that only the registration document can confirm, and an item you tried and could not source (it has its check). Do not report success with research items still listed; do not describe an open item as "done in the next run". Estimated rows are fine when nothing better exists (`ESTIMATED`, say how); a missing row is not.
 
 **Report back (short):**
 - HSN/TSN (confirmed or assumed) and the tax calculator inputs (electric: first registration and permitted total weight; the battery kWh and warranty terms);
