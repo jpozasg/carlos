@@ -1009,5 +1009,13 @@
  "rp_ENGINE": "Engine",
  "rp_GEARBOX": "Gearbox",
  "rp_TAX": "Tax",
- "rp_LISTING": "This car"
+ "rp_LISTING": "This car",
+ "wq_title": "Insurance quotes by the research worker",
+ "wq_label": "Let the research worker get insurance quotes for my cars",
+ "wq_text": "If you switch this on, the research worker types your saved insurance profile (birth date, licence date, postal code and the rest) into a comparison site (CHECK24) in the operator's browser, once per car you add. It never applies for a policy, never requests an eVB, never logs in. Only the quote (median of the 5 cheapest offers) is stored, without your name or contact data. Quotes expire after 60 days. You can switch this off at any time. It is off by default.",
+ "wq_enabled": "Switched on",
+ "wq_disabled": "Switched off",
+ "wq_incomplete": "Profile incomplete, quotes will be skipped. Missing:",
+ "wq_complete": "Complete the profile",
+ "rp_INSURANCE": "Insurance quote"
 }

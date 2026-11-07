@@ -15,6 +15,17 @@ let root, previewTimer;
 const val = k => { const e = $(k); return e.type === 'number' ? (e.value === '' ? null : Number(e.value)) : e.value; };
 const dirty = () => KEYS.some(k => String(val(k) ?? '').replace(/\.0$/, '') !== String(S.saved[k] ?? '').replace(/\.0$/, ''));
 
+const QUOTE_PARAMS = ['postal_code', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'annual_km'];
+const QUOTE_PREFS = ['insurance_holder_gender', 'insurance_holder_birth_date', 'insurance_holder_licence_date', 'insurance_holder_occupation',
+  'insurance_holder_marital', 'insurance_claims_3y', 'insurance_usage', 'insurance_parking', 'insurance_start_date'];  // same lists as carlos/todo.py
+function workerQuotes() {
+  const on = S.prefs?.insurance_worker_quotes, since = String(on || '').match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  const miss = [...QUOTE_PARAMS.filter(k => S.saved[k] == null || S.saved[k] === ''), ...QUOTE_PREFS.filter(k => !S.prefs?.[k])];
+  return `<div class="card"><h3>${t('wq_title')}</h3><p class="small muted" style="margin-top:0">${t('wq_text')}</p>
+    <label class="row" style="gap:8px;align-items:center"><input type="checkbox" id="wq_on" ${on ? 'checked' : ''}> <b>${t('wq_label')}</b></label>
+    <p class="small" role="status">${on ? `<span class="tag good">✓ ${t('wq_enabled')}${since ? ' · ' + esc(since) : ''}</span>` : `<span class="tag">${t('wq_disabled')}</span>`}</p>
+    ${miss.length ? `<p class="small"><span class="tag warn">⚠ ${t('wq_incomplete')}</span> ${miss.map(k => esc(k.replace(/^insurance_/, '').replace(/_/g, ' '))).join(', ')}. <a href="#/start?step=3">${t('wq_complete')}</a></p>` : ''}</div>`;
+}
 function form() {
   const p = S.saved, f = (k, label, extra = '') => `<div class="field"><label for="${k}">${label}</label>${extra}</div>`;
   const inp = (k, type, attrs = '') => `<input id="${k}" type="${type}" ${attrs} value="${p[k] == null ? '' : esc(String(p[k]).replace(/\.0$/, ''))}">`;
@@ -90,6 +101,7 @@ function draw() {
   root.innerHTML = `<div class="section"><h2>${t('tab_settings')}</h2><p class="lead">${t('settings_lead')}</p>
     <div class="callout"><p>${t('setup_again_text')}</p><a class="btn ghost sm" href="#/start">${t('setup_again')}</a></div>
     <div class="grid" style="grid-template-columns:1fr"><div class="card">${form()}</div></div>
+    <div class="grid" style="grid-template-columns:1fr;margin-top:16px">${workerQuotes()}</div>
     <div class="grid" style="margin-top:16px">${filters()}${appearance()}${account()}</div></div>`;
   paramUi();
 }
@@ -104,7 +116,11 @@ function bind() {
     if (e.target.id === 'discardParams') { await loadAll(); renderShell(); draw(); return; }
     const md = e.target.closest('[data-mode-pick]'); if (md) { applyTheme(md.dataset.modePick); draw(); return; }
     if (e.target.closest('[data-token]')) { try { const r = await post('/api/account/token', {}); $('tokenOut').innerHTML = `<p class="small">${t('token_shown_once')}</p><div class="token-box">${esc(r.token)}</div>`; S.me.has_token = true; } catch (err) { toast(err.message, true); } } });
-  root.addEventListener('change', async e => { const k = e.target.dataset.filter; if (!k) return;
+  root.addEventListener('change', async e => {
+    if (e.target.id === 'wq_on') { const on = e.target.checked;  // consent is the account's own login call, never an agent's
+      try { const r = await post('/api/preferences', { insurance_worker_quotes: on ? 'yes' : null }); S.prefs = Object.fromEntries(r.map(x => [x.preference_key, x.preference_value])); toast(t('saved')); }
+      catch (err) { e.target.checked = !on; toast(err.message, true); } draw(); return; }
+    const k = e.target.dataset.filter; if (!k) return;
     try { await post('/api/preferences', { [k]: e.target.value || null }); S.prefs[k] = e.target.value; await refreshTco(); toast(t('saved')); } catch (err) { toast(err.message, true); } });
   root.addEventListener('submit', async e => {
     e.preventDefault();

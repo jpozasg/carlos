@@ -42,7 +42,7 @@ Write everything through the helpers in `agent_tools.py` from a script in your s
 - Never invent data. Unknown = leave out (NULL); every estimate says why. All free text in English.
 - Research with web search/fetch. Use the browser only where the request prompt names it (the listing, the tax calculator). Never solve CAPTCHAs or work around blocks (some sites block agents; that is expected: say so and record the check as not possible rather than skipping it).
 - Write only rows for variant {VEHICLE_ID}, engine {ENGINE_ID}, generation {GENERATION_ID} and listing {LISTING_ID}. Do not change other rows, `project_parameters`, shared sources, repository files, git or the schema.
-- Insurance is never done in a headless run (it needs the owner's OK). Tax is done where a browser is available (the request prompt); otherwise report the **HSN/TSN** and the tax calculator inputs (registration period, fuel, displacement, CO2 or emissions class) and leave `var.tax` in the to-do.
+- Insurance is never done in this run: it is the separate INSURANCE unit, only for accounts that opted in (Settings). Tax is done where a browser is available (the request prompt); otherwise report the **HSN/TSN** and the tax calculator inputs (registration period, fuel, displacement, CO2 or emissions class) and leave `var.tax` in the to-do.
 - Every repair risk gets a price: when no price is found, estimate parts and labour (status `ESTIMATED`, say how). Never store a risk without a price.
 - Same sources and depth as for every other car (protocol step 2); severity, status and quality by the rules in `docs/ranking.md`.
 - If a write fails, read the API error, fix the row and retry once. Never use SQLite directly.

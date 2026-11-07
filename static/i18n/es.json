@@ -1009,5 +1009,13 @@
  "rp_ENGINE": "Motor",
  "rp_GEARBOX": "Cambio",
  "rp_TAX": "Impuesto",
- "rp_LISTING": "Este coche"
+ "rp_LISTING": "Este coche",
+ "wq_title": "Cotizaciones de seguro por el worker de investigación",
+ "wq_label": "Permitir que el worker de investigación obtenga cotizaciones de seguro para mis coches",
+ "wq_text": "Si lo activas, el worker introduce tu perfil de seguro guardado (fecha de nacimiento, fecha del carnet, código postal, etc.) en un comparador (CHECK24) en el navegador del operador, una vez por coche que añadas. Nunca contrata una póliza, nunca solicita un eVB y nunca inicia sesión. Solo se guarda la cotización (mediana de las 5 ofertas más baratas), sin tu nombre ni datos de contacto. Las cotizaciones caducan a los 60 días. Puedes desactivarlo en cualquier momento. Está desactivado por defecto.",
+ "wq_enabled": "Activado",
+ "wq_disabled": "Desactivado",
+ "wq_incomplete": "Perfil incompleto, se omitirán las cotizaciones. Falta:",
+ "wq_complete": "Completar el perfil",
+ "rp_INSURANCE": "Cotización de seguro"
 }
