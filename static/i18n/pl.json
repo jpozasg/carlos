@@ -1011,5 +1011,13 @@
  "rp_ENGINE": "Silnik",
  "rp_GEARBOX": "Skrzynia biegów",
  "rp_TAX": "Podatek",
- "rp_LISTING": "To auto"
+ "rp_LISTING": "To auto",
+ "wq_title": "Wyceny ubezpieczenia przez workera badawczego",
+ "wq_label": "Pozwól workerowi badawczemu pobierać wyceny ubezpieczenia dla moich aut",
+ "wq_text": "Po włączeniu worker wpisuje zapisany profil ubezpieczeniowy (data urodzenia, data prawa jazdy, kod pocztowy itd.) do porównywarki (CHECK24) w przeglądarce operatora, raz dla każdego dodanego auta. Nigdy nie składa wniosku o polisę, nie żąda eVB i nie loguje się. Zapisywana jest tylko wycena (mediana 5 najtańszych ofert), bez imienia i danych kontaktowych. Wyceny wygasają po 60 dniach. Możesz to wyłączyć w każdej chwili. Domyślnie jest wyłączone.",
+ "wq_enabled": "Włączone",
+ "wq_disabled": "Wyłączone",
+ "wq_incomplete": "Profil niekompletny, wyceny zostaną pominięte. Brakuje:",
+ "wq_complete": "Uzupełnij profil",
+ "rp_INSURANCE": "Wycena ubezpieczenia"
 }

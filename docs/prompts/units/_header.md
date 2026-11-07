@@ -10,7 +10,7 @@ Rules (all units):
 - Only the API. Never open or copy `cars.sqlite` or any file under `data/`. Report errors exactly as the server answered (status and text).
 - Never invent data: unknown stays NULL; every estimate is `ESTIMATED` and says how. Register each source with `src(...)` before using it. Free text in English.
 - A source that cannot be reached or lists nothing is never skipped silently: record the check (`check(level, id, '<item id>', source_id, 'NONE FOUND' | 'N/A', 'reason')`). Never bypass CAPTCHAs, Cloudflare checks or logins.
-- Never delete; PATCH or `archive()`. Insurance is never part of a run.
+- Never delete; PATCH or `archive()`. Insurance is never part of a run, except in the INSURANCE unit.
 - Faults: before `fault(...)` look at the faults already on the variant (`variant(<id>)`); a similar one is extended with a PATCH, not filed again. A 409 (`DuplicateFault`, `.existing`) means PATCH that row, or pass `distinct_of=[ids]` and `notes` saying why it differs. Put it on the level the evidence names, no higher; give every fault that can be checked at a viewing an `inspection_action`. Protocol: "Faults: frequency and shape".
 - Finish: grade your unit again with `todo(...)` and fix what is missing and sourceable. The server re-grades the unit; your last line is a report.
 - End with exactly one last line, nothing after it, in the form your unit names (every unit except CAPTURE: `CARLOS_RESULT done: <one-line summary>` or `CARLOS_RESULT failed: <one-line reason>`).

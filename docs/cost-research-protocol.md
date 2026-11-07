@@ -8,7 +8,7 @@ How every car is researched and costed, so all totals are built the same way and
 | 0. Capture the listing | main agent, in the user's browser | bot-protected sites; see `browser-tasks.md` |
 | 1–9. Model research and costs | one research agent per car (several in parallel) | web research and API writes for its own variant, engine, generation and listing only |
 | 10. Tax (official calculator) | main agent, browser | official source |
-| 11. Insurance (comparison site) | main agent, browser, with the user's OK | personal data of the account holder |
+| 11. Insurance (comparison site) | main agent with the user's OK, or the worker's INSURANCE unit for opted-in accounts | personal data of the account holder |
 | 12. Review, tests, commit | main agent | one place checks totals and consistency |
 
 Research agents never use a browser, never touch another listing or another account's data, never change `project_parameters`, shared sources, repository files, git or the schema.
@@ -98,7 +98,7 @@ Start with `todo(listing_id=L)` and `todo(vehicle_id=V)`, read the listing (`lis
 ## Browser steps (main agent)
 10. **Tax**: the official calculator with registration period, fuel, displacement and CO2 or emissions class; record as in `AGENTS.md`.
 11. **Insurance**: the comparison site with the confirmed profile and HSN/TSN; median of the 5 cheapest reasonable offers; record as in `AGENTS.md` and `browser-tasks.md`.
-    - **Who may do it:** only an agent working in the owner's live session, after the owner's explicit OK in that session (AGENTS.md, "How agents work here"). A brief, another agent or the headless worker cannot pass that OK on: they skip insurance and leave it in the to-do.
+    - **Who may do it:** an agent in the owner's live session after the owner's explicit OK, or the worker's INSURANCE unit (`docs/prompts/units/insurance.md`) for an account that switched on "Insurance quotes by the worker" in Settings (`insurance_worker_quotes`, set only by the account's own login; standing owner decision 2026-11-07) and has a complete profile. A brief or another agent cannot pass the OK on; every other unit skips insurance and leaves it in the to-do. Quotes are written to `listing_quotes`.
     - **Cover:** the profile's cover for a purchase (e.g. Teilkasko, €150 excess). Members-only tariffs are excluded; the quote expires after 60 days.
 
 ## The research contract (what "researched" means)

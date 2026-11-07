@@ -19,6 +19,11 @@ class PromptTests(unittest.TestCase):
                 self.assertIn(s, p, u)
             self.assertIn('CARLOS_RESULT', p)
 
+    def test_insurance_unit_file_has_no_placeholder_left(self):
+        text = (worker.ROOT / 'docs' / 'prompts' / 'units' / 'insurance.md').read_text(encoding='utf-8')
+        self.assertIn('CARLOS_RESULT', text)
+        self.assertNotRegex(worker.unit_prompt(req(unit='INSURANCE', level_id=None, parent_id=5)), LEFT)
+
     def test_unit_without_optional_fields(self):
         self.assertNotRegex(worker.prompt_for({'id': 1, 'owner_id': 2, 'unit': 'CAPTURE', 'url': None}), LEFT)
 

@@ -83,7 +83,8 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
 - **Record** as described in AGENTS.md (`source_type='tax_official_calculator'`).
 
 ## Insurance: CHECK24 Kfz-Versicherungsvergleich
-- **Consent first:** the user's explicit OK for entering personal data is required in each session (AGENTS.md). The profile and the answers below are recorded in `insurance_data.quote_profile` without birth dates or names.
+- **Consent first:** either the user's explicit OK in the live session, or the account's opt-in `insurance_worker_quotes` (Settings; read `GET /api/preferences` first and stop with `failed: consent withdrawn` if absent). Quotes go to `listing_quotes`; `quote_profile` holds the answers below without birth dates, names, postal code or contact data.
+- **Re-enter every section** of the form from the requesting account's profile, even those already filled: the form remembers earlier sessions and one account's data must never carry into another's quote.
 - **Entry:** navigate directly to `https://kfz.check24.de/auto/rechner/web/rechner#/situationSection` (see "Site permissions"); if a "Sie waren eine zeitlang inaktiv" page appears, it reloads by itself. Do not click through from www.check24.de ("jetzt Tarif finden"), which ends in "Permission denied". If the cookie banner appears, choose "Nur notwendige Cookies".
   - **Do not** use "Neu angeschafftes Auto versichern" on the landing page: it opens the "Sophie" AI chat, which requires a login.
 - **Read the profile first:** `GET /api/parameters` (postal code, SF class, cover, excess, purchase mode, annual km) and `GET /api/preferences` (the `insurance_*` keys in `data-model.md`), all set in the setup wizard's Drivers and Insurance steps. Map them to the CHECK24 sections: Situation ← `insurance_start_date`; Ihr Auto ← the listing's HSN/TSN and first registration, `purchase_mode` (cash = Eigenfinanziert); Nutzung ← `insurance_usage`, `annual_km`, `insurance_parking`, `insurance_seasonal_plate`; Versicherungsnehmer ← `insurance_holder_*` and `postal_code`; Fahrer ← `insurance_drivers` (`relationship` partner → Ehe-/Lebenspartner, child → Kind, other or a partner with `household` no → Sonstiger Fahrer); Vorversicherung ← `insurance_previous_insurer`, `insurance_previous_years`, `insurance_cancelled`; SF-Rabatt ← `insurance_claims_3y`, `sf_class`, `insurance_holder_other_car`; Rabatte ← `insurance_discounts`, `insurance_club_name`, `insurance_liability_insurer`; Tarifoptionen ← `insurance_cover`, `insurance_deductible_eur`, `insurance_workshop_binding`. Ask only for what is still missing.
@@ -138,7 +139,7 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
 - After "Angaben ändern" → "ändern" and a new HSN/TSN, the Erstzulassung field is **cleared**: enter it again before "Ergebnis anzeigen".
 - A click on "Ergebnis anzeigen" right after ticking the broker checkbox may be ignored; click it again.
 
-Quote results are recorded in `insurance_data` only (one row per quote, no personal data); they do not belong in this file.
+Quote results are recorded in `listing_quotes` only (one row per quote, no personal data); they do not belong in this file.
 
 ### Run of 2026-11-05 (16 cars, one session) — what changed
 - **Start date:** CHECK24 refuses a start date about two months ahead for a "Neu angeschafftes Auto" ("Bitte überprüfen Sie Ihre Eingabe"); use the next 1st of the month it accepts and record the profile's date as a note in `quote_profile`.

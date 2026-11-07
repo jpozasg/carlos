@@ -1009,5 +1009,13 @@
  "rp_ENGINE": "Motor",
  "rp_GEARBOX": "Getriebe",
  "rp_TAX": "Steuer",
- "rp_LISTING": "Dieses Auto"
+ "rp_LISTING": "Dieses Auto",
+ "wq_title": "Versicherungsangebote durch den Recherche-Worker",
+ "wq_label": "Den Recherche-Worker Versicherungsangebote für meine Autos einholen lassen",
+ "wq_text": "Wenn du das einschaltest, trägt der Recherche-Worker dein gespeichertes Versicherungsprofil (Geburtsdatum, Führerscheindatum, Postleitzahl usw.) im Browser des Betreibers einmal pro hinzugefügtem Auto in ein Vergleichsportal (CHECK24) ein. Er schließt nie einen Vertrag ab, fordert nie eine eVB an und meldet sich nie an. Gespeichert wird nur das Angebot (Median der 5 günstigsten Angebote), ohne deinen Namen oder Kontaktdaten. Angebote verfallen nach 60 Tagen. Du kannst es jederzeit ausschalten. Standardmäßig ist es aus.",
+ "wq_enabled": "Eingeschaltet",
+ "wq_disabled": "Ausgeschaltet",
+ "wq_incomplete": "Profil unvollständig, Angebote werden übersprungen. Es fehlt:",
+ "wq_complete": "Profil vervollständigen",
+ "rp_INSURANCE": "Versicherungsangebot"
 }
