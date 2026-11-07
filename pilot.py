@@ -10,8 +10,7 @@ database, compared with pilot_compare.py before the real reset and the full re-r
                                       the rest when the account's 5 open requests are full
   python pilot.py commands [--dir DIR]  prints the commands to start the servers and the owner's workers
 
-The pilot cars cover the known cases of the owner's listings: PureTech wet belt, EA211 (two models), EA111, a DSG
-and a full hybrid."""
+The four pilot cars: PureTech wet belt, EA211, a DSG and a full hybrid."""
 import os
 import shutil
 import sqlite3
@@ -25,8 +24,11 @@ from carlos import config
 
 ACCOUNT = 5     # kept by the reset: only the source of the pilot cars' URLs and photos
 REQUESTER = 4   # carlostester: the account the pilot requests and the researched cars belong to (owner, 2026-11-07)
-CARS = {40: 'Peugeot 208 1.2 PureTech (wet belt)', 54: 'VW Polo 1.2 TSI (EA211)', 64: 'VW Golf Sportsvan 1.4 TSI (EA211)',
-        47: 'VW Golf VI 1.4 (EA111)', 56: 'Seat Leon ST 1.8 TSI DSG', 60: 'Toyota Yaris 1.5 Hybrid'}
+# Four cars (owner, 2026-11-07: several of the original ads went offline): wet belt, EA211, full hybrid and a DSG. CARS: listings
+# of account ACCOUNT whose ad is still online (the URL is read from the stored listing); EXTRA: ads found on mobile.de to replace
+# the ones that went offline (name -> URL).
+CARS = {40: 'Peugeot 208 1.2 PureTech (wet belt)', 54: 'VW Polo 1.2 TSI (EA211)', 60: 'Toyota Yaris 1.5 Hybrid'}
+EXTRA = {'DSG car (VW group 1.4/1.8 TSI DSG, mobile.de 2026-11-07)': 'https://suchen.mobile.de/fahrzeuge/details.html?id=461123277'}
 RUNS = {'a': 8021, 'b': 8022}
 
 
@@ -61,8 +63,8 @@ def queue():
         api, source = client(port, REQUESTER), client(port, ACCOUNT)  # source: the kept listings of account 5, read only
         asked = {r['url'] for r in api.call('GET', '/api/requests')  # open or already a pilot request (history kept by the reset)
                  if r['status'] in ('QUEUED', 'RUNNING') or (r['note'] or '').startswith('Pilot run')}
-        for lid, name in CARS.items():
-            url = source.call('GET', f'/api/listings/{lid}').get('url')
+        for lid, name in [*CARS.items(), *[(None, n) for n in EXTRA]]:
+            url = EXTRA[name] if lid is None else source.call('GET', f'/api/listings/{lid}').get('url')
             if not url:
                 print(f'run {run}: skipped {lid} {name} (the listing has no URL)'); continue
             if url in asked:
