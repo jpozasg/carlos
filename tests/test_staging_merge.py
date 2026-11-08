@@ -66,9 +66,10 @@ class MergeTest(ts.StagingTest):
         self.match('fault', 'fault:ENGINE:COOLING', pump, pump_b, 'DISPUTED', material=1, verdict='NEITHER', verdict_reason='no evidence for this engine')
         # OWN: the arbiter's staged finding is written
         own = self.f('a', 'faults', {**FAULT, 'component': 'Oil pump', 'component_code': 'OIL_LEAK'})
+        self.match('fault', 'fault:ENGINE:OIL_LEAK', own, None, 'ONLY_A', material=1)   # open dispute: the arbiter may stage its key
         st, o = self.stage('faults', {**FAULT, 'component': 'Oil pump drive', 'component_code': 'OIL_LEAK', 'source_id': self.stage('sources', {**SRC, 'url': 'https://example.test/c'}, 'ARBITER')[1]['id']}, 'ARBITER')
         self.assertEqual(st, 201, o)
-        self.match('fault', 'fault:ENGINE:OIL_LEAK', own, None, 'ONLY_A', material=1, verdict='OWN', verdict_id=-o['id'], verdict_reason='x')
+        self.sql("UPDATE research_matches SET verdict='OWN', verdict_id=?, verdict_reason='x' WHERE key='fault:ENGINE:OIL_LEAK'", (-o['id'],))
         r = self.merge()
         rows = self.sql('SELECT component, notes FROM faults ORDER BY id')[-3:-1]
         self.assertEqual(self.sql('SELECT count(*) FROM faults')[0][0], base + 3)
