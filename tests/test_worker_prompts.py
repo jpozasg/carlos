@@ -39,6 +39,7 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(worker.outcome('x\nCARLOS_RESULT done: ok')['status'], 'DONE')
         self.assertEqual(worker.outcome('CARLOS_RESULT failed: nope'), {'status': 'FAILED', 'result': 'nope'})
         self.assertEqual(worker.outcome('CARLOS_RESULT listing_id=9')['listing_id'], 9)
+        self.assertEqual(worker.outcome('`CARLOS_RESULT listing_id=9`')['listing_id'], 9)
         self.assertEqual(worker.outcome('nothing')['status'], 'FAILED')
         self.assertEqual(worker.outcome('CARLOS_RESULT done: ok\n- summary line')['status'], 'DONE')
 
