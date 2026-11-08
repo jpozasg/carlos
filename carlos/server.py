@@ -6,7 +6,7 @@ import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
 from . import auth, config, research, research_requests as rq, research_units, staging
 from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
-                    UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, row_owner, save_media,
+                    UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_level, resolve_variant, row_owner, save_media,
                     storage_usage, table_columns)
 from .costs import budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
@@ -515,10 +515,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'POST /api/agent/<table> inserts; PATCH /api/agent/<table>/<id> updates'}, 405); return
             if not self.admin:
                 check_writable(c, agent[1], int(agent[2]) if agent[2] else None, data)
-            existing = resolve_variant(c, data, uid) if agent[1] == 'vehicles' and method == 'POST' else None
-            if existing:  # the shared catalogue already has this HSN/TSN: reuse it (issue #109)
+            existing = resolve_variant(c, data, uid) if agent[1] == 'vehicles' and method == 'POST' else \
+                resolve_level(c, agent[1], data) if agent[1] in ('generations', 'engines') and method == 'POST' else None
+            if existing:  # the shared catalogue already has this HSN/TSN, generation or engine: reuse it (issues #109, #293)
                 export_markdown(c, uid)
-                self.send_json({'table': 'vehicles', 'id': existing, 'existing': True}); return
+                self.send_json({'table': agent[1], 'id': existing, 'existing': True}); return
             row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.admin, user['id'])
             self.export_all(c, uid, linked_accounts(c, agent[1], row_id))
             self.send_json({'table': agent[1], 'id': row_id}, 201 if method == 'POST' else 200)
