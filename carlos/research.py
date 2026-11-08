@@ -40,8 +40,10 @@ def _risks(ctx):
 
 
 def _stats(ctx):
-    """TÜV/ADAC figures for the generation by age class (the reliability baseline, #174)."""
-    return ctx['rows']('reliability_stats')
+    """TÜV/ADAC figures for the generation by age class (the reliability baseline, #174). Both sources are wanted, as published
+    (ADAC has no class average, #299): with only one kind the item stays open until an N/A check says the other has no figure."""
+    rs = ctx['rows']('reliability_stats')
+    return rs if {r['kind'] for r in rs} >= {'TUEV', 'ADAC'} else []
 
 
 def _consumption(ctx):
