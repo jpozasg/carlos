@@ -189,19 +189,19 @@ class MergeTest(ts.StagingTest):
         ga = self.stage('gearboxes', {'code': 'BOX-A', 'type': 'MANUAL', 'family_id': fa}, 'RESEARCH_A')[1]['id']
         gb = self.stage('gearboxes', {'code': 'BOX-B', 'type': 'MANUAL', 'family_id': fb}, 'RESEARCH_B')[1]['id']
         fo = self.stage('gearbox_families', {'name': 'Fam orphan'}, 'RESEARCH_B')[1]['id']
-        co = self.f('b', 'research_checks', {'gearbox_family_id': fo, 'task': 'gfam.risks', 'result': 'NONE FOUND', 'checked_date': '2026-11-08'})
+        co = self.f('b', 'research_checks', {'gearbox_family_id': fo, 'task': 'gbx.risks', 'result': 'NONE FOUND', 'checked_date': '2026-11-08'})
         pa = self.api('PATCH', f'agent/vehicles/{V_A}', {'gearbox_id': ga}, 'RESEARCH_A')[1]['id']
         pb = self.api('PATCH', f'agent/vehicles/{V_A}', {'gearbox_id': gb}, 'RESEARCH_B')[1]['id']
         for k, a, b, o in (('lvl:gearbox_families:FAM A', -fa, None, 'ONLY_A'), ('lvl:gearbox_families:FAM B', None, -fb, 'ONLY_B'),
                            ('lvl:gearbox_families:FAM ORPHAN', None, -fo, 'ONLY_B'), ('lvl:gearboxes:BOX-A', -ga, None, 'ONLY_A'), ('lvl:gearboxes:BOX-B', None, -gb, 'ONLY_B')):
             self.match('level', k, a, b, o)
         self.match('patch', f'patch:vehicles:{V_A}', -pa, -pb, 'DISPUTED', material=1, verdict='A')
-        self.match('check', 'check:gfam.risks', None, co, 'ONLY_B')
+        self.match('check', 'check:gbx.risks', None, co, 'ONLY_B')
         self.merge()
         fam = self.sql('SELECT f.id, f.name FROM vehicles v JOIN gearboxes g ON g.id=v.gearbox_id JOIN gearbox_families f ON f.id=g.family_id WHERE v.id=?', (V_A,))[0]
         self.assertEqual(fam[1], 'Fam A')
         self.assertEqual(self.sql("SELECT count(*) FROM gearbox_families")[0][0], 1)
-        self.assertEqual(self.sql("SELECT gearbox_family_id FROM research_checks WHERE task='gfam.risks'"), [(fam[0],)])
+        self.assertEqual(self.sql("SELECT gearbox_family_id FROM research_checks WHERE task='gbx.risks'"), [(fam[0],)])
 
     def test_two_checks_of_a_run_on_other_sources_both_stand(self):
         from carlos import staging
