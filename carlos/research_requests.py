@@ -401,12 +401,16 @@ def _dual_stage(c, p, first, ids, missing):
         scope = _scope(c, p['listing_id'], rids)
         other = _overlap(c, pid, scope)
         with c:
-            [_unit_row(c, p, u, 'WAITING' if other else 'QUEUED', rids, scope=scope, shared=other) for u in ('RESEARCH_A', 'RESEARCH_B')]
+            for u in ('RESEARCH_A', 'RESEARCH_B'):
+                if u == 'RESEARCH_B' and not ru.SECOND_RUN:
+                    _unit_row(c, p, u, 'SKIPPED', [], 'Second run off (#283)')
+                else:
+                    _unit_row(c, p, u, 'WAITING' if other else 'QUEUED', rids, scope=scope, shared=other)
         return True
     if first == 'ARBITER':
         agr = staging.compare(c, pid)
-        disputes = [m['id'] for m in staging.dispute_rows(c, pid)]
-        text = (f"No material disagreement (agreement {round(agr['agreement'] * 100)} %)" if agr['agreement'] is not None
+        disputes = [m['id'] for m in staging.dispute_rows(c, pid)] if ru.SECOND_RUN else []  # one run: nothing to arbitrate
+        text = ('Single research run (#283)' if not ru.SECOND_RUN else f"No material disagreement (agreement {round(agr['agreement'] * 100)} %)" if agr['agreement'] is not None
                 else 'Nothing staged by the research runs')
         with c:
             _unit_row(c, p, 'ARBITER', 'QUEUED' if disputes else 'SKIPPED', disputes, None if disputes else text)
