@@ -12,6 +12,7 @@ database, compared with pilot_compare.py before the real reset and the full re-r
   python pilot.py commands [--dir DIR]  prints the commands to start the servers and the owner's workers
 
 The pilot cars: the Polo (EA211), the BMW reference car and a Citroën C3."""
+import datetime
 import os
 import shutil
 import sqlite3
@@ -48,6 +49,11 @@ def setup(d):
         migrate.run(dst / 'cars.sqlite')
         research_reset.run(dst / 'cars.sqlite', apply=True, keep=ACCOUNT)
         c = sqlite3.connect(dst / 'cars.sqlite')
+        for acct in (ACCOUNT, REQUESTER):  # owner, 2026-11-08: pilots run with insurance quotes; consent set on the scratch copy only
+            c.execute("INSERT INTO project_preferences (owner_id, preference_key, preference_value) VALUES (?, 'insurance_worker_quotes', ?) "
+                      "ON CONFLICT (owner_id, preference_key) DO UPDATE SET preference_value=excluded.preference_value",
+                      (acct, f'yes {datetime.date.today().isoformat()}'))
+        c.commit()
         files = [r[0] for r in c.execute(f'SELECT file_path FROM listing_media WHERE listing_id IN ({",".join("?" * len(CARS))})', tuple(CARS))]
         c.close()
         for f in files:
