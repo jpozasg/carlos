@@ -64,6 +64,17 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(self.status(p2), {'RESEARCH_A': 'SKIPPED', 'RESEARCH_B': 'SKIPPED', 'ARBITER': 'SKIPPED', 'MERGE': 'SKIPPED',
                                            'TAX': 'SKIPPED', 'LISTING': 'QUEUED'})
 
+    def test_usage_is_summed_over_attempts(self):  # #291
+        self.real = ['eng.risks', 'lst.checklist']
+        pid = self.parent()
+        rq.advance(self.c, pid, self.mi)
+        rid = self.kids(pid)['RESEARCH_A']['id']
+        for n in (1, 2):
+            with self.c:
+                self.c.execute("UPDATE research_requests SET status='RUNNING', worker='w' WHERE id=?", (rid,))
+            rq.finish(self.c, rid, {'status': 'QUEUED', 'result': 'x', 'usage': {'output': 10 * n, 'cost_usd': 0.25, 'runs': 1}})
+        self.assertEqual(json.loads(self.kids(pid)['RESEARCH_A']['usage']), {'output': 30, 'cost_usd': 0.5, 'runs': 2})
+
     def test_single_run_skips_b_and_arbiter(self):
         ru.SECOND_RUN = False
         self.real = ['eng.risks', 'lst.checklist']

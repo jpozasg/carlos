@@ -181,6 +181,12 @@ def finish(c, rid, data, missing=None, staged=None):
     req = c.execute("SELECT id, owner_id, status, unit, parent_id, listing_id, attempts, kind, missing, scope FROM main.research_requests WHERE id=?", (rid,)).fetchone()
     if req is None or req['status'] != 'RUNNING':
         raise ValueError('Only a RUNNING request can be finished')
+    if isinstance(data.get('usage'), dict):  # tokens, cost, time of the Claude run, summed over the attempts (#291)
+        old = json.loads(c.execute('SELECT usage FROM main.research_requests WHERE id=?', (rid,)).fetchone()[0] or '{}')
+        add = {k: v for k, v in data['usage'].items() if isinstance(v, (int, float))}
+        with c:
+            c.execute('UPDATE main.research_requests SET usage=? WHERE id=?',
+                      (json.dumps({k: round(old.get(k, 0) + add.get(k, 0), 4) for k in {**old, **add}}), rid))
     if status == 'QUEUED':  # the run could not work (usage limit, API error): back in the queue, not a failure (#206)
         with c:
             c.execute("UPDATE main.research_requests SET status='QUEUED', claimed_at=NULL, worker=NULL, request_token_hash=NULL, "

@@ -8,6 +8,7 @@ database, compared with pilot_compare.py before the real reset and the full re-r
   python pilot.py queue [--dir DIR]   with both pilot servers running, queues the pilot cars as research requests
                                       for the carlostester account on each (admin token: AGENT_TOKEN or .env); re-run it to queue
                                       the rest when the account's 5 open requests are full
+  python pilot.py usage [--dir DIR]   tokens, cost and minutes per unit of each run (#291, from research_requests.usage)
   python pilot.py commands [--dir DIR]  prints the commands to start the servers and the owner's workers
 
 The pilot cars: the Polo (EA211), the BMW reference car and a Citroën C3."""
@@ -91,6 +92,17 @@ def queue():
                 break
 
 
+def usage(d):
+    for run in RUNS:
+        c = sqlite3.connect(d / run / 'cars.sqlite')
+        print(f'run {run}: unit  requests  attempts  output_tok  input_tok  cache_read  cost_usd  minutes')
+        for r in c.execute("SELECT unit, count(*), sum(attempts), sum(json_extract(usage,'$.output')), sum(json_extract(usage,'$.input')), "
+                           "sum(json_extract(usage,'$.cache_read')), sum(json_extract(usage,'$.cost_usd')), sum(json_extract(usage,'$.seconds'))/60.0 "
+                           "FROM research_requests WHERE usage IS NOT NULL GROUP BY unit ORDER BY 7 DESC"):
+            print('  ' + '  '.join(f'{x:.2f}' if isinstance(x, float) else str(x) for x in r))
+        c.close()
+
+
 def commands(d):
     claude = 'claude --chrome --allowedTools Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,mcp__claude-in-chrome -p --'
     for run, port in RUNS.items():
@@ -104,7 +116,7 @@ def commands(d):
 
 if __name__ == '__main__':
     args = sys.argv[1:]
-    if not args or args[0] not in ('setup', 'queue', 'commands'):
+    if not args or args[0] not in ('setup', 'queue', 'commands', 'usage'):
         raise SystemExit(__doc__)
     d = Path(args[args.index('--dir') + 1]).resolve() if '--dir' in args else config.DATA_DIR / 'backups' / 'pilot'
-    {'setup': lambda: setup(d), 'queue': queue, 'commands': lambda: commands(d)}[args[0]]()
+    {'setup': lambda: setup(d), 'queue': queue, 'commands': lambda: commands(d), 'usage': lambda: usage(d)}[args[0]]()

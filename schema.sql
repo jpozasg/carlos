@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=40). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=41). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -455,7 +455,7 @@ CREATE TABLE "research_requests" (
                                            'RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE')),
  level_id INTEGER,
  shared_id INTEGER REFERENCES "research_requests"(id),
- scope TEXT CHECK (scope IS NULL OR json_valid(scope)));
+ scope TEXT CHECK (scope IS NULL OR json_valid(scope)), usage TEXT CHECK (usage IS NULL OR json_valid(usage)));
 CREATE TABLE research_findings (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  request_id INTEGER NOT NULL REFERENCES research_requests(id),
