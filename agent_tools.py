@@ -245,16 +245,18 @@ class DuplicateFault(ApiError):
 
 
 def fault(v, component, part, consequence, existence, source_id, band=None, shape=None, curve_km=None, curve_age=None,
-          parts=None, labor=None, diy_parts=None, hours=None, level='variant', **more):
+          parts=None, labor=None, diy_parts=None, hours=None, level='variant', code=None, **more):
     """A design fault (#168) on one level: a frequency band (systemic, widespread, common, occasional, rare; by 200,000 km
     or 15 years) with a shape (WEAR_KM, AGE, WINDOW with window_km/onset_km, RANDOM), or an explicit cumulative curve
     [[km, share], ...]. Every fault gets a price. `more`: issue, mechanism, inspection_action, manufacturer_trace (needed
-    for 'systemic'), fixed_fault_id, warranty_km/years/share, applies_from/to, quote, probability_basis, usage_flags, notes."""
+    for 'systemic'), fixed_fault_id, warranty_km/years/share, applies_from/to, quote, probability_basis, usage_flags, notes.
+    `code` is the component_code (#221): the component that fails, from `fault_components` of GET /api/agent/schema for the part
+    (required by the server; OTHER needs notes)."""
     if parts is None and labor is None and diy_parts is None:
         raise ValueError(f'{component}: every fault needs a price; estimate one and say how in notes')
     try:
         return _post_fault(v, component, part, consequence, existence, source_id, band, shape, curve_km, curve_age,
-                           parts, labor, diy_parts, hours, level, more)
+                           parts, labor, diy_parts, hours, level, {**more, 'component_code': code})
     except ApiError as e:
         if e.code == 409 and isinstance(e.body, dict) and e.body.get('conflict'):
             raise DuplicateFault(e) from None

@@ -111,3 +111,80 @@ MARKET_MIN_PER_BAND, MARKET_MAX_AGE_DAYS = 5, 183  # resale sample (#166): ≥ 5
 
 # knowledge rows that may carry a first-registration window (applies_from/applies_to, issue #153)
 WINDOWED_TABLES = ('maintenance_items', 'repair_risks', 'reliability_items', 'faults', 'recalls')
+
+# Controlled component codes of faults (#221 phase 3, docs/design-two-agent-research.md section 4): {part: [(code, covers, pattern)]}.
+# `pattern` (first match wins, in this order) feeds the back-fill and the suggestion in 400 texts, never a silent code on insert.
+FAULT_COMPONENTS = {
+    'ENGINE': [
+        ('TIMING_BELT', 'belt, wet belt, tensioner, belt-driven water pump', r'timing belt|wet belt|belt in oil|toothed belt|camshaft belt'),
+        ('TIMING_CHAIN', 'chain, guides, tensioner, rattle', r'timing chain|chain (stretch|rattle|tensioner)|tensioner.*rattle'),
+        ('CAM_PHASER', 'camshaft adjuster, VANOS, cam gear/pulley', r'vanos|camshaft (adjuster|pulley|gear|phaser)|cam (phaser|gear|pulley)|vvt'),
+        ('OIL_CONSUMPTION', 'piston rings, valve stem seals, crankcase ventilation / PCV', r'oil consumption|piston ring|pcv|crankcase vent|valve stem'),
+        ('OIL_LEAK', 'gaskets and seals leaking oil', r'oil (loss|leak)|valve cover|sump gasket|rear main seal'),
+        ('ENGINE_INTERNALS', 'oil pump, lifters, crankshaft, bores, head gasket, oil pressure',
+         r'oil pump|lifter|tappet|crankshaft(?! position)|cylinder bore|head gasket|oil pressure|bearing shell|piston'),
+        ('COOLING', 'water pump, thermostat, hoses, expansion tank, radiator, fan', r'cool|water pump|thermostat|radiator|expansion tank|hose'),
+        ('IGNITION', 'coils, ignition module, plugs (misfire)', r'ignition|coil|spark plug|misfire'),
+        ('FUEL_SYSTEM', 'injectors, high-pressure pump/line, in-tank pump, intake-valve deposits',
+         r'injector|fuel pump|high.pressure (pump|line)|fuel (line|rail)|intake valve|carbon deposit'),
+        ('TURBO', 'turbocharger, wastegate, boost control', r'turbo|wastegate|boost'),
+        ('EMISSIONS', 'EGR, DPF, catalyst, lambda sensors, AdBlue/SCR, charcoal canister, tank venting, exhaust manifold',
+         r'egr|dpf|particulate|catalyst|catalytic|lambda|adblue|scr\b|charcoal|canister|tank vent|exhaust manifold|nox'),
+        ('ENGINE_MANAGEMENT', 'throttle body, air-mass meter, intake flaps, engine sensors and ECU, idle/judder control',
+         r'throttle|air.mass|maf|intake flap|twinport|crankshaft position|sensor|ecu|idle|judder'),
+        ('ENGINE_MOUNTS', 'engine and gearbox mounts', r'engine mount|motor mount|gearbox mount|engine bracket'),
+        ('HV_BATTERY', 'high-voltage / hybrid traction battery', r'hybrid battery|hv battery|traction battery|nimh|battery pack|battery module'),
+        ('ELECTRIC_DRIVE', 'motor, inverter, DC-DC, on-board charger and port, 48 V starter-generator',
+         r'inverter|dc.dc|on.board charger|charging port|electric motor|48 ?v|mild.hybrid|e.?drive'),
+        ('OTHER', 'needs `notes` saying what it is', r'(?!)')],
+    'GEARBOX': [
+        ('DUAL_MASS_FLYWHEEL', 'dual-mass flywheel', r'flywheel'),
+        ('CLUTCH_ACTUATION', 'slave/master cylinder, release bearing, clutch actuator, delay valve',
+         r'slave|master cylinder|release bearing|actuator|delay valve|clutch (hydraulic|cable)'),
+        ('CLUTCH', 'clutch disc/pressure plate, dry or wet dual-clutch packs (judder, wear)', r'clutch|dq\d+|dual.clutch|double clutch'),
+        ('MECHATRONICS', 'DCT/AT control unit, valve block, accumulator, solenoids', r'mechatronic|valve block|control unit|accumulator|solenoid|tcu'),
+        ('AT_CVT_INTERNALS', 'torque converter, automatic/CVT internals, shift quality', r'automatic|cvt|torque converter|shift quality|planetary'),
+        ('GEARS_SYNCHROS', 'synchronisers, gear wheels', r'synchro|gear wheel|crunch'),
+        ('BEARINGS_DIFFERENTIAL', 'shaft bearings, differential, satellite gears (whine)', r'differential|satellite|bearing|whine'),
+        ('SHIFT_MECHANISM', 'linkage, cables, lever bushes', r'shift (mechanism|linkage|cable|lever)|gear linkage|selector'),
+        ('GEARBOX_LEAK', 'gearbox and output-shaft seals', r'gearbox (oil )?leak|input shaft seal|output seal|transmission leak|oil leak'),
+        ('DRIVESHAFT', 'driveshafts, CV joints and boots, propshaft and joint disc', r'drive ?shaft|cv joint|propshaft|prop shaft|joint disc|gelenkscheibe|boot'),
+        ('OTHER', 'needs `notes`', r'(?!)')],
+    'CHASSIS': [
+        ('PARKING_BRAKE', 'handbrake lever, cable, mechanism', r'parking brake|handbrake|hand brake'),
+        ('BRAKE_LINES', 'brake hoses and lines, servo, pedal', r'brake (hose|line)|servo|brake pedal|booster'),
+        ('BRAKES', 'pads, discs, calipers, drums, ABS/ESP hydraulic unit', r'brake|caliper|disc|drum|pads'),
+        ('WHEEL_BEARINGS', 'wheel bearings', r'wheel bearing'),
+        ('SPRINGS_DAMPERS', 'coil springs, spring seats, shock absorbers, strut top mounts', r'spring|damper|shock|strut'),
+        ('STEERING', 'tie-rod ends, steering joints and gear, play, power-steering hoses/assist', r'steering|tie.rod|power.steering|ehps'),
+        ('SUSPENSION_ARMS', 'control arms, bushes, ball joints, anti-roll bar links, axle mounts and bolts',
+         r'suspension|control arm|wishbone|bush|ball joint|anti.roll|stabili[sz]er|axle|subframe'),
+        ('EXHAUST', 'pipes, flex pipe, silencers', r'exhaust|silencer|muffler|flex pipe'),
+        ('WATER_INGRESS', 'seals, drains, leaks into the cabin or boot', r'water (ingress|leak)|leak.*(cabin|boot)|drain'),
+        ('ROOF', 'sunroof, panoramic roof, convertible roof (body style / option level)', r'roof|sunroof|convertible|soft ?top'),
+        ('BODY_RUST', 'sills, wheel arches, seams, underbody, tailgate rust', r'rust|corrosion|sill|wheel arch|underbody|body panel'),
+        ('BODY_FITTINGS', 'dashboard, wiper linkage, door/tailgate mechanics, seat-belt anchors, wheels',
+         r'dashboard|wiper|door|tailgate|seat.?belt|seat|trim|wheel|hinge|lock'),
+        ('OTHER', 'needs `notes`', r'(?!)')],
+    'ELECTRICS': [
+        ('BATTERY_12V', 'starter/start-stop battery, terminals, positive cable', r'12 ?v battery|start.stop battery|battery (plus|terminal|connector|cable)|^battery'),
+        ('STARTER_ALTERNATOR', 'starter, solenoid, relay, alternator', r'starter|alternator|generator(?! gas)|relay'),
+        ('AIRBAG', 'airbags, gas generators, airbag control unit, occupant sensing, pretensioners', r'airbag|gas generator|pretensioner|occupant|takata'),
+        ('ABS_ESP', 'ABS sensors and ABS/ESP control unit', r'abs|esp\b|wheel speed'),
+        ('LIGHTING', 'headlights, aim, levelling, tail lights, indicators, bulbs', r'light|lamp|headlight|indicator|bulb|led\b'),
+        ('AIR_CONDITIONING', 'compressor, condenser, refrigerant, flap actuators, blower', r'a/c|air.?con|climate|compressor|condenser|refrigerant|blower|heater'),
+        ('INFOTAINMENT', 'display, touchscreen, radio/navigation, instrument cluster, emergency call',
+         r'infotainment|touchscreen|display|radio|navigation|instrument cluster|e-?call|screen'),
+        ('DRIVER_ASSISTANCE', 'cameras, radar, tyre pressure monitoring', r'camera|radar|tyre pressure|tire pressure|tpms|assist'),
+        ('WIRING', 'harnesses, plugs, fretting corrosion, power distributor, grounds, moisture', r'wiring|harness|plug|fretting|distributor|ground|connector'),
+        ('BODY_ELECTRONICS', 'window regulators and switches, central locking, immobiliser, ignition lock, seat heating, washer pump, stalks',
+         r'window|central locking|immobili[sz]er|ignition lock|seat heating|washer|stalk|switch|mirror'),
+        ('OTHER', 'needs `notes`', r'(?!)')],
+}
+FAULT_COMPONENT_CODES = sorted({code for rows in FAULT_COMPONENTS.values() for code, _, _ in rows})
+
+
+def suggest_component(part, text):
+    """The code whose pattern first matches a component name (for the back-fill and error texts); None when nothing fits."""
+    import re
+    return next((code for code, _, pat in FAULT_COMPONENTS.get(part, ()) if re.search(pat, str(text or ''), re.I)), None)
