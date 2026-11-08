@@ -46,6 +46,8 @@ export async function refreshTco(query = '') {
 const viewedName = () => { const v = viewing(); return v && v !== S.me?.id ? S.accounts.find(u => u.id === v)?.username : null; };
 export function renderShell() {
   document.title = t('app_title');
+  document.querySelector('[data-i18n-skip]').textContent = t('skip_content');
+  document.querySelectorAll('[data-aria]').forEach(b => b.setAttribute('aria-label', t(b.dataset.aria)));
   const p = S.p, st = S.storage;
   const chips = p ? `<a class="chip${S.fuelStale || S.preview ? ' warn' : ''}" href="#/settings" title="${esc(S.fuelStale ? t('fuel_stale') : t('edit_params'))}">${S.preview ? '✎ ' : S.fuelStale ? '⚠ ' : ''}${num(p.annual_km, 0)} ${t('per_year_short')} · ${yrs(p.ownership_years)} · ${num(p.fuel_price_eur_l, 2)} €/l</a>
     <span class="chip${st && st.total_bytes / st.limit_bytes >= .9 ? ' bad' : st && st.total_bytes / st.limit_bytes >= .8 ? ' warn' : ''}" title="${esc(t('storage_hint'))}">${st ? `${num(st.total_bytes / 1048576, 1)} / ${num(st.limit_bytes / 1048576, 0)} MB` : ''}</span>` : '';
@@ -86,10 +88,11 @@ export async function route() {
   } catch (e) {
     main.innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p><button class="btn ghost" type="button" onclick="location.reload()">${t('retry')}</button></div>`;
   }
-  if (!r.q.keep) scrollTo({ top: 0 });
+  if (!r.q.keep) { scrollTo({ top: 0 }); main.focus({ preventScroll: true }); }  // screen readers and keyboard start at the new page
 }
 
 document.addEventListener('click', async e => {
+  if (e.target.closest('[data-i18n-skip]')) { e.preventDefault(); $('main').focus(); return; }  // a #main href would break the hash router
   const l = e.target.closest('[data-lang]'); if (l) { await setLang(l.dataset.lang); return; }
   if (e.target.closest('[data-viewas-exit]')) { setView(null); return; }
   if (e.target.closest('[data-logout]')) { document.cookie = 'carlos_view=; path=/; max-age=0; SameSite=Strict'; await post('/api/auth/logout', {}); location.href = '/login'; }
@@ -101,6 +104,9 @@ document.addEventListener('mousemove', e => { const s = e.target.closest('[data-
 document.addEventListener('click', e => { const s = e.target.closest('[data-tip]'); if (!s) return;
   tip.textContent = s.dataset.tip; tip.style.opacity = 1; const r = s.getBoundingClientRect(), w = tip.offsetWidth;
   tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px'; tip.style.top = (r.bottom + 6) + 'px'; });
+// keyboard: Enter or Space on a focused tip icon shows the tooltip like a tap; Escape or blur hides it
+document.addEventListener('keydown', e => { if (e.key === 'Escape') tip.style.opacity = 0; else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('[data-tip][tabindex]')) { e.preventDefault(); e.target.click(); } });
+document.addEventListener('focusout', e => { if (e.target.matches?.('[data-tip]')) tip.style.opacity = 0; });
 window.addEventListener('scroll', () => { tip.style.opacity = 0; }, { passive: true });
 window.addEventListener('hashchange', route);
 document.addEventListener('change', e => { const v = e.target.closest('[data-viewas]'); if (v) setView(+v.value || null); });
