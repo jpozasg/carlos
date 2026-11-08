@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 import datetime, json, math, os, re, secrets, sqlite3
 import markdown_export
-from . import auth, config, research, research_requests as rq, research_units
+from . import auth, config, research, research_requests as rq, research_units, staging
 from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_variant, row_owner, save_media,
                     storage_usage, table_columns)
@@ -50,6 +50,14 @@ def ranked_rows(c, p):
     out = tco_rows(c, p)
     f = {r['preference_key']: r['preference_value'] for r in rows(c, "SELECT preference_key, preference_value FROM project_preferences WHERE preference_key LIKE 'filter_%'")}
     return out, rank(out, weights_from(p), {**p, **f})
+
+
+def graded_missing(s, listing_id):
+    """The MISSING contract item ids of a listing on a connection already scoped to its account (also the dry grade of staged findings)."""
+    row = next((r for r in ranked_rows(s, params(s))[0] if r['id'] == listing_id), None)
+    if row is None:  # fail closed: a listing that cannot be graded is not done
+        return sorted(research_units.UNIT_OF) + ['lst.insurance']
+    return [i['id'] for i in row.get('research', []) if i.get('grade') == 'MISSING']  # callers choose what they need
 
 
 def detail(c, listing_id, p):
@@ -365,8 +373,14 @@ class Handler(BaseHTTPRequestHandler):
                                 'schema_version': c.execute('PRAGMA user_version').fetchone()[0],
                                 'listings': c.execute('SELECT count(*) FROM listings').fetchone()[0],
                                 'storage_ratio': round(st['total_bytes'] / st['limit_bytes'], 4)})
+            elif path == '/api/agent/stage':
+                if not self.staged_run():
+                    raise NotAllowed('Only a research run (RESEARCH_A, RESEARCH_B, ARBITER) has a staging area')
+                self.send_json(staging.stage_view(c, self.request, graded_missing))
             elif path in ('/api/todo', '/api/agent/todo'):
-                self.send_json(todo(c, p, ranked_rows(c, p)[0]))
+                # a research run is told what its own staging still lacks, not what the catalogue lacks (#253)
+                self.send_json(staging.dry_run(self.request, lambda s: todo(s, params(s), ranked_rows(s, params(s))[0]))
+                               if self.staged_run() else todo(c, p, ranked_rows(c, p)[0]))
             elif path == '/api/agent/schema':
                 self.send_json({'writable_tables': {t: table_columns(c, t) for t in sorted(AGENT_TABLES)},
                                 'source_required_on_insert': sorted(SOURCE_REQUIRED),
@@ -380,7 +394,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'Endpoint not found'}, 404)
             return
         # writes
-        agent = re.fullmatch(r'/api/agent/([\w-]+)(?:/(\d+))?', path)
+        agent = re.fullmatch(r'/api/agent/([\w-]+)(?:/(-?\d+))?', path)
         ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|media|decision)(?:/(\d+))?', path)
         req = re.fullmatch(r'/api/(?:requests|worker/requests)/(\d+)', path)
         if (agent and agent[2] and method in ('PATCH', 'DELETE', 'POST') and self.admin and self.request is None
@@ -391,6 +405,12 @@ class Handler(BaseHTTPRequestHandler):
             if owner is not None and owner != uid:
                 self.uid = uid = owner
                 auth.scope(c, uid, curator=True)
+        if agent and self.staged_run():  # #253: the writes of a research run go to staging (negative ids), never to the catalogue
+            data = self.read_json()
+            if (method == 'PATCH') != bool(agent[2]):
+                self.send_json({'error': 'POST /api/agent/<table> stages an insert; PATCH /api/agent/<table>/<id> updates a staged (negative) or real row'}, 405); return
+            out = staging.write(c, self.request, agent[1], int(agent[2]) if agent[2] else None, data)
+            self.send_json(out, 201 if method == 'POST' and not out.get('existing') else 200); return
         if path == '/api/requests' and method == 'POST':
             rid = rq.create(c, uid, self.read_json(), by=self.user['id'] if self.user['id'] != uid else None)
             self.send_json(next(r for r in rq.mine(c, uid) if r['id'] == rid), 201)
@@ -491,15 +511,16 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json({'error': 'Endpoint not found'}, 404)
 
+    def staged_run(self):
+        """The caller is the per-request token of a research run whose writes go to staging (#253)."""
+        return self.request is not None and self.request['unit'] in research_units.STAGED_UNITS
+
     def missing_items(self, owner_id, listing_id):
         """The contract items still MISSING on a listing (all but the owner-only insurance quote), graded as the to-do list does (#218)."""
         s = connect()
         try:
             auth.scope(s, owner_id, curator=True)
-            row = next((r for r in ranked_rows(s, params(s))[0] if r['id'] == listing_id), None)
-            if row is None:  # fail closed: a listing that cannot be graded is not done
-                return sorted(research_units.UNIT_OF) + ['lst.insurance']
-            return [i['id'] for i in row.get('research', []) if i.get('grade') == 'MISSING']  # callers choose what they need
+            return graded_missing(s, listing_id)
         finally:
             s.close()
 
