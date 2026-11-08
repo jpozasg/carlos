@@ -14,5 +14,12 @@ class ScopeGuard(unittest.TestCase):
             self.assertEqual(agent_tools.scope(1, 'engine'), {'engine_id': 3})
 
 
+class CompareLevels(unittest.TestCase):
+    def test_engine_and_family_are_one_level(self):
+        import pilot_compare as pc
+        self.assertTrue(pc.same_level({'level': 'engine CHYB 55'}, {'level': 'engine_familie EA211'}))
+        self.assertFalse(pc.same_level({'level': 'generation VW Golf'}, {'level': 'engine_familie EA211'}))
+
+
 if __name__ == '__main__':
     unittest.main()

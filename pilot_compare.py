@@ -18,7 +18,7 @@ BANDS = list(config.FREQUENCY_BANDS)  # ordered from the most to the least frequ
 # Level keys that two independent runs write the same way. Free-text names (generation name, engine code) differ between runs,
 # so levels are paired by what identifies the car: make and model, displacement and power, HSN/TSN.
 LEVELS = (('vehicle_id', 'vehicles', ('hsn', 'tsn')), ('engine_id', 'engines', ('displacement_cc', 'power_kw')),
-          ('engine_family_id', 'engine_families', ()), ('gearbox_id', 'gearboxes', ('type',)),
+          ('engine_family_id', 'engine_families', ('name',)), ('gearbox_id', 'gearboxes', ('type',)),
           ('gearbox_family_id', 'gearbox_families', ()), ('generation_id', 'generations', ('make', 'model')),
           ('body_style_id', 'body_styles', ()), ('option_id', 'options', ()))
 
@@ -36,6 +36,11 @@ def level(c, r):
             row = c.execute(f'SELECT * FROM {table} WHERE id=?', (r[col],)).fetchone()
             return f"{table.rstrip('s')} " + ' '.join(str(row[k]) for k in key) if row else f'{table} ?'
     return 'global'
+
+
+def same_level(x, y):
+    """Equal levels, or one on the engine and the other on a family: one evidence pool (#331)."""
+    return x['level'] == y['level'] or {x['level'].split()[0], y['level'].split()[0]} == {'engine', 'engine_familie'}
 
 
 def facts(c, table, where='archived=0'):
@@ -84,17 +89,18 @@ def report(pa, pb):
     lines = ['# Pilot comparison', '', f'Run A: `{pa}`  ', f'Run B: `{pb}`', '']
     fa, fb = facts(a, 'faults'), facts(b, 'faults')
     pairs, only_a, only_b = match(fa, fb, lambda f: f['component'])
-    placed = sum(x['level'] == y['level'] for x, y in pairs)
+    placed = sum(same_level(x, y) for x, y in pairs)
+    exact = sum(x['level'] == y['level'] for x, y in pairs)
     bands = [(x, y) for x, y in pairs if x['frequency_band'] in BANDS and y['frequency_band'] in BANDS]
     near = sum(abs(BANDS.index(x['frequency_band']) - BANDS.index(y['frequency_band'])) <= 1 for x, y in bands)
     priced = [(price(x), price(y)) for x, y in pairs if price(x) and price(y)]
     close = sum(abs(p - q) / max(p, q) <= 0.30 for p, q in priced)
     lines += ['## Faults', f'- A: {len(fa)}, B: {len(fb)}, matched: {len(pairs)}',
-              f'- Same level: {pct(placed, len(pairs))}', f'- Band within one step: {pct(near, len(bands))}',
+              f'- Same level: {pct(placed, len(pairs))} (engine and engine family count as one)', f'- Exactly the same level: {pct(exact, len(pairs))}', f'- Band within one step: {pct(near, len(bands))}',
               f'- Workshop price within ±30 %: {pct(close, len(priced))}', '',
               '| Part | Component (A / B) | Level (A / B) | Band | Shape | Price € |', '|---|---|---|---|---|---|']
     for x, y in pairs:
-        flag = '' if x['level'] == y['level'] else ' ⚠'
+        flag = '' if same_level(x, y) else ' ⚠'
         lines.append(f"| {x['part']} | {x['component']} / {y['component']} | {x['level']} / {y['level']}{flag} | "
                      f"{x['frequency_band']} / {y['frequency_band']} | {x['shape']} / {y['shape']} | {price(x)} / {price(y)} |")
     for name, rows in (('Only in A', only_a), ('Only in B', only_b)):
