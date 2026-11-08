@@ -1757,6 +1757,12 @@ class AppTest(unittest.TestCase):
         # the worker (admin acting for maria) resolves a known HSN/TSN to the catalogue variant and links it to her
         st, r = self.agent('POST', 'vehicles', {'generation_id': G1, 'engine_id': E_A, 'hsn': '1111', 'tsn': 'aaa'}, headers=H)
         self.assertEqual((st, r), (200, {'table': 'vehicles', 'id': V_A, 'existing': True}))
+        # the same generation (start year) and engine (specs, placeholder code) are reused, not created again (#293)
+        self.assertEqual(self.agent('POST', 'generations', {'make': 'alpha', 'model': 'Hatch', 'name': 'Mk 1 (2008-2014)', 'start_year': 2008}, headers=H)[1],
+                         {'table': 'generations', 'id': G1, 'existing': True})
+        self.assertEqual(self.agent('POST', 'engines', {'code': 'UNKNOWN-1400-74', 'fuel_type': 'Petrol', 'displacement_cc': 1400, 'power_kw': 74}, headers=H)[1],
+                         {'table': 'engines', 'id': E_A, 'existing': True})
+        self.assertEqual(self.agent('POST', 'engines', {'code': 'ZZ99', 'fuel_type': 'Petrol', 'displacement_cc': 1400, 'power_kw': 74}, headers=H)[0], 201)  # another real code: a new engine
         st, va = self.req('GET', f'/api/vehicles/{V_A}', token=None, cookie=t2)
         self.assertEqual(st, 200)
         self.assertTrue(va['maintenance_items'] and va['reliability_items'])                         # shared research

@@ -250,6 +250,26 @@ def resolve_variant(c, data, owner_id):
     return row[0]
 
 
+def resolve_level(c, table, data):
+    """An existing shared generation or engine instead of a duplicate (#293), so its research is reused: a generation of the
+    same make and model with the same start year or the same name; an engine of the same fuel, displacement and power (±1 kW or
+    ±1 PS) whose code is the same or a placeholder ('UNKNOWN-…') on either side. None when nothing matches or a fact is missing."""
+    if not isinstance(data, dict):
+        return None
+    if table == 'generations' and data.get('make') and data.get('model'):
+        r = c.execute('SELECT min(id) FROM main.generations WHERE owner_id IS NULL AND upper(trim(make))=upper(trim(?)) AND upper(trim(model))=upper(trim(?)) '
+                      'AND (start_year IS NOT NULL AND start_year=? OR upper(trim(name))=upper(trim(?)))',
+                      (data['make'], data['model'], data.get('start_year'), data.get('name') or '')).fetchone()
+        return r[0]
+    if table == 'engines' and data.get('code') and data.get('fuel_type') and data.get('displacement_cc') and (data.get('power_kw') or data.get('power_ps')):
+        r = c.execute("SELECT min(id) FROM main.engines WHERE owner_id IS NULL AND fuel_type=? AND displacement_cc=? "
+                      "AND (abs(coalesce(power_kw, -99) - coalesce(?, -1)) <= 1 OR abs(coalesce(power_ps, -99) - coalesce(?, -1)) <= 1) "
+                      "AND (upper(trim(code))=upper(trim(?)) OR upper(code) LIKE 'UNKNOWN-%' OR upper(?) LIKE 'UNKNOWN-%')",
+                      (data['fuel_type'], data['displacement_cc'], data.get('power_kw'), data.get('power_ps'), data['code'], data['code'])).fetchone()
+        return r[0]
+    return None
+
+
 def link(c, owner_id, vehicle_id):
     """The account sees this catalogue variant (with its engine and generation) from now on."""
     c.execute('INSERT INTO main.catalogue_links (owner_id, vehicle_id) SELECT ?, id FROM main.vehicles WHERE id=? AND owner_id IS NULL '
