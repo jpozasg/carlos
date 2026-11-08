@@ -183,7 +183,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'gearboxes', {'code': '0YY', 'type': 'ROBOT'})[0], 400)          # fixed code
         self.assertEqual(self.agent('PATCH', f'vehicles/{V_A}', {'gearbox_id': gb})[0], 200)
         self.sql_write('UPDATE reliability_items SET archived=1')   # the fixture's weak points would conflict (#254)
-        fault = {'component': 'Timing chain', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
+        fault = {'component': 'Timing chain', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
                  'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
                  'source_id': SRC_GUIDE}
         st, f = self.agent('POST', 'faults', {**fault, 'engine_family_id': fam})
@@ -241,10 +241,10 @@ class AppTest(unittest.TestCase):
         self.assertEqual(rev('run 4', 'RESOLVED', 'guide outdated'), 201)
         self.assertEqual(status(), 'CLEARED')
         # statistics vs faults: G1 far worse than the class average, G2 average, while G1's faults predict almost nothing
-        self.agent('POST', 'faults', {'engine_id': E_B, 'component': 'Turbo', 'part': 'ENGINE', 'consequence': 'COST',
+        self.agent('POST', 'faults', {'engine_id': E_B, 'component': 'Turbo', 'component_code': 'TURBO', 'part': 'ENGINE', 'consequence': 'COST',
                                       'existence': 'CONFIRMED', 'frequency_band': 'widespread', 'shape': 'WEAR_KM',
                                       'parts_eur': 900, 'source_id': SRC_GUIDE})
-        self.agent('POST', 'faults', {'generation_id': G1, 'component': 'Trim', 'part': 'CHASSIS', 'consequence': 'COSMETIC',
+        self.agent('POST', 'faults', {'generation_id': G1, 'component': 'Trim', 'component_code': 'BODY_FITTINGS', 'part': 'CHASSIS', 'consequence': 'COSMETIC',
                                       'existence': 'CONFIRMED', 'frequency_band': 'rare', 'shape': 'RANDOM',
                                       'parts_eur': 50, 'source_id': SRC_GUIDE})
         stat = {'kind': 'TUEV', 'age_from': 6, 'age_to': 7, 'unit': '% major defects', 'class_average': 10, 'source_id': fx.SRC_HU}
@@ -273,7 +273,7 @@ class AppTest(unittest.TestCase):
         the market model gives the end value; a level HU row overrides the global default; the listing's quote counts."""
         from carlos import costs
         curve = [[100000, 0.1], [200000, 0.4]]
-        base = {'component': 'Chain', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'CONFIRMED',
+        base = {'component': 'Chain', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'CONFIRMED',
                 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600, 'source_id': SRC_GUIDE, 'engine_id': E_A}
         f1 = self.agent('POST', 'faults', {**base, 'curve_km': curve})[1]['id']
         a = self.req('GET', f'/api/listings/{CAR_A}')[1]
@@ -292,7 +292,7 @@ class AppTest(unittest.TestCase):
                                                                 'km': km, 'evidence': 'DOCUMENTED', 'source_id': src})[0], 201)
         fixed = lambda: {x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[f1]
         self.assertEqual(fixed()['expected_eur'], 0)
-        f2 = self.agent('POST', 'faults', {**base, 'component': 'Revised chain', 'curve_km': [[200000, 0.05]]})[1]['id']
+        f2 = self.agent('POST', 'faults', {**base, 'component': 'Revised chain', 'distinct_of': [f1], 'notes': 'the fixed design after the repair', 'curve_km': [[200000, 0.05]]})[1]['id']
         self.assertEqual(self.agent('PATCH', f'faults/{f1}', {'fixed_fault_id': f2})[0], 200)
         self.assertAlmostEqual(fixed()['probability'], round(costs.conditional([[200000, 0.05]], 0, period, 300000), 4), places=4)
         # shapes: every shape gives a rising curve that reaches the end limit
@@ -304,7 +304,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'faults', {**base, 'frequency_band': 'systemic', 'shape': 'WEAR_KM'})[0], 400)  # no trace
         forum = self.agent('POST', 'sources', {'title': 'Forum', 'quality': 'D', 'engine_id': E_A})[1]['id']
         self.assertEqual(self.agent('POST', 'faults', {**base, 'frequency_band': 'widespread', 'shape': 'WEAR_KM', 'source_id': forum})[0], 400)
-        st, f3 = self.agent('POST', 'faults', {**base, 'component': 'Oil pump drive', 'frequency_band': 'common', 'shape': 'RANDOM', 'source_id': forum})
+        st, f3 = self.agent('POST', 'faults', {**base, 'component': 'Oil pump drive', 'component_code': 'ENGINE_INTERNALS', 'frequency_band': 'common', 'shape': 'RANDOM', 'source_id': forum})
         self.assertEqual(st, 201)
         self.assertGreater({x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[f3['id']]['probability'], 0)
         # market model: depreciation = price − the end value at the owner's end age and km, less the private-sale discount
@@ -803,7 +803,7 @@ class AppTest(unittest.TestCase):
         self.assertTrue(consistency.same_fault('Timing chain stretch', 'timing-chain stretch N47'))
         self.assertFalse(consistency.same_fault('Timing chain', 'Timing belt'))
         self.sql_write('UPDATE reliability_items SET archived=1')   # the fixture's weak points would conflict (#254)
-        base = {'component': 'Timing chain stretch', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
+        base = {'component': 'Timing chain stretch', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
                 'source_id': SRC_GUIDE}
         st, first = self.agent('POST', 'faults', {**base, 'engine_id': E_A, 'notes': 'guide'})
@@ -812,9 +812,9 @@ class AppTest(unittest.TestCase):
         st, r = self.agent('POST', 'faults', {**base, 'component': 'timing chain stretching', 'generation_id': G1})
         self.assertEqual((st, [x['id'] for x in r['conflict']], r['conflict'][0]['level']), (409, [first['id']], 'engine'))
         # a different fault and another part are not conflicts; an open-ended row overlaps any window
-        self.assertEqual(self.agent('POST', 'faults', {**base, 'component': 'Turbo failure', 'generation_id': G1})[0], 201)
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'component': 'Turbo failure', 'component_code': 'TURBO', 'generation_id': G1})[0], 201)
         self.assertEqual(self.agent('POST', 'faults', {**base, 'applies_from': '2000-01', 'applies_to': '2001-01', 'engine_id': E_A})[0], 409)
-        self.assertEqual(self.agent('POST', 'faults', {**base, 'part': 'CHASSIS', 'generation_id': G1})[0], 201)
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'part': 'CHASSIS', 'component_code': 'BRAKES', 'generation_id': G1})[0], 201)
         # distinct_of: needs every conflicting id and a reason of its own; the decision is written into notes
         dup = {**base, 'generation_id': G1}
         self.assertEqual(self.agent('POST', 'faults', {**dup, 'distinct_of': [999], 'notes': 'x'})[0], 400)
@@ -826,16 +826,57 @@ class AppTest(unittest.TestCase):
         # archiving is always allowed
         self.assertEqual(self.agent('PATCH', f"faults/{first['id']}", {'archived': 1})[0], 200)
 
+    def test_fault_component_codes_221(self):
+        """Phase 3: component_code is controlled and per part; same_fault gates on it; the schema lists it; the back-fill is a dry run first."""
+        from carlos import config, consistency
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        base = {'component': 'Timing chain stretch', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
+                'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
+                'source_id': SRC_GUIDE, 'engine_id': E_A}
+        st, r = self.agent('POST', 'faults', base)                                                      # required on insert, with the suggestion
+        self.assertEqual(st, 400); self.assertIn('probably TIMING_CHAIN', r['error'])
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'component_code': 'NOPE'})[0], 400)       # unknown code
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'component_code': 'BRAKES'})[0], 400)     # another part's code
+        self.assertEqual(self.agent('POST', 'faults', {**base, 'component_code': 'OTHER'})[0], 400)      # OTHER needs notes
+        st, f = self.agent('POST', 'faults', {**base, 'component_code': 'OTHER', 'notes': 'a bespoke cover'})
+        self.assertEqual(st, 201, f)
+        self.assertEqual(self.agent('PATCH', f"faults/{f['id']}", {'component_code': 'CAM_PHASER'})[0], 200)
+        self.assertEqual(self.agent('PATCH', f"faults/{f['id']}", {'component_code': 'BRAKES'})[0], 400)
+        self.sql_write('UPDATE faults SET component_code=NULL WHERE id=?', (f['id'],))
+        self.assertEqual(self.agent('PATCH', f"faults/{f['id']}", {'notes': 'legacy row, no code'})[0], 200)  # NULL tolerated on PATCH
+        sch = self.agent('GET', 'schema')[1]
+        self.assertEqual({p: len(v) for p, v in sch['fault_components'].items()}, {'ENGINE': 16, 'GEARBOX': 11, 'CHASSIS': 13, 'ELECTRICS': 11})
+        self.assertEqual(sum(len(v) for v in config.FAULT_COMPONENTS.values()), 51)
+        self.assertTrue(set(config.FAULT_COMPONENT_CODES) <= set(sch['fixed_codes']['faults.component_code']))
+        row = lambda n, c=None: {'component': n, 'component_code': c}
+        self.assertIsNone(consistency.same_fault(row('Timing chain', 'TIMING_CHAIN'), row('Timing belt', 'TIMING_BELT')))
+        self.assertIsNone(consistency.same_fault(row('Water pump', 'COOLING'), row('Expansion tank crack', 'COOLING')))
+        self.assertTrue(consistency.same_fault(row('Water pump leak', 'COOLING'), row('Water pump', 'COOLING')))
+        self.assertTrue(consistency.same_fault(row('Timing chain stretch'), row('timing-chain stretch N47', 'OTHER')))   # no code: wording
+        # back-fill: dry run proposes, --apply writes only NULL rows, OTHER/unmatched stay NULL
+        pilot = ['Timing belt in oil bath (wet belt)', 'Timing chain / tensioner cold-start rattle', 'VANOS solenoid valves',
+                 'Oil consumption at high mileage', 'Oil pump', 'Coolant module (water pump and thermostat housing)', 'Ignition coils',
+                 'Turbocharger wear', 'Diesel particulate filter (DPF)', 'Throttle body / idle control', 'Hybrid battery (NiMH) module or pack replacement']
+        want = ['TIMING_BELT', 'TIMING_CHAIN', 'CAM_PHASER', 'OIL_CONSUMPTION', 'ENGINE_INTERNALS', 'COOLING', 'IGNITION', 'TURBO', 'EMISSIONS',
+                'ENGINE_MANAGEMENT', 'HV_BATTERY']
+        faults = [{'id': i, 'part': 'ENGINE', 'component': n, 'component_code': None} for i, n in enumerate(pilot)]
+        faults += [{'id': 90, 'part': 'ENGINE', 'component': 'ENGINE'}, {'id': 91, 'part': 'ENGINE', 'component': 'Oil pump', 'component_code': 'OTHER'}]
+        done = []
+        ok, left = consistency.backfill_codes(faults)
+        self.assertEqual(([c for *_, c in ok], [i for i, *_ in left], done), (want, [90], []))
+        consistency.backfill_codes(faults, lambda i, c: done.append((i, c)))
+        self.assertEqual(done, [(i, c) for (i, _, _, c) in ok])
+
     def test_checklist_covers_faults_and_recalls_223(self):
         """A fault with an inspection_action and a recall row each get a checklist item (linked by fault_id / recall_id); until then
         lst.checklist is MISSING, afterwards met; a fault without an action is not required; the helper is idempotent."""
         from capture_listing import checklist_items
         grade = lambda: {i['id']: i['grade'] for i in self.units()[CAR_A]['research']}['lst.checklist']
-        fault = {'component': 'Water pump seal', 'part': 'ENGINE', 'consequence': 'COST', 'existence': 'REPORTED', 'engine_id': E_A,
+        fault = {'component': 'Water pump seal', 'component_code': 'COOLING', 'part': 'ENGINE', 'consequence': 'COST', 'existence': 'REPORTED', 'engine_id': E_A,
                  'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 100, 'labor_eur': 100, 'source_id': SRC_GUIDE}
         st, f = self.agent('POST', 'faults', {**fault, 'inspection_action': 'Look for coolant traces at the water pump'})
         self.assertEqual(st, 201, f)
-        self.assertEqual(self.agent('POST', 'faults', {**fault, 'component': 'Oil cooler leak'})[0], 201)   # no action: no item
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'component': 'Oil cooler leak', 'component_code': 'OIL_LEAK'})[0], 201)   # no action: no item
         st, rc = self.agent('POST', 'recalls', {'engine_id': E_A, 'code': 'R1', 'defect': 'Wiring harness', 'safety': 1, 'source_id': SRC_GUIDE})
         self.assertEqual(st, 201, rc)
         self.assertEqual(grade(), 'MISSING')
@@ -967,7 +1008,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(st, 409, r)
         self.assertEqual(r['conflict'][0]['table'], 'reliability_items')
         self.assertEqual(self.agent('POST', 'reliability_items', {**rel, 'component': 'Parking brake', 'part': 'CHASSIS', 'is_recall': 0, 'generation_id': G1})[0], 201)
-        fault = {'component': 'Parking brake cable', 'part': 'CHASSIS', 'consequence': 'COST', 'existence': 'REPORTED', 'generation_id': G1,
+        fault = {'component': 'Parking brake cable', 'component_code': 'PARKING_BRAKE', 'part': 'CHASSIS', 'consequence': 'COST', 'existence': 'REPORTED', 'generation_id': G1,
                  'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 100, 'labor_eur': 100, 'source_id': SRC_GUIDE}
         st, r = self.agent('POST', 'faults', fault)
         self.assertEqual((st, r['conflict'][0]['table']), (409, 'reliability_items'))     # already a reliability item: one table only

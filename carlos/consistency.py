@@ -85,11 +85,21 @@ def _words(text):
 
 
 def same_fault(a, b):
-    """Whether two component names describe one fault: equal after normalising, word overlap >= 0.6 or text similarity >= 0.8.
-    Returns the reason (a short string) or None. shortcut: wording only, until component codes exist (#221 phase 3)."""
+    """Whether two faults describe one fault; a and b are rows (dicts with `component`, optional `component_code`) or plain names.
+    Two different codes (neither OTHER) are never the same fault; the same code is the same when the names share a content word
+    or read >= 0.5 alike (so two COOLING faults with nothing in common stay distinct); a missing or OTHER code falls back to the
+    wording rules: equal after normalising, word overlap >= 0.6 or text similarity >= 0.8. Returns the reason or None."""
+    ca, cb = (x.get('component_code') if isinstance(x, dict) else None for x in (a, b))
+    a, b = (x.get('component') if isinstance(x, dict) else x for x in (a, b))
     wa, wb = _words(a), _words(b)
+    coded = ca and cb and 'OTHER' not in (ca, cb)
+    if coded and ca != cb:
+        return None
     if not wa or not wb:
         return None
+    if coded:
+        ratio = difflib.SequenceMatcher(None, ' '.join(wa), ' '.join(wb)).ratio()
+        return f'same component code {ca}' if set(wa) & set(wb) or ratio >= 0.5 else None
     if wa == wb:
         return 'same name'
     sa, sb = set(wa), set(wb)
@@ -125,10 +135,10 @@ def _same_job(a, b):
     return 'same job' if a.get('job') and a.get('job') == b.get('job') else None
 
 
-GUARDED = {'faults': (('part',), lambda a, b: same_fault(a.get('component'), b.get('component')), 'component'),
+GUARDED = {'faults': (('part',), same_fault, 'component'),
            'recalls': ((), _same_recall, 'code'),
            'maintenance_items': ((), _same_job, 'item'),
-           'reliability_items': (('part', 'is_recall'), lambda a, b: same_fault(a.get('component'), b.get('component')), 'component')}
+           'reliability_items': (('part', 'is_recall'), same_fault, 'component')}
 # a design defect must not be filed in both tables (#254): faults and non-recall reliability items are checked against each other
 ALSO = {'faults': ('reliability_items',), 'reliability_items': ('faults',)}
 
@@ -162,7 +172,7 @@ def conflicts(c, table, n, row_id=None):
             xl = next((k for k in config.LEVEL_COLUMNS if x.get(k) is not None), None)
             if xl is not None and ((xl == level and x[xl] == n[level] and own) or any(db.applies(x, v) for v in mine)):
                 out.append({'id': x['id'], 'table': t, 'level': config.LEVELS[xl], 'level_id': x[xl], 'part': x.get('part'),
-                            'component': x.get(label), 'applies_from': x.get('applies_from'), 'applies_to': x.get('applies_to'),
+                            'component': x.get(label), 'component_code': x.get('component_code'), 'applies_from': x.get('applies_from'), 'applies_to': x.get('applies_to'),
                             'frequency_band': x.get('frequency_band'), 'source_id': x.get('source_id'), 'notes': x.get('notes'), 'match': why})
     return out
 
@@ -191,7 +201,7 @@ def duplicates(c):
         here = db.for_variant(faults, v)
         for i, x in enumerate(here):
             for y in here[i + 1:]:
-                if (x['part'] == y['part'] and x['id'] != y['id'] and same_fault(x['component'], y['component']) and _overlap(x, y)
+                if (x['part'] == y['part'] and x['id'] != y['id'] and same_fault(x, y) and _overlap(x, y)
                         and x.get('fixed_fault_id') != y['id'] and y.get('fixed_fault_id') != x['id'] and not _distinct(x, y)):
                     pairs.setdefault((min(x['id'], y['id']), max(x['id'], y['id'])), []).append(db.variant_name(v))
     lifts = []
@@ -200,7 +210,7 @@ def duplicates(c):
         on = [f for f in faults if f.get(col) in fam]
         for i, x in enumerate(on):
             for y in on[i + 1:]:
-                if (fam[x[col]] == fam[y[col]] and x[col] != y[col] and x['part'] == y['part'] and same_fault(x['component'], y['component'])):
+                if (fam[x[col]] == fam[y[col]] and x[col] != y[col] and x['part'] == y['part'] and same_fault(x, y)):
                     lifts.append((x['id'], y['id'], f'{table[:-1]} family {fam[x[col]]}'))
     return pairs, lifts
 
@@ -220,9 +230,33 @@ def duplicates_report(c):
     return '\n'.join(out) + '\n'
 
 
-if __name__ == '__main__':  # python -m carlos.consistency --duplicates [db]
+def backfill_codes(faults, patch=None):
+    """Proposes a component_code for every active fault without one (#221 phase 3): returns (matched, unmatched) as
+    [(id, part, component, code)]. Dry run unless `patch(id, code)` is given, which is called for matched rows only: a fault
+    whose pattern finds nothing (or only OTHER) stays NULL for a person and keeps the wording-only matching."""
+    matched, unmatched = [], []
+    for f in faults:
+        if f.get('component_code') is not None or f.get('archived'):
+            continue
+        code = config.suggest_component(f.get('part'), f.get('component'))
+        (matched if code and code != 'OTHER' else unmatched).append((f['id'], f.get('part'), f.get('component'), code))
+    if patch:
+        for fid, _, _, code in matched:
+            patch(fid, code)
+    return matched, unmatched
+
+
+if __name__ == '__main__':  # python -m carlos.consistency --duplicates [db] | --backfill-codes [--apply] (through the API, admin token)
     import sqlite3, sys
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    if '--backfill-codes' in sys.argv:
+        sys.path.insert(0, str(config.ROOT))
+        import agent_tools as t
+        ok, other = backfill_codes(t.get('/api/admin/data/faults?limit=5000'), (lambda i, k: t.patch('faults', i, {'component_code': k})) if '--apply' in sys.argv else None)
+        print(*[f'{i}, {p}, {c!r} -> {k}' for i, p, c, k in ok], sep='\n')
+        print(f"{len(ok)} {'written' if '--apply' in sys.argv else 'would be written (dry run; --apply to write)'}; {len(other)} left NULL for a person:")
+        print(*[f'{i}, {p}, {c!r}' for i, p, c, _ in other], sep='\n')
+        raise SystemExit(0)
     if '--duplicates' not in sys.argv:
         raise SystemExit('usage: python -m carlos.consistency --duplicates [database]')
     con = sqlite3.connect(f'file:{args[0] if args else config.DB}?mode=ro', uri=True)

@@ -26,7 +26,7 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'listings.lease_kind': config.LEASE_KINDS, 'gearboxes.type': config.GEARBOX_TYPES,
                'faults.part': config.RELIABILITY_PARTS, 'faults.consequence': config.FAULT_CONSEQUENCES,
                'faults.existence': ['CONFIRMED', 'REPORTED'], 'faults.frequency_band': list(config.FREQUENCY_BANDS),
-               'faults.shape': config.FAULT_SHAPES,
+               'faults.shape': config.FAULT_SHAPES, 'faults.component_code': config.FAULT_COMPONENT_CODES,
                'review_flags.kind': ['STATS_MISMATCH', 'SOURCES_DISAGREE', 'FIX_UNCERTAIN', 'OTHER'],
                'review_flags.status': ['OPEN', 'CLEARED'], 'flag_reviews.outcome': ['CONFIRMED', 'RESOLVED'], 'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
                'recalls.part': config.RELIABILITY_PARTS, 'reliability_stats.kind': ['TUEV', 'ADAC'],
@@ -134,6 +134,22 @@ def fault_checks(c, out):
         q = c.execute('SELECT quality FROM sources WHERE id=?', (out['source_id'],)).fetchone()
         if not q or q[0] not in ('A', 'B'):
             out['window_uncertain'] = 1
+
+
+def check_component_code(c, data, row_id):
+    """A fault's component_code (#221 phase 3): required on insert, NULL tolerated on PATCH; it must belong to the (merged) part,
+    and OTHER needs notes. The 400 names the suggested code."""
+    old = c.execute('SELECT * FROM faults_all WHERE id=?', (row_id,)).fetchone() if row_id is not None else None
+    row = {**(dict(old) if old else {}), **data}
+    code, part = row.get('component_code'), row.get('part')
+    codes = [k for k, _, _ in config.FAULT_COMPONENTS.get(part, ())]
+    if code is None and row_id is None or code is not None and code not in codes:
+        hint = config.suggest_component(part, row.get('component'))
+        raise ValueError(f"component_code: {'required' if code is None else repr(code) + ' is not a ' + str(part) + ' code'}; "
+                         f"for {row.get('component')!r} ({part}) " + (f'probably {hint}; ' if hint else '') + f'codes: {", ".join(codes)} '
+                         '(GET /api/agent/schema, fault_components)')
+    if code == 'OTHER' and not str(row.get('notes') or '').strip():
+        raise ValueError('component_code OTHER needs notes saying what the component is')
 
 
 def clean_row(c, table, data, insert):
@@ -265,7 +281,7 @@ def linked_accounts(c, table, row_id):
 
 
 DUPLICATE_GUARDED = ('faults', 'recalls', 'maintenance_items', 'reliability_items')  # the same row filed twice on levels one car carries (#221)
-GUARD_KEYS = (*config.LEVEL_COLUMNS, 'part', 'component', 'code', 'job', 'applies_from', 'applies_to', 'archived')
+GUARD_KEYS = (*config.LEVEL_COLUMNS, 'part', 'component', 'component_code', 'code', 'job', 'applies_from', 'applies_to', 'archived')
 
 
 def guard_duplicate(c, table, data, row_id, distinct):
@@ -307,6 +323,8 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
     distinct = data.pop('distinct_of', None) if table in DUPLICATE_GUARDED and isinstance(data, dict) else None
     data = clean_row(c, table, data, insert=row_id is None)
     check_parents(c, table, data)
+    if table == 'faults':
+        check_component_code(c, data, row_id)
     if table in DUPLICATE_GUARDED:
         guard_duplicate(c, table, data, row_id, distinct)
     with c:

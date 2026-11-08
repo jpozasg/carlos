@@ -373,7 +373,9 @@ class Handler(BaseHTTPRequestHandler):
                                 'code_formats': {f'{t}.{col}': pat for (t, col), pat in CODE_FORMATS.items()},
                                 'fixed_codes': FIXED_CODES, 'scoped_tables': list(config.SCOPED_TABLES),
                                 'scope_columns': list(config.LEVEL_COLUMNS), 'rules': RULES,
-                                'research_contract': research.published()})
+                                'research_contract': research.published(),
+                                'fault_components': {p: [{'code': k, 'covers': cv} for k, cv, _ in rows]
+                                                     for p, rows in config.FAULT_COMPONENTS.items()}})
             else:
                 self.send_json({'error': 'Endpoint not found'}, 404)
             return
