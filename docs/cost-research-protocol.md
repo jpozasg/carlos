@@ -20,6 +20,7 @@ Research agents never use a browser, never touch another listing or another acco
 Every knowledge row is written to exactly one level and inherited by every car below it:
 - **engine** (`level='engine'`): oil and filters, spark plugs, timing drive, coolant, drive belt, engine faults (chain rattle, oil consumption, turbo, injectors, wet belt), engine-related repair risks, engine-level consumption only when no variant page exists.
 - **generation**: HU/AU, brakes, wipers, bulbs, battery, suspension, body rust, electrics, interior; chassis repair risks; tyre size when every engine shares it.
+- **engine family vs engine code:** put an engine fault on the engine family when the source names the family or several engine codes of it (`N45/N46`, "all EA211"), otherwise on the engine code; never on both. The contract grades `eng.risks`, `fam.risks` and `rel.ENGINE.engine_specific` on the union of both levels (the listing inherits both, so the cost is the same).
 - **variant** (default): the exact HSN/TSN data: consumption (the autokostencheck page of the variant), tax, insurance, tyre size when it differs per engine.
 Before writing, read `variant(V)`: rows already inherited must not be written again. If a car shares an engine code or a generation with an existing row, reuse it (`GET /api/engines`, `GET /api/generations`) instead of creating a second one.
 
@@ -141,13 +142,13 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `var.gearbox_level` | variant | the variant names its gearbox (`gearbox_id`) | – |
 | `gen.safety` | generation | Euro NCAP stars (`ncap_stars`) and the test year (`ncap_year`; the stricter overall rating began in 2009) for the safety criterion, or a check `N/A` (never tested); ESP standard or not goes on the variant (`esp`) | B |
 | `gen.baseline` | generation | TÜV and ADAC figures per age class, both as published (`reliability_stats`; the TÜV rows with the report's class average, the ADAC rows without one), plus an `N/A` check when one source has no figure for the generation (too new, not listed) (#299) | B |
-| `fam.risks` | engine family (else the engine) | engine family faults, each priced with a probability, or a check `NONE FOUND` | – |
+| `fam.risks` | engine family (else the engine); engine faults count too | engine family faults, each priced with a probability, or a check `NONE FOUND` | – |
 | `gbx.identity` | gearbox (else the variant) | gearbox code and type | – |
 | `gbx.service` | gearbox (else the variant) | the `GEARBOX_OIL` job with an interval and the workshop price, or a check `NONE FOUND` | – |
 | `gbx.clutch` | gearbox (manual, DCT) | the `CLUTCH` job with a life, the DIY parts and the workshop price, or a check `NONE FOUND` | – |
 | `gbx.risks` | gearbox (else the variant; no gearbox family level, #295) | faults, each priced with a probability, or a check `NONE FOUND` | – |
 | `bdy.risks` | body style (only when the variant has one) | body style faults and maintenance (convertible roof …), or a check `NONE FOUND` | – |
-| `rel.<PART>.<source>` | generation (`adac`, `tuev`, `guide`), engine family (`engine_specific`, ENGINE), gearbox family (`gearbox_specific`, GEARBOX) | check per part and source: `adac`, `tuev` (B), `guide` (C), `engine_specific` and `gearbox_specific` (D allowed: forums and guide sites are the natural source, #315). A missing family is graded on the engine or gearbox, a missing gearbox on the variant; an older check on the engine still counts (ACCEPTED, move it up). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
+| `rel.<PART>.<source>` | generation (`adac`, `tuev`, `guide`), engine family (`engine_specific`, ENGINE), gearbox family (`gearbox_specific`, GEARBOX) | check per part and source: `adac`, `tuev` (B), `guide` (C), `engine_specific` and `gearbox_specific` (D allowed: forums and guide sites are the natural source, #315). A missing family is graded on the engine, engine and family rows count together; a missing gearbox on the variant; an older check on the engine still counts (ACCEPTED, move it up). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
 | `lst.insurance` | listing | a quote younger than 60 days (the reference car: the premium the owner pays) | – |
 | `lst.tax_covered` | listing | a tax row whose registration window covers the car's first registration (an electric car exempt for the whole period needs none) | – |
 | `lst.valuation` | listing | a `resale_end` valuation | – |

@@ -12,7 +12,7 @@ from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 6  # 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
+CONTRACT_VERSION = 7  # 7: engine and family graded as one pool (#331); 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
 LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id', 'engine_family': 'engine_family_id',
@@ -218,7 +218,7 @@ class Contract:
 
     def resolved(self, vehicle_id):
         """A variant with every level above it: generation, engine and its family, gearbox and its family, body style
-        (#174). A family item is graded on the engine (or gearbox) when there is no family, and a gearbox item on the
+        (#174). Engine and family items are graded on the union of the engine's and its family's rows; a gearbox item on the
         variant when it names no gearbox. An item missing on its level but present one level lower (e.g. an engine job
         stored on the variant, an ADAC check stored on the engine) counts as ACCEPTED at most, with a hint to move it up."""
         if vehicle_id is None:  # a listing awaiting (re-)research has no variant yet (#194): nothing is researched
@@ -231,9 +231,11 @@ class Contract:
         body = self.rows['body_styles'].get(v.get('body_style_id'))
         out = []
         lower = {'generation': [('vehicle_id', v['id']), ('engine_id', v['engine_id'])], 'engine': [('vehicle_id', v['id'])], 'variant': []}
-        # (level, row, the keys its items are graded on): a missing family or gearbox falls back to the level below
+        # (level, row, the keys its items are graded on): a missing gearbox falls back to the level below
+        # engine and family are one evidence pool for engine faults: the cost is the same on either level (#331)
+        pool = [('engine_id', engine['id'])] + ([('engine_family_id', efam['id'])] if efam else [])
         plan = [('generation', generation, None), ('engine', engine, None),
-                ('engine_family', efam or engine, None if efam else [('engine_id', engine['id'])]),
+                ('engine_family', efam or engine, None),
                 ('gearbox', gearbox or {**v, 'code': None, 'type': None}, None if gearbox else [('vehicle_id', v['id'])]),
                 ('variant', v, None)] + ([('body_style', body, None)] if body else [])
         for level, row, keys in plan:
@@ -242,7 +244,8 @@ class Contract:
                     out.append({**i, 'hint': f'no {level.replace("_", " ")} yet: graded on the level below'})
                 continue
             below = None
-            for i in self.level(level, row):
+            graded = evaluate(level, row, self._rows(pool), self.sources) if level in ('engine', 'engine_family') else self.level(level, row)
+            for i in graded:
                 if i['grade'] == 'MISSING' and lower.get(level):
                     below = below or {x['id']: x['grade'] for x in evaluate(level, row, self._rows(lower[level]), self.sources)}
                     if below.get(i['id'], 'MISSING') != 'MISSING':

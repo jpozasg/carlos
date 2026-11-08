@@ -1216,6 +1216,28 @@ class AppTest(unittest.TestCase):
         self.agent('PATCH', f'listings/{CAR_B}', {'listing_status': 'WITHDRAWN'})
         self.assertNotIn(CAR_B, {x['listing_id'] for x in self.agent('GET', 'todo')[1]['listings']})
 
+    def test_engine_family_one_pool_331(self):
+        """Engine faults count for the engine and its family alike; no 'no engine family yet' hint."""
+        fam = self.agent('POST', 'engine_families', {'name': 'AM'})[1]['id']
+        self.assertEqual(self.agent('PATCH', f'engines/{E_A}', {'family_id': fam})[0], 200)
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        self.sql_write('UPDATE repair_risks SET archived=1')
+        self.sql_write('UPDATE faults SET archived=1')
+        fault = {'component': 'Timing chain', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
+                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
+                 'source_id': SRC_GUIDE}
+        todo = lambda: ' | '.join(next(m for m in self.agent('GET', 'todo')[1]['models'] if m['vehicle_id'] == V_A)['todo'])
+        self.assertIn('eng.risks missing', todo())
+        self.assertIn('fam.risks missing', todo())
+        fid = self.agent('POST', 'faults', {**fault, 'engine_family_id': fam})[1]['id']
+        self.assertNotIn('eng.risks missing', todo())
+        self.assertNotIn('fam.risks missing', todo())
+        self.assertNotIn('no engine family', todo())
+        self.agent('PATCH', f'faults/{fid}', {'archived': 1})
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'engine_id': E_A})[0], 201)
+        self.assertNotIn('fam.risks missing', todo())
+        self.assertNotIn('eng.risks missing', todo())
+
     def test_research_contract(self):
         from unittest import mock
         from carlos import research
