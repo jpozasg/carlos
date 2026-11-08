@@ -315,11 +315,12 @@ def guard_duplicate(c, table, data, row_id, distinct):
     data['notes'] = f"Distinct from {table[:-1].replace('_', ' ')} {', '.join('#%d' % i for i in ids)}: {reason}"
 
 
-def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
+def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, check=True):
     """Inserts (row_id None) or updates a row of this account in one transaction and records it in change_log.
     Admin inserts of generations, engines, variants and level sources go to the shared catalogue (owner_id NULL);
     knowledge rows follow their level, except an account's own premium or USER DATA figure, which stays private.
-    `actor` is who wrote it (the admin acting for the account), for the change log."""
+    `actor` is who wrote it (the admin acting for the account), for the change log. `check=False` leaves consistency.check
+    to the caller (the staging merge runs it once at the end)."""
     distinct = data.pop('distinct_of', None) if table in DUPLICATE_GUARDED and isinstance(data, dict) else None
     data = clean_row(c, table, data, insert=row_id is None)
     check_parents(c, table, data)
@@ -351,7 +352,7 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
             clear_if_agreed(c, c.execute('SELECT flag_id FROM main.flag_reviews WHERE id=?', (row_id,)).fetchone()[0])
         if table == 'review_flags' and data.get('status') == 'CLEARED':
             raise ValueError('a flag is cleared only by two independent reviews reaching the same conclusion (flag_reviews)')
-    if table in ('faults', 'reliability_stats'):
+    if check and table in ('faults', 'reliability_stats'):
         from . import consistency
         consistency.check(c)
     return row_id

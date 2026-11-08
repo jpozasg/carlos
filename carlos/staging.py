@@ -3,9 +3,9 @@ RESEARCH_B or ARBITER run go to `research_findings` instead of the catalogue. A 
 same run (-finding id); it may stand for a source, a level or a fault wherever the real id would. Nothing here writes to the
 real tables except `dry_run`, which applies the findings inside a transaction it always rolls back, to grade the run.
 Compare (P3) and merge (P4) are not here."""
-import json, re, unicodedata
+import json, re, sqlite3, unicodedata
 from . import config, consistency, research_units as ru
-from .agent import ARCHIVABLE, AGENT_TABLES, Conflict, NotAllowed, NotFound, check_component_code, check_parents, clean_row, guard_duplicate, table_columns
+from .agent import ARCHIVABLE, AGENT_TABLES, DUPLICATE_GUARDED, Conflict, NotAllowed, NotFound, check_component_code, check_parents, clean_row, guard_duplicate, table_columns
 from .auth import MODEL, OWNED, scope
 from .db import connect, params
 
@@ -497,3 +497,195 @@ def unanswered(c, parent_id):
 def disputed_keys(c, parent_id):
     """The finding keys an ARBITER run may stage (for OWN verdicts); sources are always allowed."""
     return {r[0] for m in dispute_rows(c, parent_id) for r in c.execute('SELECT key FROM main.research_findings WHERE id IN (?,?)', (m['a_id'], m['b_id']))}
+
+
+# ---------------------------------------------------------------------------------------------------- merge (P4, section 3.5)
+_BAND_ORDER = ('rare', 'occasional', 'common', 'widespread', 'systemic')  # ascending: higher index = worse
+NOTE_AGREED, NOTE_ONE = 'Second independent run agreed (sources: %s).', 'Found by one of two independent runs.'
+
+
+class _Skip(Exception):
+    pass
+
+
+def _quality(c, fs, p):
+    sid = p.get('source_id')
+    if sid is None:
+        return 9
+    q = fs[-sid]['p'].get('quality') if sid < 0 and -sid in fs else (c.execute('SELECT quality FROM sources WHERE id=?', (sid,)).fetchone() or [None])[0]
+    return 'ABCD'.index(q) if q in tuple('ABCD') else 9
+
+
+def _figure(kind, p):
+    """Higher = less favourable to the buyer (section 3.5): higher band and price for faults, shorter interval and dearer job for jobs."""
+    if kind == 'fault':
+        return (_BAND_ORDER.index(p['frequency_band']) if p.get('frequency_band') in _BAND_ORDER else -1, (p.get('parts_eur') or 0) + (p.get('labor_eur') or 0))
+    if kind == 'job':
+        return (-(p.get('interval_km') or 1e12), -(p.get('interval_months') or 1e12), p.get('reference_cost_eur') or 0)
+    return ()
+
+
+def _pick(c, fs, a, b):
+    """Of two paired findings: the less favourable figure; on a tie (or a kind without figures) the better source quality, then A."""
+    fa, fb = _figure(a['kind'], a['p']), _figure(a['kind'], b['p'])
+    if fa != fb:
+        return a if fa > fb else b
+    return b if _quality(c, fs, b['p']) < _quality(c, fs, a['p']) else a
+
+
+def _urls(c, fs, *found):
+    out = []
+    for f in found:
+        sid = f['p'].get('source_id')
+        if sid is None:
+            continue
+        u = fs[-sid]['p'].get('url') if sid < 0 and -sid in fs else (c.execute('SELECT url FROM sources WHERE id=?', (sid,)).fetchone() or [None])[0]
+        if u and u not in out:
+            out.append(u)
+    return ', '.join(out) or 'none cited'
+
+
+def _plan(c, fs, m):
+    """([(finding, note, distinct_of_the_first)], skip reason, needs a flag) for one match."""
+    a, b = fs.get(m['a_id']), fs.get(m['b_id'])
+    sides, v, kind = [x for x in (a, b) if x], m['verdict'], m['kind']
+    if kind in ('check', 'flag'):  # unions: every distinct one is written
+        return [(x, None, False) for x in sides], None, False
+    if v == 'NEITHER':
+        return [], f'rejected by the arbiter: {m["verdict_reason"]}', False
+    if v in ('A', 'B', 'OWN'):
+        f = {'A': a, 'B': b, 'OWN': fs.get(m['verdict_id'])}[v]
+        return ([(f, None, False)], None, False) if f else ([], f'verdict {v} names a finding that does not exist', False)
+    if v == 'BOTH':
+        return [(x, m['verdict_reason'] if i else None, bool(i)) for i, x in enumerate(sides)], None, False
+    unresolved = bool(m['material'])
+    if unresolved and kind in ('patch', 'level') and m['outcome'] != 'AGREED':
+        return [], 'identity dispute not settled by the arbiter; left unwritten', True
+    if len(sides) == 1:
+        return [(sides[0], NOTE_ONE, False)], None, unresolved
+    agreed = m['outcome'] == 'AGREED'
+    return [(_pick(c, fs, a, b), NOTE_AGREED % _urls(c, fs, a, b) if agreed else None, False)], None, unresolved and not agreed
+
+
+def _summary(m):
+    diffs = json.loads(m['diffs'] or '[]')
+    if diffs:
+        r1, r2 = (', '.join(f'{d["field"]} {d[s]}' for d in diffs) for s in 'ab')
+    else:
+        r1, r2 = ('found it', 'did not find it') if m['a_id'] else ('did not find it', 'found it')
+    return f'{m["kind"]} {m["key"]}: run 1 {r1}; run 2 {r2}'
+
+
+def merge(c, parent_id, owner_id, actor=None):
+    """Writes the agreed and arbitrated findings of a listing request through agent_write (validation, change_log, catalogue ownership,
+    the #221 duplicate guard). Idempotent: matches already merged are left alone. Returns the report; `accounts` are the accounts whose
+    dossiers changed. consistency.check runs once at the end, not after every fault."""
+    from .agent import agent_write, linked_accounts
+    ms = [dict(r) for r in c.execute('SELECT * FROM main.research_matches WHERE parent_id=? ORDER BY id', (parent_id,))]
+    if not ms:
+        raise ValueError(f'request {parent_id}: nothing to merge, the two runs were not compared')
+    fs = {r['id']: {**dict(r), 'p': json.loads(r['payload'])} for r in c.execute('SELECT * FROM main.research_findings WHERE parent_id=?', (parent_id,))}
+    ids = {i: f['merged_id'] for i, f in fs.items() if f['status'] == 'MERGED' and f['merged_id']}
+    skipped_f, redirect, touched, orphans, seen = set(), {}, [], [], set()
+    report = {'parent_id': parent_id, 'counts': {}, 'written': 0, 'skipped': [], 'flags': [], 'orphans': orphans}
+    for m in ms:
+        report['counts'][m['outcome']] = report['counts'].get(m['outcome'], 0) + 1
+    lv = c.execute('SELECT l.vehicle_id FROM main.listings l JOIN main.research_requests r ON r.listing_id=l.id WHERE r.id=?', (parent_id,)).fetchone()
+
+    def write(table, rid, p):
+        out = agent_write(c, table, rid, p, owner_id, True, actor, check=False)
+        touched.append((table, out))
+        return out
+
+    def real(fid):
+        """The real id a staged reference stands for: written already, a source or level created on first use, or unavailable."""
+        if fid not in ids:
+            f = fs.get(fid)
+            if f is None or fid in skipped_f or f['kind'] not in ('source', 'level'):
+                raise _Skip(f'it points at staged row {-fid}, which was not written')
+            ids[fid] = create(f, None)
+            c.execute("UPDATE main.research_findings SET status='MERGED', merged_id=?, updated_at=datetime('now') WHERE id=?", (ids[fid], fid))
+        return ids[fid]
+
+    def subst(table, p):
+        refs = _refs(c, table, p)
+        p = {k: real(-v) if isinstance(v, int) and not isinstance(v, bool) and v < 0 and k in refs else v for k, v in p.items() if k != 'distinct_of'}
+        return {k: redirect.get((k, v), v) if k in config.LEVEL_COLUMNS else v for k, v in p.items()}
+
+    def create(f, note, distinct=None):
+        """Writes one finding (get-or-create for sources and levels) and returns the real id."""
+        table, p = f['target_table'], dict(f['p'])
+        if note:
+            p['notes'] = f'{p["notes"]} {note}' if p.get('notes') else note
+        p = subst(table, p)
+        if f['kind'] in ('source', 'level'):
+            want = key_of(f['kind'], table, p)
+            hit = next((x['id'] for x in c.execute(f'SELECT * FROM {table}') if key_of(f['kind'], table, dict(x)) == want), None)
+            return hit or write(table, None, p)
+        if f['op'] == 'patch':
+            try:
+                write(table, f['target_id'], p)
+            except sqlite3.IntegrityError:  # the shell engine's natural key is already in the catalogue: relink instead
+                base = {**dict(c.execute(f'SELECT * FROM {table} WHERE id=?', (f['target_id'],)).fetchone()), **p}
+                same = c.execute('SELECT id FROM engines WHERE owner_id IS NULL AND code=? AND power_kw=? AND id!=?',
+                                 (base.get('code'), base.get('power_kw'), f['target_id'])).fetchone() if table == 'engines' else None
+                if same is None:
+                    raise
+                for (vid,) in c.execute('SELECT id FROM vehicles WHERE engine_id=?', (f['target_id'],)).fetchall():
+                    write('vehicles', vid, {'engine_id': same[0]})
+                redirect[('engine_id', f['target_id'])] = same[0]
+                orphans.append({'engine_id': f['target_id'], 'relinked_to': same[0]})
+                return same[0]
+            return f['target_id']
+        mapped = [ids[-d] for d in f['p'].get('distinct_of') or [] if ids.get(-d)] + list(distinct or [])
+        if mapped and table in DUPLICATE_GUARDED:
+            p['distinct_of'] = mapped
+        return write(table, None, p)
+
+    def flag(m):
+        f = fs.get(m['a_id']) or fs.get(m['b_id'])
+        col = next((k for k, name in config.LEVELS.items() if f['level'] == name), None) if f['kind'] != 'level' else None
+        lid = (f['level_id'] if f['level_id'] is None or f['level_id'] > 0 else ids.get(-f['level_id'])) if col else None
+        if lid is None:  # a staged level that was not written: the flag goes on the listing's variant
+            col, lid = 'vehicle_id', lv[0]
+        return write('review_flags', None, {col: lid, 'kind': 'SOURCES_DISAGREE', 'what': _summary(m), 'created_by': f'merge of request #{parent_id}',
+                                            'why': f'Two independent research runs disagree and the arbiter did not settle it (request #{parent_id})'})
+
+    for m in sorted(ms, key=lambda m: (KIND_ORDER.index(m['kind']), m['id'])):
+        if m['merged']:
+            continue
+        written, reason, needs_flag = [], None, False
+        try:
+            plan, reason, needs_flag = _plan(c, fs, m)
+            for f, note, after_first in plan:
+                try:
+                    if f['kind'] in ('check', 'flag'):
+                        sig = (f['target_table'], json.dumps(subst(f['target_table'], f['p']), sort_keys=True))
+                        if sig in seen:
+                            continue
+                        seen.add(sig)
+                    ids[f['id']] = create(f, note, [ids[w['id']] for w in written] if after_first else None)
+                    written.append(f)
+                except Conflict as e:  # never forced: the row exists, the run should have extended it
+                    hit = (e.payload.get('conflict') or [{}])[0]
+                    reason = f'exists as {hit["table"]} #{hit["id"]}' if hit.get('id') else str(e)
+                except (_Skip, ValueError, sqlite3.Error) as e:
+                    reason = f'not written: {e}'
+        except _Skip as e:
+            reason = f'not written: {e}'
+        skipped_f |= {s for s in (m['a_id'], m['b_id'], m['verdict_id']) if s in fs and s not in {w['id'] for w in written}}
+        report['written'] += len(written)
+        for w in written:
+            c.execute("UPDATE main.research_findings SET status='MERGED', merged_id=?, updated_at=datetime('now') WHERE id=?", (ids[w['id']], w['id']))
+        for s in skipped_f & {m['a_id'], m['b_id'], m['verdict_id']}:
+            c.execute("UPDATE main.research_findings SET status='SKIPPED', updated_at=datetime('now') WHERE id=? AND status='STAGED'", (s,))
+        flag_id = flag(m) if needs_flag else None
+        report['flags'] += [flag_id] if flag_id else []
+        res = {'ids': [ids[w['id']] for w in written], **({'skipped' if not written else 'note': reason} if reason else {})}
+        c.execute('UPDATE main.research_matches SET merged=?, flag_id=? WHERE id=?', (json.dumps(res), flag_id, m['id']))
+        c.commit()
+        if not written and reason:
+            report['skipped'].append({'match': m['id'], 'key': m['key'], 'reason': reason})
+    consistency.check(c)
+    report['accounts'] = sorted({o for t, i in touched for o in linked_accounts(c, t, i)})
+    return report
