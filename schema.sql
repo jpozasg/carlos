@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=39). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=40). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -451,9 +451,43 @@ CREATE TABLE "research_requests" (
  flag_id INTEGER REFERENCES review_flags(id),
  attempts INTEGER NOT NULL DEFAULT 0, missing TEXT,
  parent_id INTEGER REFERENCES "research_requests"(id),
- unit TEXT CHECK (unit IS NULL OR unit IN ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING', 'INSURANCE')),
+ unit TEXT CHECK (unit IS NULL OR unit IN ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING', 'INSURANCE',
+                                           'RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE')),
  level_id INTEGER,
- shared_id INTEGER REFERENCES "research_requests"(id));
+ shared_id INTEGER REFERENCES "research_requests"(id),
+ scope TEXT CHECK (scope IS NULL OR json_valid(scope)));
+CREATE TABLE research_findings (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ request_id INTEGER NOT NULL REFERENCES research_requests(id),
+ parent_id INTEGER NOT NULL REFERENCES research_requests(id),
+ run TEXT NOT NULL CHECK (run IN ('A', 'B', 'C')),
+ kind TEXT NOT NULL CHECK (kind IN ('source', 'level', 'patch', 'fault', 'recall', 'job', 'check', 'observation', 'tyres', 'stats', 'flag')),
+ op TEXT NOT NULL CHECK (op IN ('insert', 'patch')),
+ target_table TEXT NOT NULL,
+ target_id INTEGER,
+ key TEXT NOT NULL,
+ level TEXT, level_id INTEGER,
+ part TEXT, component_code TEXT,
+ payload TEXT NOT NULL CHECK (json_valid(payload)),
+ status TEXT NOT NULL DEFAULT 'STAGED' CHECK (status IN ('STAGED', 'MERGED', 'SKIPPED', 'ARCHIVED')),
+ merged_id INTEGER,
+ created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+ CHECK ((op = 'patch') = (target_id IS NOT NULL)));
+CREATE TABLE research_matches (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ parent_id INTEGER NOT NULL REFERENCES research_requests(id),
+ kind TEXT NOT NULL, key TEXT NOT NULL,
+ a_id INTEGER REFERENCES research_findings(id), b_id INTEGER REFERENCES research_findings(id),
+ outcome TEXT NOT NULL CHECK (outcome IN ('AGREED', 'DISPUTED', 'ONLY_A', 'ONLY_B')),
+ diffs TEXT CHECK (diffs IS NULL OR json_valid(diffs)),
+ material INTEGER NOT NULL DEFAULT 0 CHECK (material IN (0, 1)),
+ verdict TEXT CHECK (verdict IS NULL OR verdict IN ('A', 'B', 'BOTH', 'NEITHER', 'OWN')),
+ verdict_id INTEGER REFERENCES research_findings(id),
+ verdict_reason TEXT, verdict_source_id INTEGER,
+ merged TEXT CHECK (merged IS NULL OR json_valid(merged)),
+ flag_id INTEGER REFERENCES review_flags(id),
+ CHECK (a_id IS NOT NULL OR b_id IS NOT NULL),
+ CHECK (verdict IS NOT 'OWN' OR verdict_id IS NOT NULL));
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_risks_scope ON repair_risks (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_reliability_scope ON reliability_items (vehicle_id, engine_id, generation_id);
@@ -473,10 +507,14 @@ CREATE INDEX idx_listings_vehicle ON listings (vehicle_id);
 CREATE UNIQUE INDEX ux_generations_key ON generations (make, model, name) WHERE owner_id IS NULL;
 CREATE UNIQUE INDEX ux_engines_key ON engines (code, power_kw) WHERE owner_id IS NULL;
 CREATE UNIQUE INDEX ux_vehicles_key ON vehicles (hsn, tsn, engine_id) WHERE owner_id IS NULL AND hsn IS NOT NULL;
+CREATE INDEX faults_component_code ON faults (part, component_code);
 CREATE INDEX research_requests_owner ON research_requests (owner_id, status);
 CREATE INDEX research_requests_queue ON research_requests (status, id);
 CREATE INDEX research_requests_token ON research_requests (request_token_hash);
 CREATE UNIQUE INDEX research_requests_child ON research_requests (parent_id, unit) WHERE parent_id IS NOT NULL;
 CREATE UNIQUE INDEX research_requests_open_unit ON research_requests (unit, level_id)
  WHERE parent_id IS NOT NULL AND level_id IS NOT NULL AND status IN ('QUEUED', 'RUNNING');
-CREATE INDEX faults_component_code ON faults (part, component_code);
+CREATE UNIQUE INDEX research_findings_key ON research_findings (request_id, key)
+ WHERE status = 'STAGED' AND kind NOT IN ('fault', 'check', 'flag');
+CREATE INDEX research_findings_parent ON research_findings (parent_id, run, kind);
+CREATE INDEX research_matches_parent ON research_matches (parent_id, outcome);
