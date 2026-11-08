@@ -46,8 +46,6 @@
  "tax_year": "Kfz-Steuer/Jahr",
  "score": "Punktzahl",
  "rank_n": "#{n}",
- "coverage": "{n} % Datenabdeckung",
- "coverage_short": "Abdeckung",
  "not_ranked": "Nicht im Ranking",
  "compare": "Vergleichen",
  "open_dossier": "Dossier öffnen",

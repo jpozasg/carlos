@@ -46,8 +46,6 @@
  "tax_year": "Tax/year",
  "score": "Score",
  "rank_n": "#{n}",
- "coverage": "{n}% data coverage",
- "coverage_short": "coverage",
  "not_ranked": "Not ranked",
  "compare": "Compare",
  "open_dossier": "Open the dossier",

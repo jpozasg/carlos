@@ -47,8 +47,6 @@
  "tax_year": "Podatek/rok",
  "score": "Wynik",
  "rank_n": "#{n}",
- "coverage": "Pokrycie danymi: {n}%",
- "coverage_short": "pokrycie",
  "not_ranked": "Poza rankingiem",
  "compare": "Porównaj",
  "open_dossier": "Otwórz dossier",
