@@ -1017,5 +1017,13 @@
  "wq_disabled": "Ausgeschaltet",
  "wq_incomplete": "Profil unvollständig, Angebote werden übersprungen. Es fehlt:",
  "wq_complete": "Profil vervollständigen",
- "rp_INSURANCE": "Versicherungsangebot"
+ "rp_INSURANCE": "Versicherungsangebot",
+ "unit.RESEARCH_A": "Recherche-Lauf 1",
+ "unit.RESEARCH_B": "Recherche-Lauf 2",
+ "unit.ARBITER": "Zweitmeinung",
+ "unit.MERGE": "Zusammenführung",
+ "rp_staged": "vorgemerkt {n}",
+ "rp_last": "zuletzt: {s}",
+ "rp_disputes": "Streitfälle entschieden: {a} von {n}",
+ "rp_merge": "Übereinstimmung {p} %, {w} geschrieben, {k} übersprungen, {f} Hinweise"
 }

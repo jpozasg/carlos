@@ -9,7 +9,7 @@ const TAG = { QUEUED: 'warn', RUNNING: 'warn', WAITING: 'warn', DONE: 'good', SK
 export const statusTag = s => `<span class="tag ${TAG[s] ?? ''}">${esc(tv(s))}</span>`;
 
 // Parts of a request (#218 phase 2): the stages after reading the ad. Missing `parts`/`children` (old server) = no part view.
-const ORDER = ['CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING', 'INSURANCE'];
+const ORDER = ['CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE', 'TAX', 'LISTING', 'INSURANCE'];
 // user-facing state: SKIPPED counts as done; icon + text, never colour alone
 const UST = { DONE: 'done', SKIPPED: 'done', RUNNING: 'doing', WAITING: 'waiting', QUEUED: 'pending', FAILED: 'failed', CANCELLED: 'pending' };
 const ICON = { done: '✓', doing: '▶', waiting: '…', pending: '○', failed: '✕' };
@@ -18,6 +18,16 @@ export function partList(r, parts) {
   const cap = { unit: 'CAPTURE', status: r.status === 'FAILED' ? 'FAILED' : 'DONE', attempts: r.attempts, missing: [] };  // the parent row is the capture; reaching the stages means it is done
   return [cap, ...parts].sort((a, b) => ORDER.indexOf(a.unit) - ORDER.indexOf(b.unit));
 }
+// Progress line of a two-run research part (#253, design 1.7): `detail` from the server, absent on older servers.
+function detailLine(p) {
+  const d = p.detail; if (!d || typeof d !== 'object') return '';
+  if (d.staged) { const n = Object.values(d.staged).reduce((a, b) => a + b, 0);
+    return [t('rp_staged', { n }) + ' (' + Object.entries(d.staged).map(([k, v]) => `${k} ${v}`).join(', ') + ')', d.last ? t('rp_last', { s: d.last }) : ''].filter(Boolean).join(' · '); }
+  if (d.disputes != null) return t('rp_disputes', { a: d.answered ?? 0, n: d.disputes });
+  if (d.written != null) return t('rp_merge', { p: Math.round((d.agreement ?? 0) * 100), w: d.written, k: d.skipped ?? 0, f: d.flags ?? 0 });
+  return '';
+}
+const unitName = u => t(/^(RESEARCH_[AB]|ARBITER|MERGE)$/.test(u) ? 'unit.' + u : 'rp_' + u);
 export function partsHtml(r, parts, admin = false) {
   const L = partList(r, parts); if (!L.length) return '';
   const done = L.filter(p => UST[p.status] === 'done').length;
@@ -25,7 +35,8 @@ export function partsHtml(r, parts, admin = false) {
     let x = admin ? tv(p.status) : t('rps_' + st);
     if (admin && p.status === 'DONE' && p.shared_id) x = t('rp_done_by', { n: p.shared_id });
     if (admin && p.status === 'WAITING' && p.shared_id) x = t('rp_waits_for', { n: p.shared_id });
-    return `<li class="rp ${st}"><span aria-hidden="true">${ICON[st]}</span> ${esc(t('rp_' + p.unit))}: <b>${esc(x)}</b>`
+    return `<li class="rp ${st}"><span aria-hidden="true">${ICON[st]}</span> ${esc(unitName(p.unit))}: <b>${esc(x)}</b>`
+      + `${detailLine(p) ? ` <span class="small muted">${esc(detailLine(p))}</span>` : ''}`
       + `${st === 'failed' && n ? ` <span class="small muted">(${t('rp_missing', { n })})</span>` : ''}`
       + `${admin ? ` <span class="small muted">${[p.worker, p.attempts ? t('rp_attempt', { n: p.attempts }) : ''].filter(Boolean).map(esc).join(' · ')}</span>` : ''}`
       + `${admin && n ? `<details class="small"><summary>${t('rp_items')} (${n})</summary>${p.missing.map(esc).join(', ')}</details>` : ''}`

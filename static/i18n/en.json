@@ -1017,5 +1017,13 @@
  "wq_disabled": "Switched off",
  "wq_incomplete": "Profile incomplete, quotes will be skipped. Missing:",
  "wq_complete": "Complete the profile",
- "rp_INSURANCE": "Insurance quote"
+ "rp_INSURANCE": "Insurance quote",
+ "unit.RESEARCH_A": "Research run 1",
+ "unit.RESEARCH_B": "Research run 2",
+ "unit.ARBITER": "Second opinion",
+ "unit.MERGE": "Merge",
+ "rp_staged": "staged {n}",
+ "rp_last": "last: {s}",
+ "rp_disputes": "disputes answered: {a} of {n}",
+ "rp_merge": "agreement {p}%, {w} written, {k} skipped, {f} flags"
 }
