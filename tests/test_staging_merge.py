@@ -144,10 +144,75 @@ class MergeTest(ts.StagingTest):
         r = self.merge()
         box = self.sql('SELECT g.id, g.code FROM vehicles v JOIN gearboxes g ON g.id=v.gearbox_id WHERE v.id=?', (V_A,))[0]
         self.assertEqual(box[1], 'BOX-A')
-        self.assertEqual(self.sql("SELECT interval_km FROM maintenance_items WHERE job='GEARBOX_OIL' AND gearbox_id=?", (box[0],)), [(120000,)])
-        self.assertEqual(self.sql("SELECT count(*) FROM research_checks WHERE task='gbx.risks' AND gearbox_id=?", (box[0],)), [(1,)])
-        self.assertIn(-jb, [d['finding'] for d in r['dropped']])
-        self.assertIn('paired finding', json.loads(self.sql('SELECT payload FROM research_findings WHERE id=?', (jb,))[0][0])['merge_skip_reason'])
+        self.assertEqual(self.sql("SELECT interval_km FROM maintenance_items WHERE job='GEARBOX_OIL' AND gearbox_id=?", (box[0],)), [(60000,)])  # both runs' job is on the one level: the less favourable
+        self.assertEqual(self.sql("SELECT count(*) FROM research_checks WHERE task='gbx.risks' AND gearbox_id=?", (box[0],)), [(2,)])
+        self.assertIn(-ja, [d['finding'] for d in r['dropped']])
+        self.assertIn('paired finding', json.loads(self.sql('SELECT payload FROM research_findings WHERE id=?', (ja,))[0][0])['merge_skip_reason'])
+
+    def _gearbox_runs(self, **verdict):
+        """Run b's shape: each run stages its own gearbox for the variant and findings that exist in one run only sit on it."""
+        ga = self.stage('gearboxes', {'code': 'S5D 250G', 'type': 'MANUAL'}, 'RESEARCH_A')[1]['id']
+        gb = self.stage('gearboxes', {'code': 'UNKNOWN-5MT-E87', 'type': 'MANUAL'}, 'RESEARCH_B')[1]['id']
+        ca = self.f('a', 'research_checks', {'gearbox_id': ga, 'task': 'gbx.risks', 'result': 'NONE FOUND', 'checked_date': '2026-11-08'})
+        cb = self.f('b', 'research_checks', {'gearbox_id': gb, 'task': 'gbx.service', 'result': 'NONE FOUND', 'checked_date': '2026-11-08'})
+        fb = self.f('b', 'faults', {**FAULT, 'engine_id': None, 'gearbox_id': gb, 'component': 'Clutch', 'component_code': 'CLUTCH', 'part': 'GEARBOX'})
+        pa = self.api('PATCH', f'agent/vehicles/{V_A}', {'gearbox_id': ga}, 'RESEARCH_A')[1]['id']
+        pb = self.api('PATCH', f'agent/vehicles/{V_A}', {'gearbox_id': gb}, 'RESEARCH_B')[1]['id']
+        self.match('level', 'lvl:gearboxes:A', -ga, None, 'ONLY_A'); self.match('level', 'lvl:gearboxes:B', None, -gb, 'ONLY_B')
+        self.match('patch', f'patch:vehicles:{V_A}', -pa, -pb, 'DISPUTED', material=1, **verdict)
+        self.match('check', 'check:gbx.risks', ca, None, 'ONLY_A'); self.match('check', 'check:gbx.service', None, cb, 'ONLY_B')
+        self.match('fault', 'k', None, fb, 'ONLY_B')
+
+    def test_unsettled_gearbox_identity_links_one_level_and_relinks_the_losers_findings(self):
+        self._gearbox_runs(verdict='NEITHER', verdict_reason='not settled')       # run b of the pilot: the variant kept no gearbox
+        boxes = self.sql('SELECT count(*) FROM gearboxes')[0][0]
+        r = self.merge()
+        box = self.sql('SELECT g.id, g.code FROM vehicles v JOIN gearboxes g ON g.id=v.gearbox_id WHERE v.id=?', (V_A,))
+        self.assertEqual(len(box), 1); gid = box[0][0]
+        self.assertEqual(self.sql('SELECT count(*) FROM gearboxes')[0][0], boxes + 1)               # no orphan shell
+        self.assertEqual(self.sql("SELECT task FROM research_checks WHERE gearbox_id=? ORDER BY task", (gid,)), [('gbx.risks',), ('gbx.service',)])
+        self.assertEqual(self.sql("SELECT count(*) FROM faults WHERE gearbox_id=? AND component='Clutch'", (gid,)), [(1,)])
+        self.assertTrue(r['flags'] or self.sql("SELECT 1 FROM review_flags WHERE vehicle_id=? AND kind='SOURCES_DISAGREE'", (V_A,)))
+        self.assertIn('identity unified', [d['reason'] for d in r['dropped'] if 'lvl:gearboxes' in d['key']][0])
+
+    def test_the_arbiters_gearbox_wins_and_the_other_run_adds_its_findings_to_it(self):
+        self._gearbox_runs(verdict='B')
+        self.merge()
+        box = self.sql('SELECT g.id, g.code FROM vehicles v JOIN gearboxes g ON g.id=v.gearbox_id WHERE v.id=?', (V_A,))[0]
+        self.assertEqual(box[1], 'UNKNOWN-5MT-E87')
+        self.assertEqual(self.sql("SELECT count(*) FROM research_checks WHERE gearbox_id=?", (box[0],)), [(2,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM gearboxes WHERE code='S5D 250G'")[0][0], 0)
+
+    def test_runs_disagree_on_a_gearbox_family_and_an_unattached_family_is_the_same_level(self):
+        fa = self.stage('gearbox_families', {'name': 'Fam A'}, 'RESEARCH_A')[1]['id']
+        fb = self.stage('gearbox_families', {'name': 'Fam B'}, 'RESEARCH_B')[1]['id']
+        ga = self.stage('gearboxes', {'code': 'BOX-A', 'type': 'MANUAL', 'family_id': fa}, 'RESEARCH_A')[1]['id']
+        gb = self.stage('gearboxes', {'code': 'BOX-B', 'type': 'MANUAL', 'family_id': fb}, 'RESEARCH_B')[1]['id']
+        fo = self.stage('gearbox_families', {'name': 'Fam orphan'}, 'RESEARCH_B')[1]['id']
+        co = self.f('b', 'research_checks', {'gearbox_family_id': fo, 'task': 'gfam.risks', 'result': 'NONE FOUND', 'checked_date': '2026-11-08'})
+        pa = self.api('PATCH', f'agent/vehicles/{V_A}', {'gearbox_id': ga}, 'RESEARCH_A')[1]['id']
+        pb = self.api('PATCH', f'agent/vehicles/{V_A}', {'gearbox_id': gb}, 'RESEARCH_B')[1]['id']
+        for k, a, b, o in (('lvl:gearbox_families:FAM A', -fa, None, 'ONLY_A'), ('lvl:gearbox_families:FAM B', None, -fb, 'ONLY_B'),
+                           ('lvl:gearbox_families:FAM ORPHAN', None, -fo, 'ONLY_B'), ('lvl:gearboxes:BOX-A', -ga, None, 'ONLY_A'), ('lvl:gearboxes:BOX-B', None, -gb, 'ONLY_B')):
+            self.match('level', k, a, b, o)
+        self.match('patch', f'patch:vehicles:{V_A}', -pa, -pb, 'DISPUTED', material=1, verdict='A')
+        self.match('check', 'check:gfam.risks', None, co, 'ONLY_B')
+        self.merge()
+        fam = self.sql('SELECT f.id, f.name FROM vehicles v JOIN gearboxes g ON g.id=v.gearbox_id JOIN gearbox_families f ON f.id=g.family_id WHERE v.id=?', (V_A,))[0]
+        self.assertEqual(fam[1], 'Fam A')
+        self.assertEqual(self.sql("SELECT count(*) FROM gearbox_families")[0][0], 1)
+        self.assertEqual(self.sql("SELECT gearbox_family_id FROM research_checks WHERE task='gfam.risks'"), [(fam[0],)])
+
+    def test_two_checks_of_a_run_on_other_sources_both_stand(self):
+        from carlos import staging
+        s2 = self.stage('sources', {**SRC, 'url': 'https://example.test/a2', 'quality': 'B'}, 'RESEARCH_A')[1]['id']
+        c1 = self.f('a', 'research_checks', {'generation_id': 1, 'task': 'gen.recalls', 'result': 'FOUND', 'checked_date': '2026-11-08'})
+        c2 = self.stage('research_checks', {'generation_id': 1, 'task': 'gen.recalls', 'result': 'FOUND', 'checked_date': '2026-11-08', 'source_id': -s2}, 'RESEARCH_A')[1]['id']
+        self.sql("UPDATE research_requests SET status='DONE' WHERE parent_id=100")
+        from carlos.db import connect
+        with connect() as c:
+            rows = [dict(r) for r in c.execute("SELECT * FROM research_findings WHERE kind='check' AND run='A'")]
+            self.assertEqual(len(staging._pairs(c, rows, [])), 2)
 
     def test_only_the_merge_unit_may_merge(self):
         for unit in ('RESEARCH_A', 'ARBITER'):
