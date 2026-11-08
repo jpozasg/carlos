@@ -7,6 +7,7 @@ LEGACY_UNITS = ('VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX')
 LEGACY_STAGES = (('VARIANT',), ('GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX'), ('TAX',), ('LISTING',), ('INSURANCE',))
 # #253 P5a: two independent research runs, the server compares, the arbiter settles material disputes, the merge writes; TAX needs the merged identity
 STAGES = (('RESEARCH_A', 'RESEARCH_B'), ('ARBITER',), ('MERGE',), ('TAX',), ('LISTING',), ('INSURANCE',))
+SECOND_RUN = False  # #283: one research run per car (RESEARCH_A); True also runs RESEARCH_B and compares/arbitrates the pair (#253)
 FLOW = 'dual'  # rollback switch: 'units' gives new requests the legacy stages again
 SERVER_UNITS = ('MERGE',)  # the worker runs no Claude for these
 DUAL_UNITS = ('RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE')

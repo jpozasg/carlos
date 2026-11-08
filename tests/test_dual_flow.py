@@ -16,6 +16,7 @@ class FlowTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         config.DB = Path(self.tmp.name) / 'cars.sqlite'
+        ru.SECOND_RUN = True; self.addCleanup(setattr, ru, 'SECOND_RUN', False)
         fx.build(config.DB)
         self.c = connect(); self.addCleanup(self.c.close)
         self.real = []     # contract items missing on the real rows
@@ -62,6 +63,17 @@ class FlowTest(unittest.TestCase):
         rq.advance(self.c, p2, self.mi)
         self.assertEqual(self.status(p2), {'RESEARCH_A': 'SKIPPED', 'RESEARCH_B': 'SKIPPED', 'ARBITER': 'SKIPPED', 'MERGE': 'SKIPPED',
                                            'TAX': 'SKIPPED', 'LISTING': 'QUEUED'})
+
+    def test_single_run_skips_b_and_arbiter(self):
+        ru.SECOND_RUN = False
+        self.real = ['eng.risks', 'lst.checklist']
+        pid = self.parent()
+        rq.advance(self.c, pid, self.mi)
+        self.assertEqual(self.status(pid), {'RESEARCH_A': 'QUEUED', 'RESEARCH_B': 'SKIPPED'})
+        self.finding(pid, 'RESEARCH_A', 'A')                                   # one-sided finding: no arbiter without a second run
+        self.assertEqual(self.go(pid, 'RESEARCH_A')['status'], 'DONE')
+        s = self.status(pid)
+        self.assertEqual((s['ARBITER'], s['MERGE']), ('SKIPPED', 'QUEUED'))
 
     def test_full_flow_with_a_dispute(self):
         self.real = ['eng.risks', 'gen.hu', 'lst.checklist']
