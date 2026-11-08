@@ -723,6 +723,7 @@ def merge(c, parent_id, owner_id, actor=None):
         except (_Skip, ValueError, Conflict, sqlite3.Error) as e:
             report['skipped'].append({'match': m['id'], 'key': m['key'], 'reason': f'level link not written: {e}'})
 
+    two_runs = any(m['b_id'] for m in ms)  # one research run (#283): a finding only run A made is no disagreement, so no flag (#319)
     for m in sorted(ms, key=lambda m: (KIND_ORDER.index(m['kind']), m['id'])):
         if m['merged']:
             continue
@@ -764,7 +765,7 @@ def merge(c, parent_id, owner_id, actor=None):
             c.execute("UPDATE main.research_findings SET payload=? WHERE id=?", (json.dumps(fs[s]['p'], ensure_ascii=False), s))
             report.setdefault('dropped', []).append({'finding': -s, 'key': fs[s]['key'], 'reason': why})
             c.execute("UPDATE main.research_findings SET status='SKIPPED', updated_at=datetime('now') WHERE id=? AND status='STAGED'", (s,))
-        flag_id = flag(m) if needs_flag else None
+        flag_id = flag(m) if needs_flag and two_runs else None
         report['flags'] += [flag_id] if flag_id else []
         res = {'ids': [ids[w['id']] for w in written], **({'skipped' if not written else 'note': reason} if reason else {})}
         c.execute('UPDATE main.research_matches SET merged=?, flag_id=? WHERE id=?', (json.dumps(res), flag_id, m['id']))
