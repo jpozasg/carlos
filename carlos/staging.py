@@ -359,13 +359,18 @@ def _pairs(c, A, B):
             out += [(a, b, name(a)) for a, b in prs]
             out += [(f if f in ra else None, f if f in rb else None, name(f)) for f in ra + rb if f['id'] not in done]
             continue
-        ga, gb = {}, {}
+        ga, gb, extra = {}, {}, []
         for g, rows in ((ga, ra), (gb, rb)):
-            for f in rows:  # checks: one per task and level, the best result stands for the run
+            for f in rows:  # checks: one per task and level, the best result stands for the run; a check on another source is kept apart (union)
                 k = f['key'] if kind != 'check' else f"{f['key']}@{_ref(c, f)}"
-                if k not in g or kind == 'check' and _RESULT_RANK[_payload(f)['result']] > _RESULT_RANK[_payload(g[k])['result']]:
+                if k not in g:
                     g[k] = f
-        out += [(ga.get(k), gb.get(k), k) for k in sorted(set(ga) | set(gb))]
+                    continue
+                best, other = (f, g[k]) if kind == 'check' and _RESULT_RANK[_payload(f)['result']] > _RESULT_RANK[_payload(g[k])['result']] else (g[k], f)
+                g[k] = best
+                if kind == 'check' and _payload(other).get('source_id') != _payload(best).get('source_id'):
+                    extra.append((other if g is ga else None, other if g is gb else None, f"{k}#{other['id']}"))
+        out += [(ga.get(k), gb.get(k), k) for k in sorted(set(ga) | set(gb))] + extra
     return out
 
 
@@ -567,6 +572,51 @@ def _plan(c, fs, m):
     return [(_pick(c, fs, a, b), NOTE_AGREED % _urls(c, fs, a, b) if agreed else None, False)], None, unresolved and not agreed
 
 
+LEVEL_TABLES = ('gearboxes', 'engine_families', 'gearbox_families')
+
+
+def _identities(c, fs, ms):
+    """Both runs researched the same real car, so two staged levels of one kind that the runs attach to the same slot (a column of
+    the same patched row, a gearbox's family) are one level. Returns ({loser finding id: winner finding id}, [(match, column,
+    winner id)] for the patches nobody settled: their level link is still written). The winner is the side the verdict names, else run A."""
+    alias, unsettled, chain = {}, [], {}
+    neg = lambda v: isinstance(v, int) and not isinstance(v, bool) and v < 0
+    def unite(col, table, va, vb, win):
+        if neg(va) and neg(vb) and va != vb and fs.get(-va) and fs.get(-vb) and fs[-va]['target_table'] == fs[-vb]['target_table'] == table:
+            w, l = (va, vb) if win == 'a' else (vb, va)
+            alias[-l] = -w
+            chain[table] = -w
+            return -w
+    for m in ms:
+        a, b = fs.get(m['a_id']), fs.get(m['b_id'])
+        if m['kind'] != 'patch' or not (a and b) or m['verdict'] == 'BOTH':
+            continue
+        own = fs.get(m['verdict_id'])
+        for col, table in _refs(c, a['target_table'], a['p']).items():
+            if table not in LEVEL_TABLES:
+                continue
+            va, vb = a['p'].get(col), b['p'].get(col)
+            side = {'A': 'a', 'B': 'b'}.get(m['verdict']) or ('b' if m['verdict'] == 'OWN' and own and own['p'].get(col) == vb else 'a')
+            w = unite(col, table, va, vb, side)
+            if w and m['verdict'] not in ('A', 'B', 'OWN') and not m['merged']:
+                unsettled.append((m, col, w))
+    for w in list(alias.values()):  # a gearbox's family: the loser's family is the winner's
+        f = fs.get(w)
+        if f and f['target_table'] == 'gearboxes':
+            fam = f['p'].get('family_id')
+            lose = next((fs[l] for l, x in alias.items() if x == w), None)
+            if lose and neg(fam):
+                unite('family_id', 'gearbox_families', lose['p'].get('family_id'), fam, 'b')
+            if neg(fam):
+                chain['gearbox_families'] = -fam
+    pointed = {v for f in fs.values() for k, v in f['p'].items() if k == 'family_id' and neg(v)}
+    for fid, f in fs.items():  # a family no staged row points at is an orphan of its kind: it is the chain's family too
+        w = chain.get(f['target_table'])
+        if f['kind'] == 'level' and f['target_table'].endswith('families') and w and fid != w and fid not in alias and -fid not in pointed:
+            alias[fid] = w
+    return alias, unsettled
+
+
 def _summary(m):
     diffs = json.loads(m['diffs'] or '[]')
     if diffs:
@@ -587,6 +637,7 @@ def merge(c, parent_id, owner_id, actor=None):
     fs = {r['id']: {**dict(r), 'p': json.loads(r['payload'])} for r in c.execute('SELECT * FROM main.research_findings WHERE parent_id=?', (parent_id,))}
     ids = {i: f['merged_id'] for i, f in fs.items() if f['status'] == 'MERGED' and f['merged_id']}
     skipped_f, redirect, touched, orphans, seen = set(), {}, [], [], set()
+    alias, unsettled = _identities(c, fs, ms)
     report = {'parent_id': parent_id, 'counts': {}, 'written': 0, 'skipped': [], 'flags': [], 'orphans': orphans}
     for m in ms:
         report['counts'][m['outcome']] = report['counts'].get(m['outcome'], 0) + 1
@@ -599,6 +650,7 @@ def merge(c, parent_id, owner_id, actor=None):
 
     def real(fid):
         """The real id a staged reference stands for: written already, a source or level created on first use, or unavailable."""
+        fid = alias.get(fid, fid)  # a level the other run named differently is the same level
         if fid not in ids:
             f = fs.get(fid)
             if f is None or fid in skipped_f or f['kind'] not in ('source', 'level'):
@@ -648,7 +700,7 @@ def merge(c, parent_id, owner_id, actor=None):
         if col not in ('engine_id', 'gearbox_id') or v is None:
             return None
         win = c.execute(f'SELECT {col} FROM main.vehicles WHERE id=?', (lv[0],)).fetchone()[0]
-        return win is not None and (v if v > 0 else ids.get(-v)) == win
+        return win is not None and (v if v > 0 else ids.get(alias.get(-v, -v))) == win
 
     def flag(m):
         f = fs.get(m['a_id']) or fs.get(m['b_id'])
@@ -659,6 +711,16 @@ def merge(c, parent_id, owner_id, actor=None):
         return write('review_flags', None, {col: lid, 'kind': 'SOURCES_DISAGREE', 'what': _summary(m), 'created_by': f'merge of request #{parent_id}',
                                             'why': f'Two independent research runs disagree and the arbiter did not settle it (request #{parent_id})'})
 
+    for m, col, w in unsettled:  # nobody settled the identity: the variant is still linked to one level (run A's), flagged for the owner
+        a = fs[m['a_id']]
+        try:
+            write(a['target_table'], a['target_id'], {col: real(w)})
+            write('review_flags', None, {'vehicle_id': lv[0], 'kind': 'SOURCES_DISAGREE', 'what': f'{_summary(m)}; linked to run 1\'s {col}',
+                                         'created_by': f'merge of request #{parent_id}',
+                                         'why': f'Two independent research runs disagree and the arbiter did not settle it (request #{parent_id})'})
+        except (_Skip, ValueError, Conflict, sqlite3.Error) as e:
+            report['skipped'].append({'match': m['id'], 'key': m['key'], 'reason': f'level link not written: {e}'})
+
     for m in sorted(ms, key=lambda m: (KIND_ORDER.index(m['kind']), m['id'])):
         if m['merged']:
             continue
@@ -666,6 +728,10 @@ def merge(c, parent_id, owner_id, actor=None):
         try:
             plan, reason, needs_flag = _plan(c, fs, m)
             a, b = fs.get(m['a_id']), fs.get(m['b_id'])
+            lost = [x for x in plan if x[0]['id'] in alias]
+            if lost:  # the other run's name for a level written under the winner's name: no second row
+                plan = [x for x in plan if x[0]['id'] not in alias]
+                reason = reason or f'same level as staged row {-alias[lost[0][0]["id"]]} (identity unified)'
             if a and b and not m['verdict'] and m['kind'] not in ('check', 'flag') and lv:  # runs disagree on the level: the variant's identity wins
                 wa, wb = on_winner(a), on_winner(b)
                 if wa != wb and (wa or wb):
