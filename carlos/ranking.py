@@ -12,7 +12,7 @@ CRITERIA = {
     'budget': {'better': 'lower', 'unit': 'eur', 'basis': 'Asking price against your budget: 100 points up to 55 % of the ideal budget, slowly down to 80 at the ideal, then falling faster and faster to 0 at the maximum; above the maximum the car is not ranked (switchable).'},
     'mileage': {'better': 'lower', 'unit': 'km', 'basis': 'Odometer reading: ≤ 50,000 km = 100 points, 150,000 km = 50, ≥ 250,000 km = 0.'},
     'age': {'better': 'lower', 'unit': 'years', 'basis': 'Years since first registration: ≤ 3 years = 100 points, 10 = 50, ≥ 20 = 0.'},
-    'reliability': {'better': 'higher', 'unit': 'points', 'basis': 'One value: two thirds the researched weak points (each part starts at 9 and loses the severity points of its 3 worst weak points, out of 36), one third the TÜV/ADAC figures of this model at this age against the class average (average = 50, half = 100, double = 0).'},
+    'reliability': {'better': 'higher', 'unit': 'points', 'basis': 'One value: two thirds the researched weak points (each part starts at 9 and loses the severity points of its 3 worst weak points, out of 36), one third the TÜV/ADAC figures of this model at this age against the class average (average = 50, half = 100, double = 0); without such a figure the weak points alone.'},
     'inspection': {'better': 'lower', 'unit': 'problems', 'basis': 'Checklist items marked PROBLEM at a viewing: none = 100 points, each problem −25; unknown until at least one item was checked.'},
     'power': {'better': 'higher', 'unit': 'ps', 'basis': 'Engine power in percent against the current car (else the median of the candidates): points = 60 + 112·ln(PS ÷ anchor), 0–100.'},
     'safety': {'better': 'higher', 'unit': 'stars', 'basis': 'Euro NCAP stars of the generation; a rating from before the stricter 2009 test counts one star less, no ESP one star less: 5 = 100 points, 4 = 70, 3 = 40, 2 = 25, 1 = 10, 0 = 0.'},
@@ -130,6 +130,7 @@ def budget_score(price, ideal, top):
 
 
 SAFETY_POINTS = {0: 0, 1: 10, 2: 25, 3: 40, 4: 70, 5: 100}
+REFERENCE_SKIPS = ('budget', 'inspection', 'distance')  # criteria that do not apply to the owned reference car
 STATS_CURVE = [(0.5, 100), (1.0, 50), (2.0, 0)]  # TÜV/ADAC ÷ class average: half = 100, average = 50, double = 0
 
 
@@ -150,7 +151,9 @@ def score_of(k, m, ctx):
         return budget_score(v, ctx['ideal'], ctx['max'])
     if k == 'reliability':
         s = m.get('reliability_stats')
-        return None if v is None or s is None else 2 / 3 * (v / 36 * 100) + 1 / 3 * curve(STATS_CURVE, s)
+        if v is None:
+            return None
+        return v / 36 * 100 if s is None else 2 / 3 * (v / 36 * 100) + 1 / 3 * curve(STATS_CURVE, s)  # no TÜV/ADAC figure for this model and age: the weak points alone (#321)
     if v is None:
         return None
     if k == 'mileage':
@@ -205,12 +208,13 @@ def rank(rows, weights, p=None):
     ctx = {'cost_anchor': anchor('cost_month'), 'power_anchor': anchor('power'),
            'ideal': p.get('budget_ideal_eur'), 'max': p.get('budget_max_eur')}
     exclude = p.get('exclude_over_max') != 0  # NULL (never set) = exclude
-    used = {k: w for k, w in weights.items() if k in CRITERIA and w and w > 0}
-    total_w = sum(used.values())
+    all_used = {k: w for k, w in weights.items() if k in CRITERIA and w and w > 0}
     for r in rows:
         m = r['metrics']
         research_left = [i['id'] for i in (r.get('research') or []) if i.get('grade') == 'MISSING']
         parts = {k: score_of(k, m, ctx) for k in CRITERIA}
+        used = {k: w for k, w in all_used.items() if not (r['is_reference'] and k in REFERENCE_SKIPS)}  # an owned car has no asking price, no viewing and no trip (#321)
+        total_w = sum(used.values())
         missing = [k for k in used if parts[k] is None]
         excluded = None if r['is_reference'] else 'over_max' if exclude and r.get('budget_status') == 'over_max' else (
             'filter:' + failed_filter(r, p) if failed_filter(r, p) else None)

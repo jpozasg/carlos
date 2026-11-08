@@ -1347,7 +1347,11 @@ class AppTest(unittest.TestCase):
         self.assertLess(80 - ranking.budget_score(6875, 6500, 8000), ranking.budget_score(7250, 6500, 8000) - ranking.budget_score(7625, 6500, 8000))  # falls faster further above the ideal
         self.assertEqual(ranking.score_of('safety', {'safety': 5}, {}), 100)
         self.assertAlmostEqual(ranking.score_of('reliability', {'reliability': 36, 'reliability_stats': 1.0}, {}), 2 / 3 * 100 + 1 / 3 * 50)
-        self.assertIsNone(ranking.score_of('reliability', {'reliability': 36, 'reliability_stats': None}, {}))
+        self.assertEqual(ranking.score_of('reliability', {'reliability': 36, 'reliability_stats': None}, {}), 100.0)  # no TÜV/ADAC figure: the weak points alone (#321)
+        ref = {'is_reference': 1, 'listing_status': 'OWNED', 'research': [], 'metrics': {'cost_month': 300, 'mileage': 100000, 'age': 10, 'reliability': 27,
+               'reliability_stats': None, 'power': 90, 'safety': 4, 'budget': None, 'inspection': None, 'distance': None}}
+        ranking.rank([ref], {k: 1 for k in ranking.CRITERIA}, {})
+        self.assertIsNotNone(ref['score'])  # the owned car is scored without budget, inspection and distance (#321)
         self.assertEqual(costs.safety_stars({'ncap_stars': 5, 'ncap_year': 2005, 'esp': 0}), 3)            # old regime and no ESP
         self.assertEqual(costs.stats_ratio([{'value': 6, 'class_average': 4, 'age_from': 6, 'age_to': 7}], 7.5), 1.5)
 
