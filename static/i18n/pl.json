@@ -1019,5 +1019,13 @@
  "wq_disabled": "Wyłączone",
  "wq_incomplete": "Profil niekompletny, wyceny zostaną pominięte. Brakuje:",
  "wq_complete": "Uzupełnij profil",
- "rp_INSURANCE": "Wycena ubezpieczenia"
+ "rp_INSURANCE": "Wycena ubezpieczenia",
+ "unit.RESEARCH_A": "Badanie 1",
+ "unit.RESEARCH_B": "Badanie 2",
+ "unit.ARBITER": "Druga opinia",
+ "unit.MERGE": "Scalanie",
+ "rp_staged": "w poczekalni {n}",
+ "rp_last": "ostatnio: {s}",
+ "rp_disputes": "rozstrzygnięte spory: {a} z {n}",
+ "rp_merge": "zgodność {p}%, zapisano {w}, pominięto {k}, flag {f}"
 }

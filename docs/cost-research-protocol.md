@@ -7,6 +7,9 @@ How every car is researched and costed, so all totals are built the same way and
 |---|---|---|
 | 0. Capture the listing | main agent, in the user's browser | bot-protected sites; see `browser-tasks.md` |
 | 1–9. Model research and costs | one research agent per car (several in parallel) | web research and API writes for its own variant, engine, generation and listing only |
+| 1–9 for a worker request (#253). Model research, twice | two independent RESEARCH_A / RESEARCH_B runs (Haiku, same prompt `prompts/units/research.md`), writing to staging only | uneven or missed research is the main risk; two runs expose it |
+| 1–9b. Disputes | the ARBITER unit (`prompts/units/arbiter.md`), only for material disagreements | settles from the sources, not from which run sounds surer |
+| 1–9c. Merge | the MERGE unit (no model, `POST /api/agent/merge`) | agreed and arbitrated findings go through the normal API write path |
 | 10. Tax (official calculator) | main agent, browser | official source |
 | 11. Insurance (comparison site) | main agent with the user's OK, or the worker's INSURANCE unit for opted-in accounts | personal data of the account holder |
 | 12. Review, tests, commit | main agent | one place checks totals and consistency |

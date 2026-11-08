@@ -1017,5 +1017,13 @@
  "wq_disabled": "Desactivado",
  "wq_incomplete": "Perfil incompleto, se omitirán las cotizaciones. Falta:",
  "wq_complete": "Completar el perfil",
- "rp_INSURANCE": "Cotización de seguro"
+ "rp_INSURANCE": "Cotización de seguro",
+ "unit.RESEARCH_A": "Investigación 1",
+ "unit.RESEARCH_B": "Investigación 2",
+ "unit.ARBITER": "Segunda opinión",
+ "unit.MERGE": "Fusión",
+ "rp_staged": "preparados {n}",
+ "rp_last": "último: {s}",
+ "rp_disputes": "disputas resueltas: {a} de {n}",
+ "rp_merge": "coincidencia {p} %, {w} escritos, {k} omitidos, {f} avisos"
 }
