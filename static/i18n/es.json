@@ -46,8 +46,6 @@
  "tax_year": "Impuesto/año",
  "score": "Puntuación",
  "rank_n": "n.º {n}",
- "coverage": "{n}% de cobertura de datos",
- "coverage_short": "cobertura",
  "not_ranked": "Sin clasificar",
  "compare": "Comparar",
  "open_dossier": "Ver expediente",

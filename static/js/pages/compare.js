@@ -89,7 +89,7 @@ function unitCard(u) {
       ${u.photo_count ? `<span class="count">📷 ${u.photo_count}</span>` : ''}${u.is_reference ? `<span class="tag ref reftag">${t('reference')}</span>` : ''}
       ${u.rank ? `<span class="rankbadge">${t('rank_n', { n: u.rank })} · ${scoreTxt(u)}</span>` : ''}</a>
     ${tagsHtml(u)}
-    <div class="unit-head"><div><div class="unit-name">${carLink(u, unitName(u))}</div><div class="unit-sub">${esc(u.trim ?? '')} · ${unitSub(u)}</div></div></div>
+    <div class="unit-head"><div><div class="unit-name">${carLink(u, unitName(u))}</div><div class="unit-sub">${[esc(u.trim ?? ''), unitSub(u)].filter(Boolean).join(' · ')}</div></div></div>
     <div class="kv">${u.is_reference ? `<span>${t('owned')}</span>` : `<span>${t('asking_price')} <b>${eP(u.price_eur)}</b></span>`}<span>${t('km')} <b>${u.mileage_km == null ? PEND() : num(u.mileage_km, 0)}</b></span><span>${t('age')} <b>${u.metrics.age == null ? PEND() : yrs(u.metrics.age)}</b></span>${u.metrics.km_per_year != null ? `<span>${t('km_per_year')} <b>${num(u.metrics.km_per_year, 0)}</b></span>` : ''}</div>
     <div><div class="small muted">${u.tco_complete ? t('tco_complete') : t('subtotal_partial')}</div><div class="big">${eP(u.known_cost_subtotal)}</div>
       <div class="small muted">${u.known_cost_per_month == null ? '' : euro(u.known_cost_per_month) + t('per_month') + ' · ' + num(u.known_cost_per_km, 3) + ' €/km'}</div></div>
@@ -117,7 +117,7 @@ function details(us) {
       [t('power'), u => u.power_ps == null ? PEND() : num(u.power_ps, 0) + ' PS'], [t('insurance_year'), u => eP(u.annual_insurance)], [t('tax_year'), u => eP(u.annual_tax)],
       [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : num(u.metrics.reliability, 1)], ...['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'].map(k => [`· ${t('part_' + k)}`, u => (u.reliability_parts || {})[k] == null ? PEND() : num(u.reliability_parts[k], 1)]),
       [t('c_confidence'), u => u.metrics.confidence == null ? PEND() : num(u.metrics.confidence, 0) + ' %'],
-      [t('score'), u => u.score == null || u.excluded ? `<span class="pending" title="${esc(notScoredTxt(u))}">${esc(notScoredTxt(u))}</span>` : `<b>${scoreTxt(u)}</b> <span class="muted">${t('rank_n', { n: u.rank })}</span>`],
+      [t('score'), u => u.score == null || u.excluded ? `<span class="pending" title="${esc(notScoredTxt(u))}">${esc(notScoredTxt(u))}</span>` : `<b>${scoreTxt(u)}</b>${u.rank ? ` <span class="muted">${t('rank_n', { n: u.rank })}</span>` : ''}`],
       [t('consumption'), u => u.consumption == null ? PEND() : `${num(u.consumption)} ${esc(u.consumption_unit || 'l/100 km')}<br><span class="muted">${num(u.consumption_min)}–${num(u.consumption_max)} · n=${u.consumption_sample ?? '?'}</span>`]]],
     [t('g_use'), ['fuel', 'insurance', 'tax', 'maintenance'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
     [t('g_own'), ['repairs', 'tyres', 'purchase_sale'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
