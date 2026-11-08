@@ -45,7 +45,13 @@ def facts(c, table, where='archived=0'):
 def match(a, b, key):
     """Pairs rows of two runs: same part, most similar name (ratio ≥ 0.6); the rest stays unmatched."""
     pairs, rest = [], list(b)
-    for x in a:
+    for x in a:  # first the same component code on the same part and level (the schema's own identity of a fault), then the name
+        code = x.get('component_code')
+        y = next((y for y in rest if code and code != 'OTHER' and y.get('component_code') == code and x.get('part') == y.get('part')
+                  and x.get('level') == y.get('level')), None)
+        if y:
+            pairs.append((x, y)); rest.remove(y)
+    for x in (x for x in a if all(x is not p[0] for p in pairs)):
         # same part; a name ratio >= 0.6, or >= 0.35 when both sit on the same level (runs word one fault differently)
         best = max(((difflib.SequenceMatcher(None, key(x).lower(), key(y).lower()).ratio() + (0.25 if x.get('level') == y.get('level') else 0), y)
                     for y in rest if x.get('part') == y.get('part')), default=(0, None), key=lambda t: t[0])
