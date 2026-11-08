@@ -22,7 +22,7 @@ LISTING_FIELDS = ('first_registration', 'seller', 'location', 'seller_address', 
                   'hu_claim', 'service_history_claim', 'equipment', 'listing_date', 'notes', 'battery_soh_claim',
                   # structured facts for the ranking filters, the distance and the dossier (#169)
                   'seller_type', 'warranty', 'hu_until', 'service_history', 'accident_free', 'seller_rating', 'seller_reviews',
-                  'postal_code')
+                  'postal_code', 'hsn', 'tsn')  # hsn/tsn: when the ad's text or attributes state them (#313)
 # lease columns (#127) stay in the schema for listings captured before #165, but a capture never writes them
 LEASE_FIELDS = ('lease_kind', 'lease_monthly_eur', 'lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur',
                 'lease_fees_eur', 'lease_extra_km_eur', 'lease_fewer_km_eur', 'lease_includes')

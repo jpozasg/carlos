@@ -111,6 +111,8 @@ def write(c, req, table, row_id, data):
         if prev:  # later PATCHes of the same real row merge into one finding
             old, data = prev, {**json.loads(prev['payload']), **data}
     else:
+        if table == 'repair_risks':
+            raise NotAllowed('repair_risks cannot be staged: file the failure with fault() (a priced weak point on its level) instead')
         if table not in KIND or table in ('generations', 'engines', 'vehicles'):
             raise NotAllowed(f'{table}: the capture created the shell rows; stage a PATCH of the real row instead')
         op, target, kind = 'insert', None, KIND[table]
