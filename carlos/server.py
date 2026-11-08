@@ -413,6 +413,12 @@ class Handler(BaseHTTPRequestHandler):
             if method != 'PATCH' or not agent[2]:
                 self.send_json({'error': 'PATCH /api/agent/disputes/<id> {"verdict", "reason"} answers a dispute'}, 405); return
             self.send_json(staging.answer_dispute(c, self.request, int(agent[2]), self.read_json())); return
+        if path == '/api/agent/merge' and method == 'POST':  # #253 P4: the MERGE unit writes the agreed findings of its listing request
+            if self.request is None or self.request['unit'] != 'MERGE':
+                raise NotAllowed('Only the MERGE run of a research request merges staged findings')
+            out = staging.merge(c, self.request['parent_id'], self.request['owner_id'], actor=self.user['id'])
+            self.export_all(c, uid, out.pop('accounts'))
+            self.send_json(out); return
         if agent and self.staged_run():  # #253: the writes of a research run go to staging (negative ids), never to the catalogue
             data = self.read_json()
             if (method == 'PATCH') != bool(agent[2]):
