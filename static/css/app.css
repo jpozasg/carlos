@@ -462,3 +462,5 @@ abbr.prov{text-decoration:none;color:var(--text-3);font-size:.75em;margin-left:1
 
 .skip{position:absolute;left:8px;top:-60px;z-index:100;background:var(--accent);color:var(--accent-contrast);padding:8px 14px;border-radius:6px;font-weight:600}.skip:focus{top:8px}
 main:focus{outline:none}
+.rank-tbl .sc-cell{min-width:150px}.rank-tbl .sc-cell .small{white-space:nowrap}
+@media (max-width:640px){.rank-tbl{min-width:600px}}
