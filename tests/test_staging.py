@@ -10,7 +10,7 @@ from tests.fixture import CAR_A, ADMIN, E_A, E_B, G1, V_A, TOKEN
 
 SRC = {'title': 'Guide AM14', 'url': 'https://example.test/guide', 'source_type': 'buying_guide', 'quality': 'C', 'accessed_date': fx.TODAY,
        'supports': 'Faults', 'limitations': 'Single guide', 'engine_id': E_A}
-FAULT = {'engine_id': E_A, 'component': 'Cylinder head gasket', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'CONFIRMED',
+FAULT = {'engine_id': E_A, 'component': 'Cylinder head gasket', 'component_code': 'ENGINE_INTERNALS', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'CONFIRMED',
          'frequency_band': 'common', 'shape': 'WEAR_KM', 'parts_eur': 300, 'labor_eur': 600}
 
 
@@ -70,7 +70,7 @@ class StagingTest(unittest.TestCase):
         self.assertEqual(st, 201, f); self.assertLess(f['id'], 0)
         self.assertEqual(self.counts(), before)                                    # no real row was written
         self.assertEqual(self.sql("SELECT kind, run, key, level, level_id FROM research_findings ORDER BY id"),
-                         [('source', 'A', 'src:https://example.test/guide', 'engine', E_A), ('fault', 'A', 'fault:ENGINE:None', 'engine', E_A)])
+                         [('source', 'A', 'src:https://example.test/guide', 'engine', E_A), ('fault', 'A', 'fault:ENGINE:ENGINE_INTERNALS', 'engine', E_A)])
         self.assertEqual(self.stage('sources', SRC)[1], {**s, 'existing': True})   # a source is filed once per run
         # the arbiter is run C; another request token is not a staged run for the legacy units
         self.assertEqual(self.stage('sources', {**SRC, 'url': 'https://example.test/c'}, 'ARBITER')[0], 201)
@@ -85,7 +85,7 @@ class StagingTest(unittest.TestCase):
         st, gb = self.stage('gearboxes', {'code': 'XG5', 'type': 'MANUAL'})
         self.assertEqual(st, 201, gb)
         # a staged level as the level of a fault
-        st, f = self.stage('faults', {**FAULT, 'engine_id': None, 'gearbox_id': gb['id'], 'component': 'Clutch', 'part': 'GEARBOX', 'source_id': s['id']})
+        st, f = self.stage('faults', {**FAULT, 'engine_id': None, 'gearbox_id': gb['id'], 'component': 'Clutch', 'component_code': 'CLUTCH', 'part': 'GEARBOX', 'source_id': s['id']})
         self.assertEqual(st, 201, f)
         self.assertEqual(self.sql('SELECT level, level_id FROM research_findings WHERE id=?', (-f['id'],)), [('gearbox', gb['id'])])
 
@@ -99,6 +99,8 @@ class StagingTest(unittest.TestCase):
         self.assertEqual(st, 403, e)
         # a required column is checked now, not at the merge
         self.assertEqual(self.stage('faults', {**FAULT, 'source_id': s['id'], 'consequence': None})[0], 400)
+        self.assertEqual(self.stage('faults', {**FAULT, 'source_id': s['id'], 'component_code': 'CLUTCH'})[0], 400)   # a gearbox code on an engine fault
+        self.assertEqual(self.stage('faults', {**{k: v for k, v in FAULT.items() if k != 'component_code'}, 'source_id': s['id']})[0], 400)
         self.assertEqual(self.api('POST', 'agent/export-md', {}, 'RESEARCH_A')[0], 403)
 
     def test_duplicates(self):
@@ -112,7 +114,7 @@ class StagingTest(unittest.TestCase):
         self.assertEqual(st, 201, ok)
         # a real fault on the same level: the #221 409 is unchanged
         self.sql("INSERT INTO faults (engine_id, component, part, consequence, existence, source_id, parts_eur, labor_eur) VALUES (?, 'Water pump leak', 'ENGINE', 'COST', 'CONFIRMED', ?, 100, 100)", (E_A, fx.SRC_GUIDE))
-        st, real = self.stage('faults', {**FAULT, 'component': 'Water pump leak', 'source_id': s['id']})
+        st, real = self.stage('faults', {**FAULT, 'component': 'Water pump leak', 'component_code': 'COOLING', 'source_id': s['id']})
         self.assertEqual(st, 409, real); self.assertIn('faults #', real['error'])
         # unique kinds: the same job twice is one finding
         job = {'engine_id': E_A, 'item': 'Wiper blades', 'job': 'WIPERS', 'interval_km': 15000, 'reference_cost_eur': 90, 'source_id': s['id']}

@@ -5,7 +5,7 @@ real tables except `dry_run`, which applies the findings inside a transaction it
 Compare (P3) and merge (P4) are not here."""
 import json, re, unicodedata
 from . import config, consistency, research_units as ru
-from .agent import ARCHIVABLE, AGENT_TABLES, Conflict, NotAllowed, NotFound, check_parents, clean_row, guard_duplicate, table_columns
+from .agent import ARCHIVABLE, AGENT_TABLES, Conflict, NotAllowed, NotFound, check_component_code, check_parents, clean_row, guard_duplicate, table_columns
 from .auth import MODEL, OWNED, scope
 from .db import connect, params
 
@@ -39,7 +39,7 @@ def key_of(kind, table, p, target_id=None):
         return f'lvl:{table}:{nat}'
     if kind == 'patch':
         return f'patch:{table}:{target_id}'
-    if kind == 'fault':  # until faults.component_code exists (#221 phase 3) the code is NULL
+    if kind == 'fault':
         return f'fault:{p.get("part")}:{p.get("component_code")}'
     if kind == 'recall':
         return f'recall:{norm(p.get("code"))}'
@@ -115,6 +115,8 @@ def write(c, req, table, row_id, data):
             raise NotAllowed(f'{table}: the capture created the shell rows; stage a PATCH of the real row instead')
         op, target, kind = 'insert', None, KIND[table]
     p = clean_row(c, table, data, insert=op == 'insert')
+    if table == 'faults':  # component_code (#221 phase 3): required on a new fault, in the part's vocabulary
+        check_component_code(c, p, target if op == 'patch' else None)
     if op == 'insert':  # the INSERT would fail at the merge: refuse it now
         cols = {r['name']: r for r in c.execute(f'PRAGMA main.table_info({table})')}
         lacking = [n for n, r in cols.items() if r['notnull'] and r['dflt_value'] is None and not r['pk'] and n != 'owner_id' and p.get(n) is None]
