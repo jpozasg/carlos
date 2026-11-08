@@ -642,6 +642,14 @@ def merge(c, parent_id, owner_id, actor=None):
             p['distinct_of'] = mapped
         return write(table, None, p)
 
+    def on_winner(f):
+        """True/False: the finding sits on the level (engine, gearbox) the variant ended up with; None: not a level the variant has."""
+        col, v = _level(f['p'])
+        if col not in ('engine_id', 'gearbox_id') or v is None:
+            return None
+        win = c.execute(f'SELECT {col} FROM main.vehicles WHERE id=?', (lv[0],)).fetchone()[0]
+        return win is not None and (v if v > 0 else ids.get(-v)) == win
+
     def flag(m):
         f = fs.get(m['a_id']) or fs.get(m['b_id'])
         col = next((k for k, name in config.LEVELS.items() if f['level'] == name), None) if f['kind'] != 'level' else None
@@ -657,6 +665,11 @@ def merge(c, parent_id, owner_id, actor=None):
         written, reason, needs_flag = [], None, False
         try:
             plan, reason, needs_flag = _plan(c, fs, m)
+            a, b = fs.get(m['a_id']), fs.get(m['b_id'])
+            if a and b and not m['verdict'] and m['kind'] not in ('check', 'flag') and lv:  # runs disagree on the level: the variant's identity wins
+                wa, wb = on_winner(a), on_winner(b)
+                if wa != wb and (wa or wb):
+                    plan = [(a if wa else b, plan[0][1] if plan else None, False)]
             for f, note, after_first in plan:
                 try:
                     if f['kind'] in ('check', 'flag'):
@@ -678,6 +691,10 @@ def merge(c, parent_id, owner_id, actor=None):
         for w in written:
             c.execute("UPDATE main.research_findings SET status='MERGED', merged_id=?, updated_at=datetime('now') WHERE id=?", (ids[w['id']], w['id']))
         for s in skipped_f & {m['a_id'], m['b_id'], m['verdict_id']}:
+            why = reason or (f'paired finding {-written[0]["id"]} was written instead' if written else 'no reason recorded')
+            fs[s]['p']['merge_skip_reason'] = why  # never a silent drop: the reason travels with the finding
+            c.execute("UPDATE main.research_findings SET payload=? WHERE id=?", (json.dumps(fs[s]['p'], ensure_ascii=False), s))
+            report.setdefault('dropped', []).append({'finding': -s, 'key': fs[s]['key'], 'reason': why})
             c.execute("UPDATE main.research_findings SET status='SKIPPED', updated_at=datetime('now') WHERE id=? AND status='STAGED'", (s,))
         flag_id = flag(m) if needs_flag else None
         report['flags'] += [flag_id] if flag_id else []

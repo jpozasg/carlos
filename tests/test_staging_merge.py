@@ -128,6 +128,27 @@ class MergeTest(ts.StagingTest):
         self.assertEqual(self.sql('SELECT engine_id FROM vehicles WHERE id=?', (V_A,)), [(E_B,)])
         self.assertEqual(self.sql('SELECT count(*) FROM engines WHERE id=?', (E_A,)), [(1,)])
 
+    def test_runs_disagree_on_the_gearbox_the_variants_gearbox_keeps_its_jobs(self):
+        ga = self.stage('gearboxes', {'code': 'BOX-A', 'type': 'MANUAL'}, 'RESEARCH_A')[1]['id']
+        gb = self.stage('gearboxes', {'code': 'BOX-B', 'type': 'MANUAL'}, 'RESEARCH_B')[1]['id']
+        job = lambda g, km: {'engine_id': None, 'gearbox_id': g, 'item': 'Gearbox oil change', 'job': 'GEARBOX_OIL', 'interval_km': km, 'reference_cost_eur': 120}
+        ja, jb = self.f('a', 'maintenance_items', job(ga, 120000)), self.f('b', 'maintenance_items', job(gb, 60000))   # B is less favourable
+        ca = self.f('a', 'research_checks', {'gearbox_id': ga, 'task': 'gbx.risks', 'result': 'NONE FOUND', 'checked_date': '2026-11-08'})
+        cb = self.f('b', 'research_checks', {'gearbox_id': gb, 'task': 'gbx.risks', 'result': 'NONE FOUND', 'checked_date': '2026-11-08'})
+        pa = self.api('PATCH', f'agent/vehicles/{V_A}', {'gearbox_id': ga}, 'RESEARCH_A')[1]['id']
+        pb = self.api('PATCH', f'agent/vehicles/{V_A}', {'gearbox_id': gb}, 'RESEARCH_B')[1]['id']
+        self.match('level', 'lvl:gearboxes:BOX-A', -ga, None, 'ONLY_A'); self.match('level', 'lvl:gearboxes:BOX-B', None, -gb, 'ONLY_B')
+        self.match('patch', f'patch:vehicles:{V_A}', -pa, -pb, 'DISPUTED', verdict='A')
+        self.match('job', 'job:GEARBOX_OIL', ja, jb, 'DISPUTED')
+        self.match('check', 'check:gbx.risks@a', ca, None, 'ONLY_A'); self.match('check', 'check:gbx.risks@b', None, cb, 'ONLY_B')
+        r = self.merge()
+        box = self.sql('SELECT g.id, g.code FROM vehicles v JOIN gearboxes g ON g.id=v.gearbox_id WHERE v.id=?', (V_A,))[0]
+        self.assertEqual(box[1], 'BOX-A')
+        self.assertEqual(self.sql("SELECT interval_km FROM maintenance_items WHERE job='GEARBOX_OIL' AND gearbox_id=?", (box[0],)), [(120000,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM research_checks WHERE task='gbx.risks' AND gearbox_id=?", (box[0],)), [(1,)])
+        self.assertIn(-jb, [d['finding'] for d in r['dropped']])
+        self.assertIn('paired finding', json.loads(self.sql('SELECT payload FROM research_findings WHERE id=?', (jb,))[0][0])['merge_skip_reason'])
+
     def test_only_the_merge_unit_may_merge(self):
         for unit in ('RESEARCH_A', 'ARBITER'):
             self.assertEqual(self.api('POST', 'agent/merge', {}, unit)[0], 403)
