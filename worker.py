@@ -5,14 +5,15 @@ into the requester's account (or why it failed). One request at a time.
 Environment: CAR_API (the site, e.g. https://carlos.example.net), WORKER_TOKEN (this worker's token, created by an
 admin on the Accounts page; issue #141), WORKER_NAME (default: the host name; with a worker token the registered name
 counts), POLL_SECONDS (60), CLAUDE_CMD ('claude -p'), WORKER_MODEL ('haiku': the research runs on Haiku; added as
---model unless CLAUDE_CMD has one), WORKER_TIMEOUT_MIN (120), WORKER_LOGS (worker-logs/, one log per request).
+--model unless CLAUDE_CMD has one), WORKER_TIMEOUT_MIN (120), WORKER_RESEARCH_TIMEOUT_MIN (150, the RESEARCH_A/B runs), WORKER_LOGS (worker-logs/, one log per request).
 The headless run gets only the per-request token of the request it works on (the requester's account and the shared
 catalogue, dead when the request ends). Without WORKER_TOKEN the worker falls back to AGENT_TOKEN (an admin token) and
 the X-Carlos-Account header, the way it worked before #141.
 Run: python worker.py [--once]   (--once: handle at most one request, then exit)"""
-import datetime, os, re, shlex, socket, subprocess, sys, time
+import datetime, json, os, re, shlex, socket, subprocess, sys, time
 from pathlib import Path
 from capture_listing import Api, ApiError, load_token
+from carlos import research_units as ru
 
 ROOT = Path(__file__).resolve().parent
 RESULT = re.compile(r'CARLOS_RESULT (?:listing_id=(\d+)|failed: (.*)|done: (.*))')  # done: a follow-up without a listing (#168)
@@ -33,9 +34,13 @@ def outcome(output):
 def unit_prompt(req):
     """The short prompt of one research unit (#218 phase 2): shared rules + docs/prompts/units/<unit>.md."""
     d = ROOT / 'docs' / 'prompts' / 'units'
-    text = (d / '_header.md').read_text(encoding='utf-8') + (d / f'{req["unit"].lower()}.md').read_text(encoding='utf-8')
-    for k, v in {'{UNIT}': req['unit'], '{LISTING_ID}': req.get('listing_id') or '(none yet)', '{LEVEL_ID}': req.get('level_id') or '(none)',
-                 '{PARENT_ID}': req.get('parent_id') or req['id'], '{MISSING}': ', '.join(req.get('missing') or []) or '(all items of the unit)',
+    name = 'research' if req['unit'] in ('RESEARCH_A', 'RESEARCH_B') else req['unit'].lower()  # the two runs get the same prompt (#253)
+    text = (d / '_header.md').read_text(encoding='utf-8') + (d / f'{name}.md').read_text(encoding='utf-8')
+    scope = req.get('scope')
+    scope = json.loads(scope) if isinstance(scope, str) else scope
+    for k, v in {'{SCOPE}': ', '.join(f'{col.removesuffix("_id").replace("_", " ")} {i}' for col, i in scope or []) or '(see the to-do)',
+                 '{UNIT}': req['unit'], '{LISTING_ID}': req.get('listing_id') or '(none yet)', '{LEVEL_ID}': req.get('level_id') or '(none)',
+                 '{PARENT_ID}': req.get('parent_id') or req['id'], '{MISSING}': ', '.join(map(str, req.get('missing') or [])) or '(all items of the unit)',
                  '{ATTEMPT}': (req.get('attempts') or 0) + 1, '{PREVIOUS_RESULT}': req.get('result') or '(none)',
                  '{URL}': req.get('url') or '(see the listing)', '{NOTE}': req.get('note') or '(none)', '{ACCOUNT}': req['owner_id'],
                  '{REQUEST_ID}': req['id'], '{REPO}': ROOT}.items():
@@ -90,12 +95,18 @@ def pause_seconds(text, now=None, fallback=1800):
     return int((at - now).total_seconds()) + 60
 
 
-def work_one(api, name, cmd, logs, timeout_s, model='haiku'):
+def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=None):
     """Claims and handles one request; False when the queue is empty."""
     req = api.call('POST', '/api/worker/claim', {'worker': name})['request']
     if not req:
         return False
+    if req.get('unit') in ru.SERVER_UNITS:  # the merge is server code: no Claude run (#253)
+        print(f'request {req["id"]}: picked up {req.get("unit")} (no Claude run)', flush=True)
+        report(api, req, merge_outcome(api, req))
+        return True
     print(f'request {req["id"]}: picked up {req.get("url")} (model {model})', flush=True)
+    if req.get('unit') in ('RESEARCH_A', 'RESEARCH_B') and research_timeout_s:
+        timeout_s = research_timeout_s
     # print mode stops background tasks 10 min after the last turn, which left request 4 hanging (issue #137): wait for them
     env = {**os.environ, 'CAR_API': api.base, 'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS': '0'}
     if req.get('request_token') and is_worker(api):  # the run only ever sees the per-request token (#141)
@@ -126,13 +137,30 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku'):
         api.call('POST', f'/api/worker/requests/{req["id"]}', {'status': 'QUEUED', 'result': 'Released: ' + tail.splitlines()[-1][:200]})
         print(f'request {req["id"]}: back in the queue (usage limit or API error)', flush=True)
         raise UsageLimit(pause_seconds(tail), tail.splitlines()[-1][:200])
+    report(api, req, result, log)
+    return True
+
+
+def merge_outcome(api, req):
+    """Runs POST /api/agent/merge with the request's own token and builds the finish payload (the server grades the real rows)."""
+    token = req.get('request_token') or api.token
+    mine = Api(api.base, token)
+    mine.account = None if req.get('request_token') else str(req['owner_id'])
+    try:
+        out = mine.call('POST', '/api/agent/merge', {})
+    except (ApiError, OSError) as e:
+        return {'status': 'FAILED', 'result': f'Merge failed: {e}'}
+    return {'status': 'DONE', 'result': f'Merged: {out.get("written", 0)} written, {len(out.get("skipped") or [])} skipped, '
+                                         f'{len(out.get("flags") or [])} flags'}
+
+
+def report(api, req, result, log=None):
     try:
         api.call('POST', f'/api/worker/requests/{req["id"]}', result)
     except ApiError as e:  # e.g. the reported listing is not the requester's: record a failure instead
         result = {'status': 'FAILED', 'result': f'{e}\n{result.get("result") or ""}'}
         api.call('POST', f'/api/worker/requests/{req["id"]}', result)
-    print(f'request {req["id"]}: {result["status"]} (log {log})', flush=True)
-    return True
+    print(f'request {req["id"]}: {result["status"]}' + (f' (log {log})' if log else ''), flush=True)
 
 
 def is_worker(api):
@@ -157,10 +185,11 @@ def main(argv=None):
     model = os.environ.get('WORKER_MODEL', 'haiku')
     logs = os.environ.get('WORKER_LOGS', str(ROOT / 'worker-logs'))
     timeout_s, poll = int(os.environ.get('WORKER_TIMEOUT_MIN', '120')) * 60, int(os.environ.get('POLL_SECONDS', '60'))
+    research_s = int(os.environ.get('WORKER_RESEARCH_TIMEOUT_MIN', '150')) * 60
     while True:
         beat(api, 'idle')
         try:
-            worked = work_one(api, name, cmd, logs, timeout_s, model)
+            worked = work_one(api, name, cmd, logs, timeout_s, model, research_s)
         except UsageLimit as e:  # wait for the reset with a heartbeat every minute, then claim again
             left = e.seconds
             while left > 0 and '--once' not in argv:

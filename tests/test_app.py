@@ -5,7 +5,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 import migrate
-from carlos import auth, config, server, costs, ranking
+from carlos import auth, config, server, costs, ranking, research_units
 from tests import fixture as fx
 from tests.fixture import REF, CAR_A, CAR_B, V_A, V_B, V_REF, V_B2, E_A, E_B, G1, G2, SRC_GUIDE, SRC_LISTING, SRC_QUOTE, SRC_TAX_OFFICIAL
 
@@ -925,6 +925,8 @@ class AppTest(unittest.TestCase):
     def test_units_218(self):
         """A listing request is split into units stage by stage; a unit with nothing missing is SKIPPED, the server re-grades each
         unit, missing items re-queue it, and the parent is DONE when the stages are over."""
+        patcher = mock.patch.object(research_units, 'FLOW', 'units')   # the legacy stages (the dual flow has its own tests)
+        patcher.start(); self.addCleanup(patcher.stop)
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/9'})
         claim = lambda: self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']
         finish = lambda r, **d: self.req('POST', f'/api/worker/requests/{r["id"]}', {'status': 'DONE', **d})[1]
