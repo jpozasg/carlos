@@ -1352,6 +1352,9 @@ class AppTest(unittest.TestCase):
                'reliability_stats': None, 'power': 90, 'safety': 4, 'budget': None, 'inspection': None, 'distance': None}}
         ranking.rank([ref], {k: 1 for k in ranking.CRITERIA}, {})
         self.assertIsNotNone(ref['score'])  # the owned car is scored without budget, inspection and distance (#321)
+        cand = {'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'research': [], 'metrics': {**ref['metrics'], 'budget': 5000, 'distance': 20}}
+        ranking.rank([cand], {k: 1 for k in ranking.CRITERIA}, {'budget_ideal_eur': 6000, 'budget_max_eur': 8000})
+        self.assertIsNotNone(cand['score'])  # not inspected yet: scored without the inspection criterion (#323)
         self.assertEqual(costs.safety_stars({'ncap_stars': 5, 'ncap_year': 2005, 'esp': 0}), 3)            # old regime and no ESP
         self.assertEqual(costs.stats_ratio([{'value': 6, 'class_average': 4, 'age_from': 6, 'age_to': 7}], 7.5), 1.5)
 

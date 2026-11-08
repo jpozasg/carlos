@@ -213,7 +213,8 @@ def rank(rows, weights, p=None):
         m = r['metrics']
         research_left = [i['id'] for i in (r.get('research') or []) if i.get('grade') == 'MISSING']
         parts = {k: score_of(k, m, ctx) for k in CRITERIA}
-        used = {k: w for k, w in all_used.items() if not (r['is_reference'] and k in REFERENCE_SKIPS)}  # an owned car has no asking price, no viewing and no trip (#321)
+        used = {k: w for k, w in all_used.items() if not (r['is_reference'] and k in REFERENCE_SKIPS)  # an owned car has no asking price, no viewing and no trip (#321)
+                and not (k == 'inspection' and m.get('inspection') is None)}  # not inspected yet: scored without it, rescored after the viewing (#323)
         total_w = sum(used.values())
         missing = [k for k in used if parts[k] is None]
         excluded = None if r['is_reference'] else 'over_max' if exclude and r.get('budget_status') == 'over_max' else (
