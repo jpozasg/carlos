@@ -16,7 +16,8 @@ const ICON = { done: '✓', doing: '▶', waiting: '…', pending: '○', failed
 export function partList(r, parts) {
   if (!Array.isArray(parts) || !parts.length) return [];
   const cap = { unit: 'CAPTURE', status: r.status === 'FAILED' ? 'FAILED' : 'DONE', attempts: r.attempts, missing: [] };  // the parent row is the capture; reaching the stages means it is done
-  return [cap, ...parts].sort((a, b) => ORDER.indexOf(a.unit) - ORDER.indexOf(b.unit));
+  const hidden = p => p.status === 'SKIPPED' && /^(RESEARCH_B|ARBITER)$/.test(p.unit);  // one research run per car (#283): the unused second run is not a part
+  return [cap, ...parts.filter(p => !hidden(p))].sort((a, b) => ORDER.indexOf(a.unit) - ORDER.indexOf(b.unit));
 }
 // Progress line of a two-run research part (#253, design 1.7): `detail` from the server, absent on older servers.
 function detailLine(p) {
