@@ -194,6 +194,13 @@ def fault_severity(f):
     return 'MEDIUM' if f['consequence'] == 'UNUSABLE' or price >= config.SEVERITY_MEDIUM_EUR else 'LOW'
 
 
+def fault_weight(f):
+    """Share of its severity points a fault scores (#287): a fault that hits few cars is not a flaw of the model. The band's
+    central share against the 'common' one, at most 1 (rare 0.125, occasional 0.42); no band = 1."""
+    b = config.FREQUENCY_BANDS.get(f.get('frequency_band'))
+    return 1 if not b else round(min(1, b[0] / config.FREQUENCY_BANDS['common'][0]), 3)
+
+
 def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=None, annual_km=None, by_id=None):
     """Per-fault expected repair cost over the period (#174, #168): the chance it fails during the owner's km and years
     (the larger of the km and age chances, never both) given it has not failed yet, × its price. A sourced usage
@@ -477,7 +484,7 @@ def reliability(rel_rows, checks, known=frozenset(config.RELIABILITY_PARTS)):
         check = checks.get(r['id'])
         detail.append({'id': r['id'], 'component': r['component'], 'severity': r['severity'], 'part': r.get('part'),
                        'is_recall': bool(r.get('is_recall')), 'check': check, 'level': r.get('level'), 'source_id': r['source_id'],
-                       'points': SEVERITY_POINTS.get(r['severity'], 0), 'counted': False,
+                       'points': round(SEVERITY_POINTS.get(r['severity'], 0) * r.get('weight', 1), 3), 'counted': False,
                        'excluded': 'recall_checked' if r.get('is_recall') and check in ('OK', 'N/A') else None})
     parts = {}
     for part in config.RELIABILITY_PARTS:
@@ -719,7 +726,7 @@ def tco_rows(c, p):
         items = contract.resolved(v['id'])
         rel_rows = know.of('reliability_items', v, win)
         rel_checks = dict(checks.get(u['id'], {}))
-        rel_rows = rel_rows + [{'id': f"F{f['id']}", 'component': f['component'], 'severity': fault_severity(f), 'part': f['part'],
+        rel_rows = rel_rows + [{'id': f"F{f['id']}", 'component': f['component'], 'severity': fault_severity(f), 'part': f['part'], 'weight': fault_weight(f),
                                 'is_recall': False, 'inspection_action': (f.get('inspection_action') or '').strip(), 'level': f['level'], 'source_id': f['source_id']} for f in f_rows] + \
             [{'id': f"R{r['id']}", 'component': r['code'] + ': ' + r['defect'], 'severity': 'HIGH IF APPLICABLE',
               'part': r['part'], 'is_recall': True, 'level': r['level'], 'source_id': r['source_id']} for r in rc_rows]
