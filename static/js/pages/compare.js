@@ -117,7 +117,7 @@ function details(us) {
       [t('power'), u => u.power_ps == null ? PEND() : num(u.power_ps, 0) + ' PS'], [t('insurance_year'), u => eP(u.annual_insurance)], [t('tax_year'), u => eP(u.annual_tax)],
       [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : num(u.metrics.reliability, 1)], ...['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'].map(k => [`· ${t('part_' + k)}`, u => (u.reliability_parts || {})[k] == null ? PEND() : num(u.reliability_parts[k], 1)]),
       [t('c_confidence'), u => u.metrics.confidence == null ? PEND() : num(u.metrics.confidence, 0) + ' %'],
-      [t('score'), u => u.score == null || u.excluded ? `<span class="pending" title="${esc(notScoredTxt(u))}">${esc(notScoredTxt(u))}</span>` : `<b>${scoreTxt(u)}</b> <span class="muted">${t('rank_n', { n: u.rank })} · ${num(u.coverage * 100, 0)}% ${t('coverage_short')}</span>`],
+      [t('score'), u => u.score == null || u.excluded ? `<span class="pending" title="${esc(notScoredTxt(u))}">${esc(notScoredTxt(u))}</span>` : `<b>${scoreTxt(u)}</b> <span class="muted">${t('rank_n', { n: u.rank })}</span>`],
       [t('consumption'), u => u.consumption == null ? PEND() : `${num(u.consumption)} ${esc(u.consumption_unit || 'l/100 km')}<br><span class="muted">${num(u.consumption_min)}–${num(u.consumption_max)} · n=${u.consumption_sample ?? '?'}</span>`]]],
     [t('g_use'), ['fuel', 'insurance', 'tax', 'maintenance'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
     [t('g_own'), ['repairs', 'tyres', 'purchase_sale'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
@@ -152,7 +152,7 @@ function toolbar() {
     <span class="spacer"></span><button class="btn ghost sm" type="button" data-csv>⤓ ${t('export_csv')}</button></div>`;
 }
 function exportCsv() {
-  const us = ordered(), cols = [['rank', u => u.rank], ['score', u => u.score], ['coverage', u => u.coverage], ['make', u => u.make], ['model', u => u.model], ['trim', u => u.trim], ['listing_id', u => u.listing_id],
+  const us = ordered(), cols = [['rank', u => u.rank], ['score', u => u.score], ['make', u => u.make], ['model', u => u.model], ['trim', u => u.trim], ['listing_id', u => u.listing_id],
     ['reference', u => u.is_reference ? 1 : 0], ['status', u => u.listing_status], ['price_eur', u => u.price_eur], ['mileage_km', u => u.mileage_km], ['age_years', u => u.metrics.age], ['km_per_year', u => u.metrics.km_per_year],
     ['consumption_l_100km', u => u.consumption], ['insurance_eur_year', u => u.annual_insurance], ['tax_eur_year', u => u.annual_tax], ['power_ps', u => u.power_ps],
     ['reliability_points', u => u.metrics.reliability], ...['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'].map(k => [`reliability_${k.toLowerCase()}`, u => (u.reliability_parts || {})[k]]), ['confidence_pct', u => u.metrics.confidence],
