@@ -183,12 +183,14 @@ def fault_price(f):
 
 
 def fault_severity(f):
-    """Derived, never chosen (owner, 2026-11-06, #168): HIGH when it can destroy the engine or gearbox, strand the car or is
-    a safety risk, or costs ≥ SEVERITY_HIGH_EUR; MEDIUM from SEVERITY_MEDIUM_EUR or when the car is unusable until fixed;
-    LOW below that while the car still drives."""
+    """Derived, never chosen (owner, 2026-11-06, #168): HIGH when it can destroy the engine or gearbox or costs ≥ SEVERITY_HIGH_EUR, or
+    strands the car / is a safety risk and costs ≥ SEVERITY_MEDIUM_EUR (cheaper: LOW-MEDIUM, #285); MEDIUM from SEVERITY_MEDIUM_EUR
+    or when the car is unusable until fixed; LOW below that while the car still drives."""
     price = fault_price(f) or 0
-    if f['consequence'] in ('ENGINE_DAMAGE', 'STRANDS', 'SAFETY') or price >= config.SEVERITY_HIGH_EUR:
+    if f['consequence'] == 'ENGINE_DAMAGE' or price >= config.SEVERITY_HIGH_EUR:
         return 'HIGH'
+    if f['consequence'] in ('STRANDS', 'SAFETY'):  # #285: a cheap stranding or safety fault (a coil, bulbs, tie-rod ends) must not empty a part
+        return 'HIGH' if price >= config.SEVERITY_MEDIUM_EUR else 'LOW-MEDIUM'
     return 'MEDIUM' if f['consequence'] == 'UNUSABLE' or price >= config.SEVERITY_MEDIUM_EUR else 'LOW'
 
 
@@ -719,7 +721,7 @@ def tco_rows(c, p):
         rel_checks = dict(checks.get(u['id'], {}))
         rel_rows = rel_rows + [{'id': f"F{f['id']}", 'component': f['component'], 'severity': fault_severity(f), 'part': f['part'],
                                 'is_recall': False, 'inspection_action': (f.get('inspection_action') or '').strip(), 'level': f['level'], 'source_id': f['source_id']} for f in f_rows] + \
-            [{'id': f"R{r['id']}", 'component': r['code'] + ': ' + r['defect'], 'severity': 'HIGH' if r['safety'] else 'MEDIUM',
+            [{'id': f"R{r['id']}", 'component': r['code'] + ': ' + r['defect'], 'severity': 'HIGH IF APPLICABLE',
               'part': r['part'], 'is_recall': True, 'level': r['level'], 'source_id': r['source_id']} for r in rc_rows]
         for rid, st in recall_status.items():  # done or not affected (VIN check): the recall stops counting
             if st in ('DONE', 'NOT AFFECTED'):
