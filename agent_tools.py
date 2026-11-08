@@ -134,6 +134,8 @@ def scope(v, level='variant'):
     if level == 'variant':
         return {'vehicle_id': v}
     var = get(f'/api/vehicles/{v}')
+    if var.get(LEVEL_COLUMNS[level]) is None:
+        raise ValueError(f'variant {v} has no {level} yet: create it (step 1) or use another level=')
     return {LEVEL_COLUMNS[level]: var[LEVEL_COLUMNS[level]]}
 
 
