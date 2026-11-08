@@ -235,3 +235,8 @@ class SeverityTest(unittest.TestCase):
         self.assertEqual(fault_severity(f('STRANDS', 135)), 'LOW-MEDIUM')
         self.assertEqual(fault_severity(f('SAFETY', 600)), 'HIGH')
         self.assertEqual(fault_severity(f('ENGINE_DAMAGE', 50)), 'HIGH')
+
+    def test_rare_fault_weighs_little(self):  # #287
+        from carlos.costs import fault_weight
+        self.assertEqual([fault_weight({'frequency_band': b}) for b in ('systemic', 'common', 'occasional', 'rare')], [1, 1, 0.417, 0.125])
+        self.assertEqual(fault_weight({}), 1)
