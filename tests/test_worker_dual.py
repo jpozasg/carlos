@@ -74,3 +74,13 @@ class WorkerDualTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class UsageTest(unittest.TestCase):
+    def test_parse_usage(self):  # #291
+        import worker
+        out = 'noise\n{"result": "CARLOS_RESULT done: x", "usage": {"input_tokens": 5, "output_tokens": 7, "cache_read_input_tokens": 9}, "total_cost_usd": 0.5, "duration_ms": 61000, "num_turns": 3}'
+        text, u = worker.parse_usage(out)
+        self.assertEqual(text, 'CARLOS_RESULT done: x')
+        self.assertEqual((u['input'], u['output'], u['cache_read'], u['seconds'], u['turns']), (5, 7, 9, 61, 3))
+        self.assertEqual(worker.parse_usage('plain text'), ('plain text', None))

@@ -31,6 +31,25 @@ def outcome(output):
     return {'status': 'FAILED', 'result': m[2] if m else 'No CARLOS_RESULT line. Log tail:\n' + '\n'.join(lines[-30:])}
 
 
+def parse_usage(out):
+    """(text, usage) of a `claude --output-format json` run (#291): the agent's final text and tokens/cost/time/turns; the
+    output unchanged and None when it is not that JSON (a failed start, another command)."""
+    for line in reversed(out.strip().splitlines()):
+        if line.startswith('{'):
+            try:
+                j = json.loads(line)
+            except ValueError:
+                return out, None
+            if not isinstance(j, dict) or 'result' not in j:
+                return out, None
+            u = j.get('usage') or {}
+            return str(j['result']), {'input': u.get('input_tokens'), 'output': u.get('output_tokens'),
+                                      'cache_read': u.get('cache_read_input_tokens'), 'cache_write': u.get('cache_creation_input_tokens'),
+                                      'cost_usd': j.get('total_cost_usd'), 'seconds': round((j.get('duration_ms') or 0) / 1000),
+                                      'turns': j.get('num_turns'), 'runs': 1}
+    return out, None
+
+
 def unit_prompt(req):
     """The short prompt of one research unit (#218 phase 2): shared rules + docs/prompts/units/<unit>.md."""
     d = ROOT / 'docs' / 'prompts' / 'units'
@@ -115,12 +134,15 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=
         env.update(AGENT_TOKEN=api.token, CARLOS_ACCOUNT=str(req['owner_id']))
     log = Path(logs) / f'request-{req["id"]}.log'
     log.parent.mkdir(parents=True, exist_ok=True)
-    p = subprocess.Popen(command(cmd, model) + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
+    argv = command(cmd, model)
+    if Path(argv[0]).name == 'claude' and '--output-format' not in argv:  # the JSON result carries the usage (#291)
+        argv[1:1] = ['--output-format', 'json']
+    p = subprocess.Popen(argv + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, text=True)
     deadline = time.time() + timeout_s
     while True:  # wait for the run, with a heartbeat every minute so the admin panel shows the worker as working
         try:
-            out = p.communicate(timeout=max(1, min(60, deadline - time.time())))[0]
+            out, usage = parse_usage(p.communicate(timeout=max(1, min(60, deadline - time.time())))[0])
             result = outcome(out) if p.returncode == 0 else {
                 'status': 'FAILED', 'result': f'Exit code {p.returncode}. Log tail:\n' + '\n'.join(out.splitlines()[-30:])}
             break
@@ -128,10 +150,12 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=
             if time.time() < deadline:
                 beat(api, 'working'); continue
             p.kill()
-            out = p.communicate()[0]
+            out, usage = parse_usage(p.communicate()[0])
             result = {'status': 'FAILED', 'result': f'Timed out after {timeout_s // 60} minutes'}
             break
-    log.write_text(out, encoding='utf-8')
+    log.write_text(out + (f'\n\nUSAGE {json.dumps(usage)}\n' if usage else ''), encoding='utf-8')
+    if usage:
+        result['usage'] = usage
     tail = '\n'.join(out.splitlines()[-30:])
     if result['status'] == 'FAILED' and p.returncode and LIMIT.search(tail):  # not the request's fault: queue it again and pause
         api.call('POST', f'/api/worker/requests/{req["id"]}', {'status': 'QUEUED', 'result': 'Released: ' + tail.splitlines()[-1][:200]})
