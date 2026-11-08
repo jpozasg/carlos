@@ -373,6 +373,10 @@ class Handler(BaseHTTPRequestHandler):
                                 'schema_version': c.execute('PRAGMA user_version').fetchone()[0],
                                 'listings': c.execute('SELECT count(*) FROM listings').fetchone()[0],
                                 'storage_ratio': round(st['total_bytes'] / st['limit_bytes'], 4)})
+            elif path == '/api/agent/disputes':
+                if not self.staged_run():
+                    raise NotAllowed('Only the ARBITER run reads the disputes')
+                self.send_json(staging.disputes_view(c, self.request))
             elif path == '/api/agent/stage':
                 if not self.staged_run():
                     raise NotAllowed('Only a research run (RESEARCH_A, RESEARCH_B, ARBITER) has a staging area')
@@ -405,6 +409,10 @@ class Handler(BaseHTTPRequestHandler):
             if owner is not None and owner != uid:
                 self.uid = uid = owner
                 auth.scope(c, uid, curator=True)
+        if agent and agent[1] == 'disputes' and self.staged_run():  # #253 P3: the arbiter's verdicts
+            if method != 'PATCH' or not agent[2]:
+                self.send_json({'error': 'PATCH /api/agent/disputes/<id> {"verdict", "reason"} answers a dispute'}, 405); return
+            self.send_json(staging.answer_dispute(c, self.request, int(agent[2]), self.read_json())); return
         if agent and self.staged_run():  # #253: the writes of a research run go to staging (negative ids), never to the catalogue
             data = self.read_json()
             if (method == 'PATCH') != bool(agent[2]):

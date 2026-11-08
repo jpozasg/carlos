@@ -188,3 +188,17 @@ def suggest_component(part, text):
     """The code whose pattern first matches a component name (for the back-fill and error texts); None when nothing fits."""
     import re
     return next((code for code, _, pat in FAULT_COMPONENTS.get(part, ()) if re.search(pat, str(text or ''), re.I)), None)
+
+
+# Staging compare (#253 P3, docs/design-two-agent-research.md 3.2): field -> 'eq' | ('rel', fraction of the larger) | ('band', steps apart).
+# A field in the table that differs makes a pair DISPUTED; 'price' is parts_eur + labor_eur. patch/level rows compare every shared field.
+STAGE_TOLERANCE = {
+    'fault': {'level': 'eq', 'frequency_band': ('band', 1), 'price': ('rel', 0.30), 'consequence': 'eq', 'shape': 'eq'},
+    'recall': {'level': 'eq', 'applies_from': 'eq', 'applies_to': 'eq', 'part': 'eq'},
+    'job': {'level': 'eq', 'interval_km': ('rel', 0.20), 'interval_months': ('rel', 0.20),
+            'reference_cost_eur': ('rel', 0.30), 'diy_parts_cost_eur': ('rel', 0.40)},
+    'observation': {'value_num': ('rel', 0.03)},
+    'tyres': {'size': 'eq', 'price_per_tyre_eur': ('rel', 0.25), 'life_km': ('rel', 0.20)},
+    'stats': {'value': ('rel', 0.10), 'class_average': ('rel', 0.10)},
+}
+STAGE_MATERIAL_EUR, MAX_DISPUTES = 500, 25

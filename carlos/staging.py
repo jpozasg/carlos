@@ -133,6 +133,8 @@ def write(c, req, table, row_id, data):
     if col and lid is not None and lid < 0:
         _staged(c, req, -lid, {v: k for k, v in MODEL_LEVEL.items()}.get(col))
     key = key_of(kind, table, p, target)
+    if req['unit'] == 'ARBITER' and kind != 'source' and key not in disputed_keys(c, req['parent_id']):
+        raise NotAllowed(f'{key} is not under dispute: the arbiter stages only corrected findings for the disputes it was given')
     mine = old['id'] if old else None
     # within-run duplicates: unique kinds by key (a source answers with the existing id); faults by component (the #221 wording, staged ids)
     same = c.execute('SELECT id FROM main.research_findings WHERE request_id=? AND key=? AND status=? AND id IS NOT ?',
@@ -243,3 +245,255 @@ def stage_view(c, req, grade):
             'findings': [{'id': -r['id'], 'kind': r['kind'], 'op': r['op'], 'table': r['target_table'], 'target_id': r['target_id'],
                           'key': r['key'], 'level': r['level'], 'level_id': r['level_id'], 'payload': json.loads(r['payload'])} for r in rows],
             'missing': missing(req, grade)}
+
+
+# ---------------------------------------------------------------------------------------------- compare (P3, sections 3.1-3.3)
+import difflib
+BANDS = tuple(config.FREQUENCY_BANDS)  # systemic ... rare
+BAD_CONSEQUENCE = ('ENGINE_DAMAGE', 'STRANDS', 'SAFETY')
+COMPARED = ('fault', 'recall', 'job', 'check', 'observation', 'tyres', 'stats', 'patch', 'level')  # flags and sources are never compared
+DISPUTE_ORDER = ('patch', 'level', 'recall', 'fault', 'job')  # then the rest; faults by price
+
+
+def _payload(f):
+    return {k: v for k, v in json.loads(f['payload']).items() if k != 'distinct_of'}
+
+
+def _ref(c, f):
+    """A level or a staged id as something comparable across runs: staged rows by their key, real ones by id."""
+    lid = f['level_id']
+    if lid is not None and lid < 0:
+        lid = c.execute('SELECT key FROM main.research_findings WHERE id=?', (-lid,)).fetchone()[0]
+    return [f['level'], lid]
+
+
+def _price(p):
+    return None if p.get('parts_eur') is None and p.get('labor_eur') is None else (p.get('parts_eur') or 0) + (p.get('labor_eur') or 0)
+
+
+def _differs(rule, a, b):
+    if a is None or b is None:
+        return a is not b
+    if rule == 'eq':
+        return norm(a) != norm(b) if isinstance(a, str) or isinstance(b, str) else a != b
+    if rule[0] == 'rel':
+        return abs(a - b) > rule[1] * max(abs(a), abs(b))
+    return abs(BANDS.index(a) - BANDS.index(b)) > rule[1] if a in BANDS and b in BANDS else a != b
+
+
+def _diffs(c, fa, fb):
+    pa, pb = _payload(fa), _payload(fb)
+    out = []
+    if fa['kind'] in ('patch', 'level'):  # identity: every field both set (staged ids compared by key); notes and sources are not facts
+        res = lambda k, v: _ref(c, {'level': k, 'level_id': v})[1] if k.endswith('_id') and isinstance(v, int) and v < 0 else v
+        for k in sorted(set(pa) & set(pb) - {'notes', 'source_id', 'usage_source_id'}):
+            if pa[k] is not None and pb[k] is not None and _differs('eq', res(k, pa[k]), res(k, pb[k])):
+                out.append({'field': k, 'a': pa[k], 'b': pb[k]})
+        return out
+    for field, rule in config.STAGE_TOLERANCE[fa['kind']].items():
+        a, b = (_ref(c, fa), _ref(c, fb)) if field == 'level' else \
+               (_price(pa), _price(pb)) if field == 'price' else (pa.get(field), pb.get(field))
+        if _differs(rule, a, b):
+            out.append({'field': field, 'a': a, 'b': b})
+    if fa['kind'] == 'fault' and not consistency.same_fault(pa, pb):  # paired by component code only: the wording differs
+        out.append({'field': 'component', 'a': pa.get('component'), 'b': pb.get('component')})
+    return out
+
+
+def _material(kind, outcome, pa, pb, diffs):
+    """Section 3.3. pa/pb: the payloads of the sides present."""
+    if outcome == 'AGREED':
+        return 0
+    one = outcome != 'DISPUTED'
+    p = pa or pb
+    names = {d['field'] for d in diffs}
+    if kind in ('patch', 'level'):
+        return int(not one)
+    if kind == 'fault':
+        if one:
+            return int(p.get('frequency_band') in BANDS[:3] or (_price(p) or 0) >= config.STAGE_MATERIAL_EUR
+                       or p.get('consequence') in BAD_CONSEQUENCE)
+        return int(bool(names & {'level', 'frequency_band', 'component'})
+                   or 'price' in names and max(_price(pa) or 0, _price(pb) or 0) >= config.STAGE_MATERIAL_EUR)
+    if kind == 'recall':
+        return int(one)
+    if kind == 'job':
+        return int(bool(p.get('job')) and p.get('kind') != 'WEAR') if one else int(bool(names & {'interval_km', 'interval_months'}))
+    return int(kind in ('observation', 'tyres', 'stats') and not one)
+
+
+def _fault_pairs(A, B):
+    """Greedy pairing inside (part, component_code): same_fault first, then the best text ratio; a lone fault on each side always
+    pairs. NULL and OTHER codes pair only by same_fault."""
+    pairs, ga, gb = [], {}, {}
+    for g, rows in ((ga, A), (gb, B)):
+        for f in rows:
+            g.setdefault((f['part'], f['component_code']), []).append(f)
+    for grp, ra in ga.items():
+        cands = []
+        for i, x in enumerate(ra):
+            for j, y in enumerate(gb.get(grp, [])):
+                px, py = _payload(x), _payload(y)
+                same = bool(consistency.same_fault(px, py))
+                if same or grp[1] not in (None, 'OTHER'):
+                    cands.append((same, difflib.SequenceMatcher(None, norm(px.get('component')), norm(py.get('component'))).ratio(), i, j))
+        ua, ub = set(), set()
+        for _, _, i, j in sorted(cands, key=lambda t: (-t[0], -t[1], t[2], t[3])):
+            if i not in ua and j not in ub:
+                ua.add(i); ub.add(j); pairs.append((ra[i], gb[grp][j]))
+    return pairs
+
+
+_RESULT_RANK = {'FOUND': 2, 'NONE FOUND': 1, 'N/A': 0}
+
+
+def _pairs(c, A, B):
+    """[(finding of run A or None, finding of run B or None, match key)] over the compared kinds."""
+    out = []
+    for kind in COMPARED:
+        ra, rb = [f for f in A if f['kind'] == kind], [f for f in B if f['kind'] == kind]
+        if kind == 'fault':
+            prs = _fault_pairs(ra, rb)
+            done = {f['id'] for pr in prs for f in pr}
+            name = lambda f: f"{f['key']}:{norm(_payload(f).get('component'))}"
+            out += [(a, b, name(a)) for a, b in prs]
+            out += [(f if f in ra else None, f if f in rb else None, name(f)) for f in ra + rb if f['id'] not in done]
+            continue
+        ga, gb = {}, {}
+        for g, rows in ((ga, ra), (gb, rb)):
+            for f in rows:  # checks: one per task and level, the best result stands for the run
+                k = f['key'] if kind != 'check' else f"{f['key']}@{_ref(c, f)}"
+                if k not in g or kind == 'check' and _RESULT_RANK[_payload(f)['result']] > _RESULT_RANK[_payload(g[k])['result']]:
+                    g[k] = f
+        out += [(ga.get(k), gb.get(k), k) for k in sorted(set(ga) | set(gb))]
+    return out
+
+
+def compare(c, parent_id):
+    """Pairs run A's and run B's STAGED findings of one parent and writes one research_matches row per pair or one-sided finding.
+    Idempotent: a parent with matches is left alone. Returns agreement(c, parent_id)."""
+    if not c.execute('SELECT 1 FROM main.research_matches WHERE parent_id=?', (parent_id,)).fetchone():
+        rows = [dict(r) for r in c.execute("SELECT * FROM main.research_findings WHERE parent_id=? AND status='STAGED' AND run IN ('A','B') "
+                                           "ORDER BY id", (parent_id,))]
+        for a, b, key in _pairs(c, [r for r in rows if r['run'] == 'A'], [r for r in rows if r['run'] == 'B']):
+            kind, pa, pb = (a or b)['kind'], a and _payload(a), b and _payload(b)
+            if a and b:
+                diffs = _diffs(c, a, b) if kind != 'check' else \
+                    [{'field': 'result', 'a': pa['result'], 'b': pb['result']}] if pa['result'] != pb['result'] else []
+            else:
+                diffs = []
+            outcome = ('DISPUTED' if diffs else 'AGREED') if a and b else 'ONLY_A' if a else 'ONLY_B'
+            c.execute('INSERT INTO main.research_matches (parent_id, kind, key, a_id, b_id, outcome, diffs, material) VALUES (?,?,?,?,?,?,?,?)',
+                      (parent_id, kind, key, a and a['id'], b and b['id'], outcome, json.dumps(diffs) if diffs else None,
+                       0 if kind == 'check' else _material(kind, outcome, pa, pb, diffs)))
+        c.commit()
+    return agreement(c, parent_id)
+
+
+def agreement(c, parent_id):
+    """AGREED / all matches, overall and per kind (section 3.2), plus the number of material disputes."""
+    per, tot = {}, {'agreed': 0, 'total': 0}
+    for kind, outcome, n in c.execute('SELECT kind, outcome, count(*) FROM main.research_matches WHERE parent_id=? GROUP BY kind, outcome', (parent_id,)):
+        for d in (per.setdefault(kind, {'agreed': 0, 'total': 0}), tot):
+            d['total'] += n; d['agreed'] += n if outcome == 'AGREED' else 0
+    share = lambda d: round(d['agreed'] / d['total'], 4) if d['total'] else None
+    return {'agreement': share(tot), 'matches': tot['total'], 'per_kind': {k: {**d, 'agreement': share(d)} for k, d in per.items()},
+            'material': c.execute('SELECT count(*) FROM main.research_matches WHERE parent_id=? AND material=1', (parent_id,)).fetchone()[0]}
+
+
+# ---------------------------------------------------------------------------------------------- arbiter interface (3.4)
+VERDICTS = ('A', 'B', 'BOTH', 'NEITHER', 'OWN')
+
+
+def dispute_rows(c, parent_id):
+    """The material matches the arbiter may answer: at most MAX_DISPUTES, identity first, then recalls, faults by price, jobs, the rest."""
+    def order(m):
+        prices = [_price(json.loads(m[s])) or 0 for s in ('a_payload', 'b_payload') if m[s]]
+        return (DISPUTE_ORDER.index(m['kind']) if m['kind'] in DISPUTE_ORDER else len(DISPUTE_ORDER), -max(prices, default=0), m['id'])
+    rows = [dict(r) for r in c.execute(
+        'SELECT m.*, fa.payload a_payload, fb.payload b_payload FROM main.research_matches m LEFT JOIN main.research_findings fa ON fa.id=m.a_id '
+        'LEFT JOIN main.research_findings fb ON fb.id=m.b_id WHERE m.parent_id=? AND m.material=1 ORDER BY m.id', (parent_id,))]
+    return sorted(rows, key=order)[:config.MAX_DISPUTES]
+
+
+def _question(m, diffs):
+    f = {d['field'] for d in diffs}
+    if m['outcome'] != 'DISPUTED':
+        return {'fault': 'Is this fault real for this car, and is its band and price right?', 'recall': 'Is this recall real and does it apply to this car?',
+                'job': 'Does this maintenance job apply to this car, and at what interval?'}.get(m['kind'], 'Is this finding right for this car?')
+    if m['kind'] in ('patch', 'level'):
+        return f'Which value is right for {", ".join(sorted(f))}?'
+    qs = [q for k, q in (('level', 'Which level does the evidence name?'), ('frequency_band', 'Which frequency band does the evidence support?'),
+                         ('component', 'Do the two entries describe the same fault?'), ('price', 'Which repair price is right?'),
+                         ('interval_km', 'Which interval is right?'), ('interval_months', 'Which interval is right?')) if k in f]
+    return ' '.join(dict.fromkeys(qs)) or f'Which value is right for {", ".join(sorted(f))}?'
+
+
+def _side(c, fid):
+    if fid is None:
+        return None
+    f = dict(c.execute('SELECT * FROM main.research_findings WHERE id=?', (fid,)).fetchone())
+    p = _payload(f)
+    sid, src = p.get('source_id'), None
+    if sid is not None:  # a staged source is another finding of the same run; a real one is a sources row
+        row = c.execute('SELECT payload FROM main.research_findings WHERE id=?', (-sid,)).fetchone() if sid < 0 else \
+              c.execute('SELECT title, url, quality, supports FROM sources WHERE id=?', (sid,)).fetchone()
+        src = None if row is None else json.loads(row[0]) if sid < 0 else dict(row)
+    return {'payload': p, 'level': _ref(c, f), 'source_id': sid,
+            'sources': [{k: src.get(k) for k in ('title', 'url', 'quality', 'supports')}] if src else []}
+
+
+def disputes_view(c, req):
+    """GET /api/agent/disputes (ARBITER token): the disputes of its parent; 'a' is run 1, 'b' run 2."""
+    if req['unit'] != 'ARBITER':
+        raise NotAllowed('Only the ARBITER run reads the disputes')
+    out = []
+    for m in dispute_rows(c, req['parent_id']):
+        diffs = json.loads(m['diffs']) if m['diffs'] else []
+        out.append({'id': m['id'], 'kind': m['kind'], 'key': m['key'], 'outcome': m['outcome'], 'question': _question(m, diffs), 'diffs': diffs,
+                    'a': _side(c, m['a_id']), 'b': _side(c, m['b_id']), 'verdict': m['verdict'], 'reason': m['verdict_reason']})
+    return {'parent_id': req['parent_id'], 'disputes': out, 'answered': sum(1 for d in out if d['verdict']), 'open': [d['id'] for d in out if not d['verdict']]}
+
+
+def answer_dispute(c, req, match_id, body):
+    """PATCH /api/agent/disputes/<id> {"verdict", "reason", "source_id"?, "finding"?}. A/B need that side, BOTH both sides, OWN a
+    "finding": -<id> staged by this run on the disputed key. May be answered again until the merge."""
+    if req['unit'] != 'ARBITER':
+        raise NotAllowed('Only the ARBITER run answers disputes')
+    m = next((d for d in dispute_rows(c, req['parent_id']) if d['id'] == match_id), None)
+    if m is None:
+        raise NotFound(f'dispute {match_id} does not exist for this request')
+    v, reason = body.get('verdict'), str(body.get('reason') or '').strip()
+    if v not in VERDICTS or not reason:
+        raise ValueError(f'verdict must be one of {", ".join(VERDICTS)} and reason must say why')
+    if v in ('A', 'B') and not m[v.lower() + '_id'] or v == 'BOTH' and not (m['a_id'] and m['b_id']):
+        raise ValueError(f'verdict {v}: that side did not stage this finding')
+    own, src = None, body.get('source_id')
+    if src is not None:
+        if not isinstance(src, int) or src >= 0 and not c.execute('SELECT 1 FROM sources WHERE id=?', (src,)).fetchone():
+            raise ValueError('source_id must be a staged source of this run (negative) or an existing source')
+        if src < 0:
+            _staged(c, req, -src, 'sources')
+    if v == 'OWN':
+        fid = body.get('finding')
+        if not isinstance(fid, int) or fid >= 0:
+            raise ValueError('verdict OWN needs "finding": -<id> of a corrected finding staged by this run')
+        own = _staged(c, req, -fid)
+        if own['key'] not in {r[0] for i in (m['a_id'], m['b_id']) if i for r in c.execute('SELECT key FROM main.research_findings WHERE id=?', (i,))}:
+            raise ValueError(f'finding {fid} is on {own["key"]}, not on the disputed key')
+    elif body.get('finding') is not None:
+        raise ValueError('"finding" belongs to verdict OWN only')
+    c.execute('UPDATE main.research_matches SET verdict=?, verdict_id=?, verdict_reason=?, verdict_source_id=? WHERE id=?',
+              (v, own['id'] if own else None, reason, src, match_id))
+    c.commit()
+    return {'id': match_id, 'verdict': v}
+
+
+def unanswered(c, parent_id):
+    """Dispute ids without a verdict: the arbiter's done gate (re-queue while any remain)."""
+    return [m['id'] for m in dispute_rows(c, parent_id) if not m['verdict']]
+
+
+def disputed_keys(c, parent_id):
+    """The finding keys an ARBITER run may stage (for OWN verdicts); sources are always allowed."""
+    return {r[0] for m in dispute_rows(c, parent_id) for r in c.execute('SELECT key FROM main.research_findings WHERE id IN (?,?)', (m['a_id'], m['b_id']))}
