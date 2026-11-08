@@ -22,7 +22,7 @@ RESULT = re.compile(r'CARLOS_RESULT (?:listing_id=(\d+)|failed: (.*)|done: (.*))
 def outcome(output):
     """The finish payload from the agent's last CARLOS_RESULT line: CARLOS_RESULT listing_id=<id> | CARLOS_RESULT failed: <reason>."""
     lines = [x.strip().strip('`*_ ') for x in output.strip().splitlines()]  # the agent may wrap the line in markdown
-    hits = [m for m in map(RESULT.fullmatch, lines) if m]  # the last result line, wherever the agent put it
+    hits = [m for m in map(RESULT.search, lines) if m]  # the last result line, wherever the agent put it
     m = hits[-1] if hits else None
     if m and m[1]:
         return {'status': 'DONE', 'listing_id': int(m[1]), 'result': 'Listing written by the worker'}
