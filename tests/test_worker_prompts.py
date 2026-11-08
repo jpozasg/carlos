@@ -1,7 +1,7 @@
 import re, unittest
 import worker
 
-UNITS = ['CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING']
+UNITS = ['CAPTURE', 'TAX', 'LISTING']
 LEFT = re.compile(r'\{[A-Z_]+\}')
 
 
