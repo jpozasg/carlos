@@ -92,9 +92,6 @@ ITEMS = [
     ('gen.hu', 'generation', 'HU/AU every 24 months with the official fee', _job('HU'), (), None, always, 2),
     ('gen.brake_fluid', 'generation', 'brake fluid interval and workshop price', _job('BRAKE_FLUID'), (), None, always, 2),
     ('gen.brakes', 'generation', 'brake pads and discs: interval, DIY parts and workshop price', _job('BRAKES_FRONT', 'BRAKES_REAR'), (), None, always, 2),
-    ('gen.battery', 'generation', 'battery: life, DIY parts and workshop price', _job('BATTERY'), (), None, always, 2),
-    ('gen.wipers', 'generation', 'wiper blades: interval, DIY parts and workshop price', _job('WIPERS'), (), None, always, 2),
-    ('gen.cabin_filter', 'generation', 'cabin (pollen) filter: interval, DIY parts and workshop price', _job('CABIN_FILTER'), (), None, always, 2),
     ('gen.recalls', 'generation', 'recall search (KBA / manufacturer)', None, FOUND_OR_NONE, 'B', always, 1),
     ('gen.risks', 'generation', 'body/chassis repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
     ('eng.identity', 'engine', 'code, fuel, displacement, power, aspiration, injection, timing drive', _fields(
@@ -105,9 +102,7 @@ ITEMS = [
     ('eng.drive_coolant', 'engine', 'electric: battery/motor coolant interval and workshop price (or a check: lifetime fill)', _job('DRIVE_COOLANT'), ('NONE FOUND',), None, electric, 3),
     ('eng.reduction_gear_oil', 'engine', 'electric: reduction gear oil interval and workshop price (or a check: none scheduled)', _job('REDUCTION_GEAR_OIL'), ('NONE FOUND',), None, electric, 3),
     ('eng.oil', 'engine', 'oil and filter service: interval, DIY parts and workshop price', _job('OIL_SERVICE'), (), None, combustion, 2),
-    ('eng.air_filter', 'engine', 'air filter: interval, DIY parts and workshop price', _job('AIR_FILTER'), (), None, combustion, 2),
     ('eng.spark_plugs', 'engine', 'spark plugs: interval, DIY parts and workshop price', _job('SPARK_PLUGS'), (), None, petrol, 2),
-    ('eng.fuel_filter', 'engine', 'fuel filter: interval, DIY parts and workshop price', _job('FUEL_FILTER'), (), None, diesel, 2),
     ('eng.timing_belt', 'engine', 'timing belt: interval, DIY parts and workshop price', _job('TIMING_DRIVE'), (), None,
      lambda ctx: combustion(ctx) and not _is('timing_drive', 'CHAIN', 'GEAR')(ctx), 2),
     ('eng.timing_chain', 'engine', 'timing chain/gear: a job or a check that none is scheduled', _job('TIMING_DRIVE'), ('NONE FOUND',), None,
@@ -130,7 +125,6 @@ ITEMS = [
     ('gbx.clutch', 'gearbox', 'clutch: typical life, DIY parts and workshop price (or a check: none)', _job('CLUTCH'), ('NONE FOUND',), None,
      _is('type', 'MANUAL', 'DCT'), 5),
     ('gbx.risks', 'gearbox', 'gearbox faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
-    ('gfam.risks', 'gearbox_family', 'gearbox family faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
     ('gen.safety', 'generation', 'Euro NCAP stars and test year (or a check: N/A, never tested)', _fields('ncap_stars', 'ncap_year'), NOT_APPLICABLE, 'B', always, 6),
     ('bdy.risks', 'body_style', 'body style faults and maintenance (convertible roof …) or a check: none found', _risks, ('NONE FOUND',), None, always, 5),
 ]
@@ -138,7 +132,7 @@ ITEMS = [
 # the rest on the generation (owner decision 2026-11-05: gearbox on the generation, var.gearbox for automatics)
 for _part in config.RELIABILITY_PARTS:
     for _src, _q in REL_SOURCES.items():
-        lvl = {'engine_specific': 'engine_family', 'gearbox_specific': 'gearbox_family'}.get(_src, 'generation')
+        lvl = {'engine_specific': 'engine_family', 'gearbox_specific': 'gearbox'}.get(_src, 'generation')
         if lvl == 'generation' or (_src, _part) in (('engine_specific', 'ENGINE'), ('gearbox_specific', 'GEARBOX')):
             ITEMS.append((f'rel.{_part}.{_src}', lvl, f'{_part.lower()} weak points: {_src.replace("_", "-")} source checked',
                           None, FOUND_OR_NONE, _q, always, 5 if _src == 'gearbox_specific' else 1))
@@ -232,7 +226,6 @@ class Contract:
         engine, generation = self.rows['engines'][v['engine_id']], self.rows['generations'][v['generation_id']]
         gearbox = self.rows['gearboxes'].get(v.get('gearbox_id'))
         efam = self.rows['engine_families'].get(engine.get('family_id'))
-        gfam = self.rows['gearbox_families'].get((gearbox or {}).get('family_id'))
         body = self.rows['body_styles'].get(v.get('body_style_id'))
         out = []
         lower = {'generation': [('vehicle_id', v['id']), ('engine_id', v['engine_id'])], 'engine': [('vehicle_id', v['id'])], 'variant': []}
@@ -240,7 +233,6 @@ class Contract:
         plan = [('generation', generation, None), ('engine', engine, None),
                 ('engine_family', efam or engine, None if efam else [('engine_id', engine['id'])]),
                 ('gearbox', gearbox or {**v, 'code': None, 'type': None}, None if gearbox else [('vehicle_id', v['id'])]),
-                ('gearbox_family', gfam or gearbox or v, None if gfam else [('gearbox_id', gearbox['id'])] if gearbox else [('vehicle_id', v['id'])]),
                 ('variant', v, None)] + ([('body_style', body, None)] if body else [])
         for level, row, keys in plan:
             if keys is not None:  # graded on the fallback level's rows

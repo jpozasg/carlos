@@ -623,7 +623,7 @@ class AppTest(unittest.TestCase):
         todo = lambda: next(m for m in self.agent('GET', 'todo')[1]['models'] if m['vehicle_id'] == v['id'])['todo']
         ids = lambda: {x.split()[1] for x in todo() if ' missing: ' in x}
         self.assertTrue({'eng.identity_ev', 'eng.hv_battery', 'eng.drive_coolant', 'eng.reduction_gear_oil', 'var.consumption'} <= ids())
-        self.assertFalse({'eng.identity', 'eng.oil', 'eng.air_filter', 'eng.spark_plugs', 'eng.timing_belt', 'eng.coolant'} & ids())
+        self.assertFalse({'eng.identity', 'eng.oil', 'eng.spark_plugs', 'eng.timing_belt', 'eng.coolant'} & ids())
         self.agent('PATCH', f"engines/{e['id']}", {'ac_charge_kw': 22})
         self.agent('POST', 'observations', {'vehicle_id': v['id'], 'category': 'consumption', 'metric': config.PRIMARY_CONSUMPTION_EV,
                                             'value_num': 16.5, 'unit': 'kWh/100 km', 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})  # EVDB: no sample (#154)

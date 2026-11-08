@@ -120,15 +120,15 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `gen.facelift` | generation | `facelift_year`, or a check `N/A` when there was none | – |
 | `gen.hu` | generation | the `HU` job with an interval and the workshop fee | – |
 | `gen.brake_fluid` | generation | the `BRAKE_FLUID` job with an interval and the workshop price | – |
-| `gen.brakes`, `gen.battery`, `gen.wipers`, `gen.cabin_filter` | generation | the job (by `job` code) with an interval, the DIY parts and the workshop price | – |
+| `gen.brakes` (battery, wipers, cabin filter: recorded when the schedule shows them, not required, #295) | generation | the job (by `job` code) with an interval, the DIY parts and the workshop price | – |
 | `gen.recalls` | generation | check: recall search (KBA or manufacturer), FOUND or NONE FOUND | B |
 | `gen.risks` | generation | body/chassis risks, every one priced, or a check `NONE FOUND` | – |
 | `eng.identity` | engine (combustion) | code (not "unknown…"), fuel, displacement, power, aspiration, injection, timing drive | – |
 | `eng.identity_ev` | engine (electric) | code (not "unknown…"), fuel, power, usable battery kWh, AC charging kW | – |
 | `eng.hv_battery` | engine (electric) | check: battery warranty (years / km / % health) and the priced battery risk, FOUND or NONE FOUND | B |
 | `eng.drive_coolant`, `eng.reduction_gear_oil` | engine (electric) | the `DRIVE_COOLANT` / `REDUCTION_GEAR_OIL` job with an interval and the workshop price, or a check `NONE FOUND` | – |
-| `eng.oil`, `eng.air_filter` | engine (combustion) | the job (by `job` code) with an interval, the DIY parts and the workshop price | – |
-| `eng.spark_plugs` (petrol, hybrid, plug-in hybrid), `eng.fuel_filter` (diesel) | engine | the job with an interval, the DIY parts and the workshop price | – |
+| `eng.oil` (air filter: recorded when the schedule shows it, not required) | engine (combustion) | the job (by `job` code) with an interval, the DIY parts and the workshop price | – |
+| `eng.spark_plugs` (petrol, hybrid, plug-in hybrid), (fuel filter, diesel: not required) | engine | the job with an interval, the DIY parts and the workshop price | – |
 | `eng.timing_belt` | engine (belt or unknown) | the `TIMING_DRIVE` job with an interval, the DIY parts and the workshop price | – |
 | `eng.timing_chain` | engine (chain or gear) | a job, or a check `NONE FOUND` (no scheduled replacement) | – |
 | `eng.coolant` | engine (combustion) | the job, or a check `NONE FOUND` citing the lifetime fill | – |
@@ -145,7 +145,7 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `gbx.identity` | gearbox (else the variant) | gearbox code and type | – |
 | `gbx.service` | gearbox (else the variant) | the `GEARBOX_OIL` job with an interval and the workshop price, or a check `NONE FOUND` | – |
 | `gbx.clutch` | gearbox (manual, DCT) | the `CLUTCH` job with a life, the DIY parts and the workshop price, or a check `NONE FOUND` | – |
-| `gbx.risks`, `gfam.risks` | gearbox, gearbox family (else the level below) | faults, each priced with a probability, or a check `NONE FOUND` | – |
+| `gbx.risks` | gearbox (else the variant; no gearbox family level, #295) | faults, each priced with a probability, or a check `NONE FOUND` | – |
 | `bdy.risks` | body style (only when the variant has one) | body style faults and maintenance (convertible roof …), or a check `NONE FOUND` | – |
 | `rel.<PART>.<source>` | generation (`adac`, `tuev`, `guide`), engine family (`engine_specific`, ENGINE), gearbox family (`gearbox_specific`, GEARBOX) | check per part and source: `adac`, `tuev` (B), `guide` (C), `engine_specific` and `gearbox_specific` (C). A missing family is graded on the engine or gearbox, a missing gearbox on the variant; an older check on the engine still counts (ACCEPTED, move it up). **A part without all its checks is unknown**, and so is the reliability score (it lowers the coverage; it never scores full points or 0) | B/C |
 | `lst.insurance` | listing | a quote younger than 60 days (the reference car: the premium the owner pays) | – |
