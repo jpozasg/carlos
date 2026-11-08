@@ -13,11 +13,12 @@
 <script>try{var md=JSON.parse(localStorage.getItem('carlos.mode')||'"auto"');if(md!=='auto')document.documentElement.dataset.mode=md;if(matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('os-dark')}catch(e){}</script>
 </head>
 <body>
+<a class="skip" href="#main" data-i18n-skip></a>
 <header class="top"><div class="wrap" id="hdr"></div></header>
-<main class="wrap" id="main"><div class="skel"></div></main>
+<main class="wrap" id="main" tabindex="-1"><div class="skel"></div></main>
 <footer class="wrap" id="footer"></footer>
 <div id="tip" role="presentation"></div>
-<dialog id="lightbox"><div class="lb"><img alt=""><button class="navbtn prev" type="button">‹</button><button class="navbtn next" type="button">›</button><button class="close" type="button">×</button><span class="count"></span></div></dialog>
+<dialog id="lightbox"><div class="lb"><img alt=""><button class="navbtn prev" type="button" data-aria="photo_prev">‹</button><button class="navbtn next" type="button" data-aria="photo_next">›</button><button class="close" type="button" data-aria="close_dialog">×</button><span class="count"></span></div></dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 <script type="module" src="/static/js/app.js"></script>
 </body>
