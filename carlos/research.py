@@ -19,7 +19,7 @@ LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'v
              'gearbox': 'gearbox_id', 'gearbox_family': 'gearbox_family_id', 'body_style': 'body_style_id'}
 # the same sources for every car with their minimum quality: ADAC, TÜV and a buying guide on the generation for all four parts,
 # an engine-specific source on the engine family and a gearbox-specific one on the gearbox family (#168, #174)
-REL_SOURCES = {'adac': 'B', 'tuev': 'B', 'guide': 'C', 'engine_specific': 'C', 'gearbox_specific': 'C'}
+REL_SOURCES = {'adac': 'B', 'tuev': 'B', 'guide': 'C', 'engine_specific': 'D', 'gearbox_specific': 'D'}  # the engine-/gearbox-specific search lands on forums and guide sites (#315)
 
 
 def _job(*jobs):
