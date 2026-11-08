@@ -62,7 +62,7 @@ One record per **design fault** (not wear):
 | window | build date from–to; "fixed from X" needs an A/B source, otherwise the fault stays and is marked uncertain |
 | level | exactly one of engine_family, engine, gearbox_family, gearbox, generation, body_style, option, variant |
 
-**Severity is derived, not chosen:** ENGINE_DAMAGE, STRANDS or SAFETY, or a price ≥ €1,500 → HIGH; a price ≥ €500 or UNUSABLE → MEDIUM; otherwise LOW.
+**Severity is derived, not chosen:** ENGINE_DAMAGE or a price ≥ €1,500 → HIGH, STRANDS or SAFETY → HIGH from €500, else LOW-MEDIUM (#285); a price ≥ €500 or UNUSABLE → MEDIUM; otherwise LOW.
 
 **Placement:** engine faults (incl. engine electrics, EV drive unit/HV) → engine or engine family; gearbox and clutch → gearbox or gearbox family; chassis, brakes, rust, suspension → generation (body style or option for convertible roofs, air suspension, 4×4); body electrics/infotainment → generation with phase windows.
 

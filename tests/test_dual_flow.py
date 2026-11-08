@@ -226,3 +226,12 @@ class FinishOverHttpTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SeverityTest(unittest.TestCase):
+    def test_cheap_stranding_fault_is_not_high(self):  # #285
+        from carlos.costs import fault_severity
+        f = lambda c, p: {'consequence': c, 'parts_eur': p, 'labor_eur': 0}
+        self.assertEqual(fault_severity(f('STRANDS', 135)), 'LOW-MEDIUM')
+        self.assertEqual(fault_severity(f('SAFETY', 600)), 'HIGH')
+        self.assertEqual(fault_severity(f('ENGINE_DAMAGE', 50)), 'HIGH')
