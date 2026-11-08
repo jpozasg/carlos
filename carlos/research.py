@@ -94,7 +94,7 @@ ITEMS = [
     ('gen.hu', 'generation', 'HU/AU every 24 months with the official fee', _job('HU'), (), None, always, 2),
     ('gen.brake_fluid', 'generation', 'brake fluid interval and workshop price', _job('BRAKE_FLUID'), (), None, always, 2),
     ('gen.brakes', 'generation', 'brake pads and discs: interval, DIY parts and workshop price', _job('BRAKES_FRONT', 'BRAKES_REAR'), (), None, always, 2),
-    ('gen.recalls', 'generation', 'recall search (KBA / manufacturer)', None, FOUND_OR_NONE, 'B', always, 1),
+    ('gen.recalls', 'generation', 'recall search (KBA / manufacturer)', None, FOUND_OR_NONE, 'C', always, 1),  # C: KBA pages are often unreachable; the recall row asks for a dealer VIN check anyway (#303)
     ('gen.risks', 'generation', 'body/chassis repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
     ('eng.identity', 'engine', 'code, fuel, displacement, power, aspiration, injection, timing drive', _fields(
         'code', 'fuel_type', 'displacement_cc', 'power_ps', 'aspiration', 'injection', 'timing_drive', code=True), (), None, combustion, 1),
@@ -114,7 +114,7 @@ ITEMS = [
     ('var.identity', 'variant', 'HSN/TSN, gearbox, body, emissions class, CO2', _fields(
         'hsn', 'tsn', 'transmission', 'body_style', 'emissions_standard', 'co2_g_km', status='technical_status'), (), None, always, 1),
     ('var.consumption', 'variant', f'{config.PRIMARY_CONSUMPTION} with sample size, min and max (electric: {config.PRIMARY_CONSUMPTION_EV}, kWh/100 km of the exact variant and battery)',
-     _consumption, (), 'C', always, 1),
+     _consumption, ('NONE FOUND',), 'C', always, 1),  # no reported average on the exact variant page: stays unknown, goes to the to-do (#303)
     ('var.tyres', 'variant', 'all-season tyres: size, price, tread life (variant or generation)', _tyres, (), None, always, 1),
     ('var.tax', 'variant', 'annual tax from the BMF Kfz-Steuer-Rechner', _tax, (), 'A', always, 1),
     ('var.gearbox', 'variant', 'automatic gearbox weak points checked for this variant', None, FOUND_OR_NONE, 'C', automatic, 1),
