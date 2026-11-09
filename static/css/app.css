@@ -83,7 +83,7 @@ select.inline{padding:6px 10px;border:var(--border-w) solid var(--border-strong)
 .meter.good>i{background:var(--good)}
 .scorebar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;min-width:40px}
 .scorebar i{display:block;height:100%;background:var(--accent);border-radius:99px}
-.big{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1;font-family:var(--readout)}
+.big{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1;font-family:var(--font-ui);font-variant-numeric:tabular-nums}  /* proportional: a monospace comma leaves a gap in 14,482 */
 .kv{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--text-2)}.kv b{color:var(--text);font-weight:600}
 dl.facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0;font-size:13px}
 dl.facts dt{color:var(--text-3)}dl.facts dd{margin:0;min-width:0;overflow-wrap:break-word}
@@ -474,4 +474,12 @@ main:focus{outline:none}
   .sr-legend span{white-space:normal;overflow:visible}
   .tablewrap td:first-child{min-width:170px}
   .be-wrap{overflow-x:auto}.be-wrap svg[data-be]{min-width:640px}
+}
+.plate-more>summary{display:none}
+/* phone dossier: shorter photo, facts collapsed, one-line sticky tab bar, so the tabs are near the top */
+@media (max-width:640px){
+  .viewer .main{aspect-ratio:16/10;max-height:230px}
+  .plate-more>summary{display:block;cursor:pointer;color:var(--accent-ink);font-weight:600;font-size:13px;padding:4px 0}
+  .dtabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;position:sticky;top:0;z-index:15;background:var(--bg);-webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);mask-image:linear-gradient(90deg,#000 90%,transparent)}
+  .dtabs button{white-space:nowrap;flex:none}
 }
