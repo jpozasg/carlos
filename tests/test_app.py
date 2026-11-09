@@ -1253,6 +1253,22 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'KBA-14729R'})[0], 201)
         self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'VW-2019-08-CAM_ADJUSTER'})[0], 201)
 
+    def test_one_open_flag_per_level_and_kind_337(self):
+        flag = {'engine_id': E_A, 'kind': 'SOURCES_DISAGREE', 'what': 'engine code A', 'why': 'sources differ'}
+        st, a = self.agent('POST', 'review_flags', flag)
+        self.assertEqual(st, 201, a)
+        st, b = self.agent('POST', 'review_flags', {**flag, 'what': 'timing drive B'})
+        self.assertEqual((st, b['id'], b.get('merged')), (200, a['id'], True))
+        c = sqlite3.connect(config.DB)
+        n, what = c.execute("SELECT COUNT(*), what FROM review_flags WHERE engine_id=? AND kind='SOURCES_DISAGREE'", (E_A,)).fetchone()
+        c.close()
+        self.assertEqual(n, 1)
+        self.assertIn('engine code A', what); self.assertIn('timing drive B', what)
+        st, o = self.agent('POST', 'review_flags', {**flag, 'kind': 'OTHER'})        # another kind: a new row
+        self.assertEqual((st, o['id'] != a['id']), (201, True))
+        self.sql_write("UPDATE review_flags SET status='CLEARED'")
+        self.assertEqual(self.agent('POST', 'review_flags', flag)[0], 201)            # a cleared flag may repeat
+
     def test_research_contract(self):
         from unittest import mock
         from carlos import research

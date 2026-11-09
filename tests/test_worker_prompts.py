@@ -9,6 +9,13 @@ def req(**kw):
     return {'id': 7, 'owner_id': 3, 'url': 'https://x/ad', 'note': None, 'listing_id': 42, 'attempts': 1, **kw}
 
 
+class FlagPromptTests(unittest.TestCase):
+    def test_research_prompt_flags_only_unsettled_disagreements(self):
+        txt = (worker.ROOT / 'docs' / 'prompts' / 'units' / 'research.md').read_text()
+        self.assertIn('only when no rule settles it', txt)
+        self.assertNotIn('and raise a `SOURCES_DISAGREE` flag (`flag_review`', txt)
+
+
 class PromptTests(unittest.TestCase):
     def test_every_unit_has_a_file_and_fills_every_placeholder(self):
         for u in UNITS:
