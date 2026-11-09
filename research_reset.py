@@ -13,7 +13,10 @@ the sources nothing kept cites. A kept row that cites a source on a model level 
 source of the account. The other accounts' listings are deleted with their child rows and photo files.
 Listings keep hsn, tsn, engine_code_seen, build_date and trim, so the worker re-finds or recreates their variant.
 
-Usage: python research_reset.py <cars.sqlite> [--apply] [--keep-account 5] [--drop-requests]"""
+--keep-tax-insurance keeps tax_data and insurance_data, and with them the catalogue levels (variant, engine, generation, ...) they
+need; every other level row and all other research is emptied.
+
+Usage: python research_reset.py <cars.sqlite> [--apply] [--keep-account 5] [--drop-requests] [--keep-tax-insurance]"""
 import sqlite3
 import sys
 from pathlib import Path
@@ -36,7 +39,7 @@ def cols(c, t):
     return [r[1] for r in c.execute(f'PRAGMA table_info("{t}")')]
 
 
-def steps(c, keep, drop_requests=False):
+def steps(c, keep, drop_requests=False, keep_ti=False):
     """(description, sql, params) in order; counts are taken before running each step."""
     ts = tables(c)
     gone = 'SELECT id FROM listings WHERE owner_id != ?'
@@ -57,7 +60,16 @@ def steps(c, keep, drop_requests=False):
              'WHERE maintenance_item_id IS NOT NULL OR fault_id IS NOT NULL OR recall_id IS NOT NULL', ()),
             ('valuations: old resale estimates (the market model replaces them)', "DELETE FROM valuations WHERE kind='resale_end'", ())]
     # 3. research and catalogue levels
-    out += [(f'{t}: emptied', f'DELETE FROM "{t}"', ()) for t in RESEARCH + LEVELS if t in ts]
+    keep_tables = ('tax_data', 'insurance_data') if keep_ti else ()
+    out += [(f'{t}: emptied', f'DELETE FROM "{t}"', ()) for t in RESEARCH if t in ts and t not in keep_tables]
+    for t in LEVELS:
+        if t not in ts:
+            continue
+        # with keep_ti a level row stays while any other table still points at it (sources are detached below)
+        refs_to = [f'SELECT "{f[3]}" FROM "{o}" WHERE "{f[3]}" IS NOT NULL' for o in ts if o not in ('sources', t)
+                   for f in c.execute(f'PRAGMA foreign_key_list("{o}")') if f[2] == t] if keep_ti else []
+        where = f' WHERE id NOT IN ({" UNION ".join(refs_to)})' if refs_to else ''
+        out.append((f'{t}: emptied' + (' except rows kept rows need' if refs_to else ''), f'DELETE FROM "{t}"{where}', ()))
     # 4. sources: a kept row's model-level source becomes private and level-free; the rest nothing cites goes
     refs = ' UNION '.join(f'SELECT source_id FROM "{t}" WHERE source_id IS NOT NULL'
                           for t in ts if t != 'sources' and 'source_id' in cols(c, t))
@@ -72,7 +84,7 @@ def steps(c, keep, drop_requests=False):
     return out
 
 
-def run(db, apply=False, keep=5, drop_requests=False):
+def run(db, apply=False, keep=5, drop_requests=False, keep_ti=False):
     """Runs every step in one transaction (exact row counts); the dry run rolls it back. Returns {description: rows}."""
     db = Path(db)
     c = sqlite3.connect(db, isolation_level=None)
@@ -87,7 +99,7 @@ def run(db, apply=False, keep=5, drop_requests=False):
         done = {}
         c.execute('BEGIN')
         try:
-            for d, sql, p in steps(c, keep, drop_requests):
+            for d, sql, p in steps(c, keep, drop_requests, keep_ti):
                 n = c.execute(sql, p).rowcount
                 if n:
                     done[d] = n
@@ -119,4 +131,4 @@ if __name__ == '__main__':
     if not args or args[0].startswith('-'):
         raise SystemExit(__doc__)
     keep = int(args[args.index('--keep-account') + 1]) if '--keep-account' in args else 5
-    run(args[0], "--apply" in args, keep, '--drop-requests' in args)
+    run(args[0], "--apply" in args, keep, '--drop-requests' in args, '--keep-tax-insurance' in args)
