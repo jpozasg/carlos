@@ -89,7 +89,7 @@ function relBox(d) {
 const costStrip = d => `<div class="plate-cost"><span>${t('plate_cost_short')}</span><b>${d.known_cost_per_month == null ? PEND() : `${euro(d.known_cost_per_month)}<small>${t('per_month')}</small>`}</b></div>`;  // total cost of ownership per month
 function plate(d) {
   const row = (k, v, cls = '') => `<dt class="${cls}">${k}</dt><dd class="${cls}">${v}</dd>`;
-  return `<aside class="plate" aria-label="${esc(t('plate_title'))}">${costStrip(d)}<dl>
+  return `<aside class="plate" aria-label="${esc(t('plate_title'))}">${costStrip(d)}<details class="plate-more"${matchMedia('(max-width:640px)').matches ? '' : ' open'}><summary>${t('plate_more')}</summary><dl>
     ${d.is_reference ? '' : row(t('asking_price'), eP(d.price_eur))}
     ${row(t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km')}
     ${row(t('registration'), d.first_registration ? esc(d.first_registration) : PEND())}
@@ -98,7 +98,7 @@ function plate(d) {
     ${row(t('power'), d.power_ps == null ? PEND() : num(d.power_ps, 0) + ' PS')}
     ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' ' + esc(d.consumption_unit || 'l/100 km'))}
     ${row(t('plate_position'), d.rank ? `#${d.rank}` : `<span class="pending">${t(d.is_reference ? 'ref_not_ranked' : 'not_ranked')}</span>`)}
-    ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>${relBox(d)}
+    ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>${relBox(d)}</details>
     ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;
 }
 function valuationRow(v) {
@@ -204,7 +204,7 @@ function historyCard(d) {
     ${q.length ? `<h3 style="margin-top:16px">${t('quotes_title')}</h3><div class="tablewrap"><table><thead><tr><th>${t('date')}</th><th class="n">${t('premium')}</th><th>${t('status')}</th><th>${t('mp_src')}</th></tr></thead><tbody>${q.map(x => `<tr><td>${esc(x.quote_date ?? '')}</td><td class="n">${eP(x.annual_premium_eur)}</td><td>${esc(tv(x.premium_status))}${x.insurer ? ' · ' + esc(x.insurer) : ''}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
 }
 // the TÜV / ADAC figures of the model by age (#289), as published; the class average (when the report gives one) feeds the score
-const statsCard = d => (d.reliability_stats || []).length ? `<div class="card"><h3>${t('stats_title')}</h3><div class="tablewrap"><table class="grid"><thead><tr><th>${t('source')}</th><th>${t('stats_age')}</th><th class="n">${t('value')}</th><th class="n">${t('stats_class')}</th><th></th></tr></thead><tbody>${
+const statsCard = d => (d.reliability_stats || []).length ? `<div class="card"><h3>${t('stats_title')}</h3><div class="tablewrap"><table><thead><tr><th>${t('source')}</th><th>${t('stats_age')}</th><th class="n">${t('value')}</th><th class="n">${t('stats_class')}</th><th></th></tr></thead><tbody>${
   d.reliability_stats.map(r => `<tr><td>${r.kind === 'TUEV' ? 'TÜV' : 'ADAC'} ${r.report_year ?? ''}</td><td>${r.age_from}–${r.age_to}</td><td class="n">${num(r.value, 1)} ${esc(r.unit)}</td><td class="n">${r.class_average == null ? '—' : num(r.class_average, 1)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}</tbody></table></div></div>` : '';
 function reliabilityCard(d) {
   if (!d.reliability.length) return `<div class="card"><h3>${t('reliability')}</h3>${empty(t('no_reliability'))}</div>`;
