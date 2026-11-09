@@ -337,12 +337,29 @@ def guard_duplicate(c, table, data, row_id, distinct):
     data['notes'] = f"Distinct from {table[:-1].replace('_', ' ')} {', '.join('#%d' % i for i in ids)}: {reason}"
 
 
+def open_flag(c, data):
+    """Id of the OPEN review flag of the same kind on the same level as `data`, or None (one open flag per level and kind, #337)."""
+    cols = [k for k in config.LEVEL_COLUMNS if isinstance(data, dict) and data.get(k) is not None]
+    if len(cols) != 1 or not data.get('kind'):
+        return None
+    r = c.execute(f"SELECT id FROM main.review_flags WHERE {cols[0]}=? AND kind=? AND status='OPEN' ORDER BY id LIMIT 1", (data[cols[0]], data['kind'])).fetchone()
+    return r[0] if r else None
+
+
 def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, check=True):
     """Inserts (row_id None) or updates a row of this account in one transaction and records it in change_log.
     Admin inserts of generations, engines, variants and level sources go to the shared catalogue (owner_id NULL);
     knowledge rows follow their level, except an account's own premium or USER DATA figure, which stays private.
     `actor` is who wrote it (the admin acting for the account), for the change log. `check=False` leaves consistency.check
     to the caller (the staging merge runs it once at the end)."""
+    if table == 'review_flags' and row_id is None and (fid := open_flag(c, data)):  # a second flag of the kind joins the open one
+        old = c.execute('SELECT what, why FROM main.review_flags WHERE id=?', (fid,)).fetchone()
+        new = {k: '; '.join(dict.fromkeys([old[k], str(data.get(k) or '')]))[:1500] for k in ('what', 'why')}
+        with c:
+            c.execute('UPDATE main.review_flags SET what=?, why=? WHERE id=?', (new['what'], new['why'], fid))
+            c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
+                      ('review_flags', fid, 'update', json.dumps(dict(old)), json.dumps(new), actor or user_id))
+        return fid
     distinct = data.pop('distinct_of', None) if table in DUPLICATE_GUARDED and isinstance(data, dict) else None
     data = clean_row(c, table, data, insert=row_id is None)
     check_parents(c, table, data)
