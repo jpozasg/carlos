@@ -36,7 +36,7 @@ SQLite, one file (`cars.sqlite` in the data directory). `schema.sql` is the exec
 
 | `insurance_data` | a quote or the premium paid | `hsn`, `tsn`, `year`, the three Typklassen, `annual_premium_eur` (median of the 5 cheapest reasonable offers), `premium_min_eur`, `insurer`, `tariff`, `premium_status` (QUOTE / USER DATA / PENDING), `quote_date`, `quote_profile` (JSON, no personal data), `source_id`, `notes` |
 | `tyre_data` | the tyre set of the variant | `tyre_type`, `size`, `price_per_tyre_eur`, `tyres_per_set`, `life_km`, `fitting_per_set_eur`, `status`, `source_id`, `notes` |
-| `research_checks` | a research task of the contract done on this level (issue #114) | `task` (a contract item id, e.g. `rel.ENGINE.adac`, `gen.recalls`), `source_id` (required), `result` (`FOUND`, `NONE FOUND`, `N/A`), `contract_version`, `checked_date`, `notes`, `archived` |
+| `research_checks` | a research task of the contract done on this level (issue #114) | `task` (a contract item id, e.g. `rel.ENGINE.adac`, `gen.recalls`), `source_id` (required), `result` (`FOUND`, `NONE FOUND`, `N/A`), `contract_version`, `checked_date`, `notes`, `named_codes` (JSON array of `fault_components` codes of the task's part that the source names as weak points; migration 042, #343), `archived` |
 
 `sources` (`title`, `url`, `source_type`, `quality` A–D, `accessed_date`, `supports`, `limitations`, `owner_id`) may attach to one level or to none (shared sources such as fee tables).
 

@@ -1269,6 +1269,27 @@ class AppTest(unittest.TestCase):
         self.sql_write("UPDATE review_flags SET status='CLEARED'")
         self.assertEqual(self.agent('POST', 'review_flags', flag)[0], 201)            # a cleared flag may repeat
 
+    def test_rel_coverage_343(self):
+        """A fault two sources name must be filed; a FOUND check without named_codes leaves rel.coverage missing."""
+        todo = lambda: ' | '.join(next(m for m in self.agent('GET', 'todo')[1]['models'] if m['vehicle_id'] == V_A)['todo'])
+        self.assertNotIn('rel.coverage', todo())                                     # only NONE FOUND checks: nothing named
+        chk = {'generation_id': G1, 'result': 'FOUND', 'source_id': SRC_GUIDE}
+        bad = {**chk, 'task': 'rel.CHASSIS.adac', 'named_codes': ['NOT_A_CODE']}
+        self.assertEqual(self.agent('POST', 'research_checks', bad)[0], 400)
+        self.assertEqual(self.agent('POST', 'research_checks', {**chk, 'task': 'gen.recalls', 'named_codes': ['BRAKES']})[0], 400)
+        self.assertEqual(self.agent('POST', 'research_checks', {**chk, 'task': 'rel.CHASSIS.adac'})[0], 201)
+        self.assertIn('checks without named_codes: rel.CHASSIS.adac', todo())
+        self.sql_write("DELETE FROM research_checks WHERE task='rel.CHASSIS.adac' AND result='FOUND'")
+        for src in ('adac', 'tuev'):
+            self.assertEqual(self.agent('POST', 'research_checks', {**chk, 'task': f'rel.CHASSIS.{src}', 'named_codes': ['BRAKE_LINES']})[0], 201)
+        self.assertIn('faults named by two sources but not filed: CHASSIS BRAKE_LINES', todo())
+        self.sql_write('UPDATE faults SET archived=1')
+        fault = {'component': 'Brake hose', 'component_code': 'BRAKE_LINES', 'part': 'CHASSIS', 'consequence': 'SAFETY', 'existence': 'REPORTED',
+                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 100, 'labor_eur': 100,
+                 'source_id': SRC_GUIDE, 'generation_id': G1}
+        self.assertEqual(self.agent('POST', 'faults', fault)[0], 201)
+        self.assertNotIn('rel.coverage', todo())
+
     def test_research_contract(self):
         from unittest import mock
         from carlos import research

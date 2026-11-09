@@ -16,7 +16,7 @@ RESEARCH_MAX_ATTEMPTS = 2  # a research run closes DONE with gaps after this man
 _PARTS = ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')
 UNIT_ITEMS = {
     'CAPTURE': ['lst.capture', 'lst.photos'],
-    'VARIANT': ['var.identity', 'var.consumption', 'var.tyres', 'var.gearbox', 'var.gearbox_level', 'gbx.identity'],
+    'VARIANT': ['var.identity', 'var.consumption', 'var.tyres', 'var.gearbox', 'var.gearbox_level', 'gbx.identity', 'rel.coverage'],
     'GENERATION': ['gen.identity', 'gen.facelift', 'gen.recalls', 'gen.risks', 'gen.baseline', 'gen.safety', 'bdy.risks']
                   + [f'rel.{p}.{s}' for p in _PARTS for s in ('adac', 'tuev', 'guide')],
     'GEN_MAINTENANCE': ['gen.hu', 'gen.brake_fluid', 'gen.brakes'],
