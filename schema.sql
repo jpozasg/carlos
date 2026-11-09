@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=41). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=42). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -402,7 +402,7 @@ CREATE TABLE "research_checks" (
  task TEXT NOT NULL, source_id INTEGER NOT NULL REFERENCES sources(id),
  result TEXT NOT NULL CHECK (result IN ('FOUND', 'NONE FOUND', 'N/A')),
  contract_version INTEGER NOT NULL, checked_date TEXT, notes TEXT,
- archived INTEGER NOT NULL DEFAULT 0, owner_id INTEGER REFERENCES users(id),
+ archived INTEGER NOT NULL DEFAULT 0, owner_id INTEGER REFERENCES users(id), named_codes TEXT CHECK (named_codes IS NULL OR json_type(named_codes) = 'array'),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL)
       + (engine_family_id IS NOT NULL) + (gearbox_family_id IS NOT NULL) + (body_style_id IS NOT NULL) + (option_id IS NOT NULL) = 1));
 CREATE TABLE review_flags (

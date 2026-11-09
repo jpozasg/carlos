@@ -7,12 +7,12 @@ which listing triggered the research. Each item is graded from the rows on its o
 A level is researched without MISSING items and verified when every item is VERIFIED. The table of items is
 documented in docs/cost-research-protocol.md (a test keeps both in step). Adding an item marks every level it applies to
 incomplete at once; raising an item's `since` makes checks recorded against an older contract stop counting."""
-import datetime, re
+import datetime, json, re
 from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 8  # 8: gen.recalls needs FOUND or NONE FOUND, N/A no longer counts (#333); 7: engine and family graded as one pool (#331); 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
+CONTRACT_VERSION = 9  # 9: rel.coverage, faults named by two sources (#343); 8: gen.recalls needs FOUND or NONE FOUND, N/A no longer counts (#333); 7: engine and family graded as one pool (#331); 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
 LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id', 'engine_family': 'engine_family_id',
@@ -73,6 +73,33 @@ def _fields(*cols, status='status', code=False):
     return cands
 
 
+def _coverage(ctx):
+    """rel.coverage (#343): every component code that >= 2 distinct sources name for a part (research_checks.named_codes of the FOUND
+    rel.<PART>.<source> checks on the variant's levels) has a fault with that part and code on one of those levels. A FOUND check
+    that says nothing about its codes leaves the item missing."""
+    levels = ('generation', 'engine', 'engine_family', 'gearbox')
+    checks = [c for c in ctx['rows']('research_checks', *levels) if c['result'] == 'FOUND' and (c['task'] or '').startswith('rel.')
+              and c['task'].count('.') == 2]
+    blank = [c['task'] for c in checks if c.get('named_codes') is None]
+    named = {}
+    for c in checks:
+        part, src = c['task'].split('.')[1:]
+        for code in json.loads(c['named_codes'] or '[]'):
+            if code != 'OTHER':
+                named.setdefault((part, code), set()).add(src)
+    have = {(f['part'], f['component_code']) for f in ctx['rows']('faults', *levels)}
+    miss = sorted(p + ' ' + k for (p, k), srcs in named.items() if len(srcs) >= 2 and (p, k) not in have)
+    if blank or miss:
+        said = []
+        if blank:
+            said.append('checks without named_codes: ' + ', '.join(sorted(set(blank))))
+        if miss:
+            said.append('faults named by two sources but not filed: ' + ', '.join(miss))
+        ctx['hints']['rel.coverage'] = '; '.join(said)
+        return []
+    return [{'_grade': 'VERIFIED'}]
+
+
 def _is(col, *values):
     return lambda ctx: (ctx['row'].get(col) or '') in values
 
@@ -128,6 +155,7 @@ ITEMS = [
      _is('type', 'MANUAL', 'DCT'), 5),
     ('gbx.risks', 'gearbox', 'gearbox faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
     ('gen.safety', 'generation', 'Euro NCAP stars and test year (or a check: N/A, never tested)', _fields('ncap_stars', 'ncap_year'), NOT_APPLICABLE, 'B', always, 6),
+    ('rel.coverage', 'variant', 'every fault two reliability sources name is filed (checks list named_codes)', _coverage, (), None, always, 9),
     ('bdy.risks', 'body_style', 'body style faults and maintenance (convertible roof …) or a check: none found', _risks, ('NONE FOUND',), None, always, 5),
 ]
 # weak points: the same four sources per part (docs/cost-research-protocol.md, step 2); the engine part on the engine,
@@ -160,7 +188,7 @@ def grade_rows(cands, sources, min_q):
 
 def evaluate(level, row, rows, sources):
     """Grades of the items of one level. `rows(table, *extra_levels)` returns the knowledge rows on this level."""
-    ctx = {'row': row, 'rows': rows, 'sources': sources}
+    ctx = {'row': row, 'rows': rows, 'sources': sources, 'hints': {}}
     out = []
     for iid, lvl, title, cands, results, min_q, applies, since in ITEMS:
         if lvl != level or not applies(ctx):
@@ -169,7 +197,8 @@ def evaluate(level, row, rows, sources):
         found += [r for r in rows('research_checks') if r['task'] == iid and r['result'] in results and r['contract_version'] >= since]
         # na_only: every result is N/A (the source does not cover this model yet, e.g. too new for ADAC/TÜV statistics)
         out.append({'id': iid, 'level': lvl, 'title': title, 'grade': grade_rows(found, sources, min_q),
-                    'na_only': bool(found) and all(x.get('result') == 'N/A' for x in found)})
+                    'na_only': bool(found) and all(x.get('result') == 'N/A' for x in found),
+                    **({'hint': ctx['hints'][iid]} if iid in ctx['hints'] else {})})
     return out
 
 
@@ -212,7 +241,9 @@ class Contract:
         if level == 'variant':  # the variant's drivetrain decides which consumption source counts
             row = {**row, 'fuel_type': self.rows['engines'][row['engine_id']]['fuel_type']}
         if key not in self.cache:
-            extra = {'generation': ('generation_id', row.get('generation_id'))} if level == 'variant' else None
+            eng = self.rows['engines'].get(row.get('engine_id')) or {}
+            extra = {'generation': ('generation_id', row.get('generation_id')), 'engine': ('engine_id', row.get('engine_id')),
+                     'engine_family': ('engine_family_id', eng.get('family_id')), 'gearbox': ('gearbox_id', row.get('gearbox_id'))} if level == 'variant' else None
             self.cache[key] = evaluate(level, row, self._rows([(LEVEL_COL[level], row['id'])], extra), self.sources)
         return self.cache[key]
 

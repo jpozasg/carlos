@@ -47,7 +47,7 @@ SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'ma
                    'reliability_items', 'valuations', 'unit_costs', 'listing_snapshots', 'repair_risks', 'tyre_data',
                    'maintenance_resets', 'research_checks', 'faults', 'recalls', 'reliability_stats', 'market_models', 'listing_quotes'}
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'), ('listing_quotes', 'quote_profile'),
-                ('faults', 'curve_km'), ('faults', 'curve_age'), ('market_models', 'band_counts'), ('market_models', 'sample_json'))
+                ('faults', 'curve_km'), ('faults', 'curve_age'), ('research_checks', 'named_codes'), ('market_models', 'band_counts'), ('market_models', 'sample_json'))
 RULES = ('null = unknown (never 0); archive outdated rows with PATCH archived=1 (listings: listing_status WITHDRAWN); DELETE only after the owner confirmed it; source quality A–D; free text '
          'in English; knowledge rows attach to exactly one level (vehicle_id, engine_id, generation_id, gearbox_id, engine_family_id, '
          'gearbox_family_id, body_style_id or option_id; a maintenance row without one is a global default); see AGENTS.md')
@@ -195,6 +195,13 @@ def clean_row(c, table, data, insert):
         raise ValueError('Cannot remove the source of a data point')
     if table == 'research_checks' and 'task' in out and out['task'] not in research.TASKS:
         raise ValueError(f"task must be a research contract item: {sorted(research.TASKS)} (docs/cost-research-protocol.md)")
+    if table == 'research_checks' and out.get('named_codes'):
+        task = out.get('task') or ''
+        part = task.split('.')[1] if task.startswith('rel.') else None
+        valid = [k for k, _, _ in config.FAULT_COMPONENTS.get(part, ())]
+        bad = [x for x in json.loads(out['named_codes']) if x not in valid]
+        if part is None or bad:
+            raise ValueError(f"named_codes {bad or ''} must be fault_components codes of the part of a rel.<PART>.<source> task: {valid} (GET /api/agent/schema)")
     if insert and table == 'research_checks' and out.get('contract_version') is None:
         out['contract_version'] = research.CONTRACT_VERSION
     if insert and table == 'reliability_items' and out.get('part') is None:

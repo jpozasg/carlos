@@ -181,12 +181,14 @@ def reliability(v, component, issue, evidence, severity, source_id, inspection_a
                                       'applies_from': applies_from, 'applies_to': applies_to})
 
 
-def check(level, level_id, task, source_id, result, notes=None):
+def check(level, level_id, task, source_id, result, notes=None, codes=None):
     """Record a research task of the contract as done on one level (issue #114): `task` is a contract item id such as
     'rel.ENGINE.adac' or 'gen.recalls' (GET /api/agent/schema → research_contract), result FOUND, NONE FOUND
-    ('consulted, nothing to report': a clean part counts as researched) or N/A (e.g. gen.facelift without a facelift)."""
+    ('consulted, nothing to report': a clean part counts as researched) or N/A (e.g. gen.facelift without a facelift).
+    For a rel.<PART>.<source> check, `codes` lists the fault_components codes of that part the source names as weak points
+    (for the TÜV: every above-average defect in any age class); a FOUND check without it leaves rel.coverage missing (#343)."""
     return post('research_checks', {LEVEL_COLUMNS[level]: level_id, 'task': task, 'source_id': source_id, 'result': result,
-                                    'checked_date': DAY, 'notes': notes})
+                                    'checked_date': DAY, 'notes': notes, **({'named_codes': list(codes)} if codes is not None else {})})
 
 
 def checklist_from_reliability(listing_id):
