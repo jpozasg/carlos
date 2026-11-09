@@ -38,5 +38,20 @@ Admins get a **view as** switcher in the header (issue #142): picking an account
 - Everything the user does in the UI (parameters, questionnaire, viewing mode, account) goes through the same API an agent would use; the UI has no privileged path.
 - State remembered per browser (`localStorage`, prefix `carlos.`): mode, language, sort, filters, selection, cost selection, break-even highlight, model filters. Everything else lives in the account.
 
+## Dossier information map (#340)
+
+The dossier answers four questions, one tab each; a piece of data is shown in one place and linked from the others (never copied). The header (photos, score, cost plate) is always visible; on a phone the plate's facts are collapsed.
+
+| Tab | Question | Content (API field) |
+|---|---|---|
+| Overview | What is this car and how does it rank? | facts and seller claims, decision bar, review flags, to-do gaps, ranking explanation, research levels (`explain`, `research`) |
+| Costs | What does each of the eight components cost, from which inputs, from which source? | summary table of the eight `components` (total, per month, share, state); one block per component with its inputs and source: **fuel** (`consumption`, `observations` consumption, `cost_detail.fuel_price_eur_l`, period km), **insurance** (`quotes`, `insurance`, `annual_insurance`), **tax** (`tax`: amount, basis, registration window, status), **maintenance** (certain / scheduled split from `cost_detail`, DIY hours, link to the Maintenance tab), **repairs** (certain / expected split, link), **tyres** (`tyres`: size, price, set, life, fitting), **purchase/sale** (`unit_costs` of that category, price), **depreciation** (`valuations`, asking price, horizon); own one-off costs (`unit_costs`) |
+| Maintenance & repairs | What will keeping it running cost? | maintenance plan (`maintenance_plan`, `maintenance_resets`, certain jobs), repair risks (`repair_risks`), certain repairs, and the expected cost of the faults as one line linking to Reliability |
+| Reliability | What is known to go wrong? | per part (ENGINE, GEARBOX, CHASSIS, ELECTRICS) with its score out of 9: weak points (`fault_plan`: severity, band, chance, price, expected cost, inspection action, source), recalls (`recalls`, with the checklist state from `reliability_detail`), legacy `reliability` rows; then TÜV/ADAC figures (`reliability_stats`), known history of this car (`history`) |
+| Viewing | What do I check in person? | checklist (`inspection`), viewing mode |
+| Log & sources | Where does it come from? | listing archive (`snapshots`, `media`), log (`events`), `sources` of the car, price history |
+
+Moved, not removed: the faults table (Maintenance & repairs to Reliability, grouped by part), insurance quotes (Reliability to Costs), the loose valuations block (Costs, under depreciation).
+
 ## Checking changes
 Start the app and open the pages in a browser; or headless: `chromium --headless=new --screenshot=out.png --window-size=1280,900 http://127.0.0.1:8000/#/compare` with a session cookie set by a bootstrap page (see `tests/` for the API side). Check phone width (390 px), every theme, light and dark, and the console for errors.
