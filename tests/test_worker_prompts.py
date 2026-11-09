@@ -16,6 +16,15 @@ class FlagPromptTests(unittest.TestCase):
         self.assertNotIn('and raise a `SOURCES_DISAGREE` flag (`flag_review`', txt)
 
 
+class IntervalPromptTests(unittest.TestCase):
+    def test_protocol_and_prompts_carry_the_tie_break(self):
+        proto = (worker.ROOT / 'docs' / 'cost-research-protocol.md').read_text()
+        for s in ('shorter km and the shorter months', 'fixed** regime'):
+            self.assertIn(s, proto)
+        for f in ('units/research.md', 'research-car.md'):
+            self.assertIn('source order and tie-break', (worker.ROOT / 'docs' / 'prompts' / f).read_text())
+
+
 class PromptTests(unittest.TestCase):
     def test_every_unit_has_a_file_and_fills_every_placeholder(self):
         for u in UNITS:

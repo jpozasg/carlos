@@ -110,8 +110,13 @@ def report(pa, pb):
     ka = {(m['level'], m['job'] or m['item']): m for m in ma}
     kb = {(m['level'], m['job'] or m['item']): m for m in mb}
     same = [k for k in ka if k in kb]
+    differ = [k for k in same if (ka[k]['interval_km'], ka[k]['interval_months']) != (kb[k]['interval_km'], kb[k]['interval_months'])]
+    tied = sum('tie-break' in (ka[k]['notes'] or '') + (kb[k]['notes'] or '') for k in differ)
     lines += ['', '## Maintenance', f'- A: {len(ma)}, B: {len(mb)}, same job on the same level: {len(same)}',
               f"- Same interval (km and months): {pct(sum(ka[k]['interval_km'] == kb[k]['interval_km'] and ka[k]['interval_months'] == kb[k]['interval_months'] for k in same), len(same))}",
+              f"- Same km: {pct(sum(ka[k]['interval_km'] == kb[k]['interval_km'] for k in same), len(same))}; "
+              f"same months: {pct(sum(ka[k]['interval_months'] == kb[k]['interval_months'] for k in same), len(same))}",
+              f"- Differing pairs with the tie-break note: {tied}",
               f'- Only in A: {sorted(str(k) for k in ka.keys() - kb.keys())}', f'- Only in B: {sorted(str(k) for k in kb.keys() - ka.keys())}']
     ra = {r['code'] for r in facts(a, 'recalls')}; rb = {r['code'] for r in facts(b, 'recalls')}
     lines += ['', '## Recalls', f'- Both: {sorted(ra & rb)}', f'- Only A: {sorted(ra - rb)}', f'- Only B: {sorted(rb - ra)}']
