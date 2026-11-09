@@ -8,6 +8,8 @@ from .auth import _KNOW, _LISTING_CHILDREN, ARCHIVABLE, MODEL, OWNED
 CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_events', 'kind'): r'[a-z][a-z_]*',
                 ('vehicles', 'technical_status'): r'[A-Z][A-Z /-]*', ('generations', 'status'): r'[A-Z][A-Z /-]*',
                 ('engines', 'status'): r'[A-Z][A-Z /-]*',
+                # KBA reference ('KBA-14729R') or '<MAKE>-<YYYY-MM>-<COMPONENT_CODE>'; never 'UNKNOWN-...' or prose (#333)
+                ('recalls', 'code'): r'\s*(?!(?i:unknown))[A-Za-z0-9][A-Za-z0-9_./-]*\s*',
                 ('reliability_items', 'severity'): r'[A-Z][A-Z /-]*', ('reliability_items', 'frequency_status'): r'[A-Z][A-Z /-]*',
                 ('insurance_data', 'premium_status'): r'[A-Z][A-Z /-]*', ('repair_risks', 'status'): r'[A-Z][A-Z /-]*',
                 ('tyre_data', 'status'): r'[A-Z][A-Z /-]*', ('tyre_data', 'tyre_type'): r'[A-Z][A-Z /-]*',
