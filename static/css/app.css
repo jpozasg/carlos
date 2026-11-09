@@ -483,3 +483,4 @@ main:focus{outline:none}
   .dtabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;position:sticky;top:0;z-index:15;background:var(--bg);-webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);mask-image:linear-gradient(90deg,#000 90%,transparent)}
   .dtabs button{white-space:nowrap;flex:none}
 }
+@media (max-width:640px){.co-sum td:first-child{min-width:0}.co-sum th:last-child,.co-sum td:last-child{display:none}}
