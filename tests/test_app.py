@@ -1238,6 +1238,21 @@ class AppTest(unittest.TestCase):
         self.assertNotIn('fam.risks missing', todo())
         self.assertNotIn('eng.risks missing', todo())
 
+    def test_recalls_fallback_333(self):
+        """An N/A recall check never satisfies gen.recalls; recall codes are KBA references or MAKE-YYYY-MM-COMPONENT."""
+        gen = lambda: next(x for x in self.agent('GET', 'todo')[1]['catalogue']['generations'] if x['id'] == G1)
+        self.sql_write("DELETE FROM research_checks WHERE task='gen.recalls'")
+        chk = {'generation_id': G1, 'task': 'gen.recalls', 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'research_checks', {**chk, 'result': 'N/A'})[0], 201)
+        self.assertIn('gen.recalls', gen()['missing'])
+        self.assertEqual(self.agent('POST', 'research_checks', {**chk, 'result': 'NONE FOUND'})[0], 201)
+        self.assertNotIn('gen.recalls', gen()['missing'])
+        rc = {'generation_id': G1, 'defect': 'Cam adjuster', 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'UNKNOWN-1'})[0], 400)
+        self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'unknown recall'})[0], 400)
+        self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'KBA-14729R'})[0], 201)
+        self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'VW-2019-08-CAM_ADJUSTER'})[0], 201)
+
     def test_research_contract(self):
         from unittest import mock
         from carlos import research

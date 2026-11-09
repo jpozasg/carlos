@@ -12,7 +12,7 @@ from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 7  # 7: engine and family graded as one pool (#331); 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
+CONTRACT_VERSION = 8  # 8: gen.recalls needs FOUND or NONE FOUND, N/A no longer counts (#333); 7: engine and family graded as one pool (#331); 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
 LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id', 'engine_family': 'engine_family_id',
@@ -94,7 +94,7 @@ ITEMS = [
     ('gen.hu', 'generation', 'HU/AU every 24 months with the official fee', _job('HU'), (), None, always, 2),
     ('gen.brake_fluid', 'generation', 'brake fluid interval and workshop price', _job('BRAKE_FLUID'), (), None, always, 2),
     ('gen.brakes', 'generation', 'brake pads and discs: interval, DIY parts and workshop price', _job('BRAKES_FRONT', 'BRAKES_REAR'), (), None, always, 2),
-    ('gen.recalls', 'generation', 'recall search (KBA / manufacturer)', None, FOUND_OR_NONE, 'C', always, 1),  # C: KBA pages are often unreachable; the recall row asks for a dealer VIN check anyway (#303)
+    ('gen.recalls', 'generation', 'recall search (KBA / manufacturer)', None, ('FOUND', 'NONE FOUND'), 'C', always, 1),  # N/A records an unreachable source but never satisfies the item (#333)  # C: KBA pages are often unreachable; the recall row asks for a dealer VIN check anyway (#303)
     ('gen.risks', 'generation', 'body/chassis repair risks, each priced (or a check: none found)', _risks, ('NONE FOUND',), None, always, 1),
     ('eng.identity', 'engine', 'code, fuel, displacement, power, aspiration, injection, timing drive', _fields(
         'code', 'fuel_type', 'displacement_cc', 'power_ps', 'aspiration', 'injection', 'timing_drive', code=True), (), None, combustion, 1),
