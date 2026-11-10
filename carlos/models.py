@@ -1,6 +1,6 @@
 """The models browser: make → model → generation → engine → variant, each with its linked listings and knowledge."""
 from . import config, research
-from .costs import Knowledge
+from .costs import Knowledge, source_rows
 from .db import rows, variants
 
 
@@ -60,6 +60,7 @@ def variant_detail(c, vehicle_id):
     v.update({t: know.of(t, v) for t in config.SCOPED_TABLES})
     contract = research.Contract(c, know)
     v['research'] = research.levels(contract.resolved(v['id']))
+    v['source_keys'], v['source_ratings'] = source_rows(c, v['engine_id'], v['generation_id'])
     v['review_flags'] = with_reviews(c, v['review_flags'])
     v['engine_row'] = rows(c, 'SELECT * FROM engines WHERE id=?', (v['engine_id'],))[0]
     v['generation_row'] = rows(c, 'SELECT * FROM generations WHERE id=?', (v['generation_id'],))[0]

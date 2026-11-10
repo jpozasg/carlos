@@ -518,6 +518,14 @@ def reliability_sources(keys, ratings, age, reg_year, perm=None):
             'missing': [s for s, x in slot_out.items() if not x]}
 
 
+def source_rows(c, engine_id, generation_id):
+    """Live source_keys of an engine and generation, with the source_ratings that belong to them (#358), for the UI."""
+    keys = rows(c, 'SELECT * FROM source_keys WHERE archived=0 AND (engine_id=? OR generation_id=?) ORDER BY id', (engine_id, generation_id))
+    have = {(k['source_key'], k['external_key'].upper()) for k in keys}
+    rats = [r for r in rows(c, 'SELECT * FROM source_ratings WHERE archived=0 ORDER BY id') if (r['source_key'], r['external_key'].upper()) in have]
+    return keys, rats
+
+
 def offer_summary(parts, months):
     """Cost per month of one way to get the car (purchase or lease), for the dossier and the 'compare both' choice."""
     known = [x for x in parts.values() if x is not None]
@@ -882,6 +890,7 @@ def listing_detail(c, listing_id, p, ranked):
                              'OR id IN (SELECT source_id FROM listing_events WHERE listing_id=?) OR id=? ORDER BY id',
                           (v['id'], v['engine_id'], v['generation_id'], listing_id, u['source_id'])))
     u['research_levels'] = research.levels(u['research'])
+    u['rating_keys'], u['ratings'] = source_rows(c, v['engine_id'], v['generation_id'])
     from .models import with_reviews
     u['review_flags'] = with_reviews(c, u['review_flags'])  # problems flagged on any of its levels (#168)
     months = p['ownership_years'] * 12
