@@ -15,7 +15,7 @@ KIND = {'sources': 'source', 'engine_families': 'level', 'gearbox_families': 'le
         'options': 'level', 'faults': 'fault', 'recalls': 'recall', 'maintenance_items': 'job', 'research_checks': 'check',
         'observations': 'observation', 'tyre_data': 'tyres', 'review_flags': 'flag'}
 PATCHABLE = set(KIND) | {'generations', 'engines', 'vehicles', 'repair_risks'}  # never reliability_items (legacy), listing or insurance data
-KIND_ORDER = ('source', 'level', 'patch', 'fault', 'recall', 'job', 'check', 'observation', 'tyres', 'stats', 'flag')
+KIND_ORDER = ('source', 'level', 'patch', 'fault', 'recall', 'job', 'check', 'observation', 'tyres', 'flag')
 MODEL_LEVEL = {'generations': 'generation_id', 'engines': 'engine_id', 'vehicles': 'vehicle_id', 'gearboxes': 'gearbox_id',
                'engine_families': 'engine_family_id', 'gearbox_families': 'gearbox_family_id', 'body_styles': 'body_style_id',
                'options': 'option_id'}
@@ -51,8 +51,6 @@ def key_of(kind, table, p, target_id=None):
         return f'obs:{p.get("metric")}'
     if kind == 'tyres':
         return f'tyres:{p.get("tyre_type")}'
-    if kind == 'stats':
-        return f'stats:{p.get("kind")}:{p.get("age_from")}-{p.get("age_to")}:{p.get("report_year")}'
     return f'flag:{p.get("kind")}:{next((k for k in config.LEVEL_COLUMNS if p.get(k) is not None), None)}:' \
            f'{next((p[k] for k in config.LEVEL_COLUMNS if p.get(k) is not None), None)}'
 
@@ -253,7 +251,7 @@ def stage_view(c, req, grade):
 import difflib
 BANDS = tuple(config.FREQUENCY_BANDS)  # systemic ... rare
 BAD_CONSEQUENCE = ('ENGINE_DAMAGE', 'STRANDS', 'SAFETY')
-COMPARED = ('fault', 'recall', 'job', 'check', 'observation', 'tyres', 'stats', 'patch', 'level')  # flags and sources are never compared
+COMPARED = ('fault', 'recall', 'job', 'check', 'observation', 'tyres', 'patch', 'level')  # flags and sources are never compared
 DISPUTE_ORDER = ('patch', 'level', 'recall', 'fault', 'job')  # then the rest; faults by price
 
 
@@ -321,7 +319,7 @@ def _material(kind, outcome, pa, pb, diffs):
         return int(one)
     if kind == 'job':
         return int(bool(p.get('job')) and p.get('kind') != 'WEAR') if one else int(bool(names & {'interval_km', 'interval_months'}))
-    return int(kind in ('observation', 'tyres', 'stats') and not one)
+    return int(kind in ('observation', 'tyres') and not one)
 
 
 def _fault_pairs(A, B):

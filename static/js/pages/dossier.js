@@ -194,8 +194,6 @@ function historyCard(d) {
     ${q.length ? `<h3 style="margin-top:16px">${t('quotes_title')}</h3><div class="tablewrap"><table><thead><tr><th>${t('date')}</th><th class="n">${t('premium')}</th><th>${t('status')}</th><th>${t('mp_src')}</th></tr></thead><tbody>${q.map(x => `<tr><td>${esc(x.quote_date ?? '')}</td><td class="n">${eP(x.annual_premium_eur)}</td><td>${esc(tv(x.premium_status))}${x.insurer ? ' · ' + esc(x.insurer) : ''}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
 }
 // the TÜV / ADAC figures of the model by age (#289), as published; the class average (when the report gives one) feeds the score
-const statsCard = d => (d.reliability_stats || []).length ? `<div class="card"><h3>${t('stats_title')}</h3><div class="tablewrap"><table><thead><tr><th>${t('source')}</th><th>${t('stats_age')}</th><th class="n">${t('value')}</th><th class="n">${t('stats_class')}</th><th></th></tr></thead><tbody>${
-  d.reliability_stats.map(r => `<tr><td>${r.kind === 'TUEV' ? 'TÜV' : 'ADAC'} ${r.report_year ?? ''}</td><td>${r.age_from}–${r.age_to}</td><td class="n">${num(r.value, 1)} ${esc(r.unit)}</td><td class="n">${r.class_average == null ? '—' : num(r.class_average, 1)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}</tbody></table></div></div>` : '';
 // Reliability tab (#340): per part, its score out of 9, weak points (faults with chance, price, expected cost, what to check), recalls
 // with their checklist state, and any older weak-point rows; then TÜV/ADAC figures and the known history of this car
 const faultsTotal = d => (d.fault_plan || []).reduce((a, r) => a + (r.expected_eur || 0), 0);
@@ -221,7 +219,7 @@ function reliabilityTab(d) {
   const total = (d.metrics || {}).reliability, other = ['fault_plan', 'recalls', 'reliability'].some(k => (d[k] || []).some(r => !PARTS.includes(r.part)));
   return `<div class="card span2"><h3>${t('reliability')} ${total == null ? '' : `<span class="muted small num">${t('plate_rel_total', { n: num(total, 1) })}</span>`}</h3><p class="small muted" style="margin:0">${t('rel_lead')} ${t('rel_where')}</p></div>
     ${[...PARTS, ...(other ? [null] : [])].map(p => p ? partCard(d, p) : `<div class="card span2"><h3>${t('rel_no_part')}</h3>${(d.fault_plan || []).filter(f => !PARTS.includes(f.part)).map(f => `<div>${esc(f.component)}</div>`).join('')}</div>`).join('')}
-    ${statsCard(d)}${historyCard(d)}`;
+    ${historyCard(d)}`;
 }
 function inspectionCard(d) {
   const c = d.inspection_counts, tot = d.inspection.length, ok = c.OK ?? 0;
