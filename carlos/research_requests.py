@@ -89,16 +89,6 @@ def create(c, uid, data, by=None):
     return rid
 
 
-def follow_up(c, flag_id, task):
-    """Queues a follow-up research request (#168) for a review flag: an admin's request (the catalogue is shared), its
-    URL names the flag; the worker reviews the flagged level and records a flag review. One open request per flag."""
-    if c.execute("SELECT 1 FROM main.research_requests WHERE flag_id=? AND status IN ('QUEUED','RUNNING')", (flag_id,)).fetchone():
-        return None
-    admin = c.execute("SELECT min(id) FROM main.users WHERE role='admin' AND is_active=1").fetchone()[0]
-    return c.execute("INSERT INTO main.research_requests (owner_id, url, note, kind, flag_id) VALUES (?,?,?,'FOLLOW_UP',?)",
-                     (admin, f'carlos://follow-up/flag/{flag_id}', task[:1000], flag_id)).lastrowid
-
-
 def cancel(c, uid, rid):
     """Cancels one of the account's requests that has not started: QUEUED, or a unit-split one WAITING between stages
     (its queued and waiting units are cancelled with it; a unit already running finishes and the request stays cancelled)."""
