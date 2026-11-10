@@ -3,7 +3,7 @@ import datetime, json, re
 from . import config
 from . import geo, research
 from .db import for_variant, rows, scoped
-from .ranking import SEVERITY_POINTS, STATUS_POINTS
+from .ranking import SEVERITY_POINTS, STATUS_POINTS, curve as ranking_curve
 
 
 def occurrences(interval_km, interval_months, km, months, restarted=False):
@@ -472,29 +472,50 @@ class Knowledge:
 
 
 
-def reliability(rel_rows, checks, known=frozenset(config.RELIABILITY_PARTS)):
-    """Reliability of one listing (issue #54), higher is better: each part starts at config.RELIABILITY_PART_MAX and
-    loses the severity points of its config.RELIABILITY_TOP worst documented weak points; the score is the sum of the
-    parts (max 36). A recall drops out when its checklist item for this listing
-    (`checks`: reliability_item_id → status) is OK or N/A. Returns (total, per-part points left, detail with the points each weak point costs); total None
-    while any row has no part (unclassified rows are never guessed into a part). A part outside `known`
-    (its required source checks are missing, issue #114) is None, and so is the total: never full points by default."""
-    detail = []
-    for r in sorted(rel_rows, key=lambda r: (str(r['id'])[:1].isalpha(), str(r['id']).rjust(12))):
-        check = checks.get(r['id'])
-        detail.append({'id': r['id'], 'component': r['component'], 'severity': r['severity'], 'part': r.get('part'),
-                       'is_recall': bool(r.get('is_recall')), 'check': check, 'level': r.get('level'), 'source_id': r['source_id'],
-                       'points': round(SEVERITY_POINTS.get(r['severity'], 0) * r.get('weight', 1), 3), 'counted': False,
-                       'excluded': 'recall_checked' if r.get('is_recall') and check in ('OK', 'N/A') else None})
-    parts = {}
-    for part in config.RELIABILITY_PARTS:
-        top = sorted((d for d in detail if d['part'] == part and not d['excluded']), key=lambda d: -d['points'])[:config.RELIABILITY_TOP]
-        for d in top:
-            d['counted'] = True
-        parts[part] = config.RELIABILITY_PART_MAX - sum(d['points'] for d in top) if part in known else None
-    # with the source checks recorded, a part without weak points is clean (9), not unresearched (issue #114)
-    total = None if any(d['part'] is None for d in detail) or None in parts.values() else sum(parts.values())
-    return total, parts, detail
+SOURCE_NAMES = {'AUTOSCORE': 'Autoscore', 'ENGINESCOPE': 'EngineScope', 'TUEV_REPORT': 'TÜV-Report', 'ADAC_PANNENSTATISTIK': 'ADAC Pannenstatistik'}
+
+
+def reliability_sources(keys, ratings, age, reg_year, perm=None):
+    """Reliability from the fixed external sources (#351, #356), 0-100, higher is better. Slots: ENGINE (Autoscore, with
+    EngineScope averaged in once config.ENGINESCOPE_PERMISSION allows its score), HU (TÜV defect share against the class
+    average), BREAKDOWNS (ADAC band). Score = mean of the slots present; a missing source is coverage, never 0; fewer than
+    config.RELIABILITY_MIN_SLOTS slots = None. Nothing here enters a TCO component. `keys`/`ratings`: live source_keys and
+    source_ratings rows of the car's engine and generation. Returns {score, coverage, slots, explain}."""
+    perm = config.ENGINESCOPE_PERMISSION if perm is None else perm
+    slots = {s: [] for s in config.RATING_SLOTS}
+    for src, rule in config.RATING_SOURCES.items():
+        if not rule['slot'] or src == 'ENGINESCOPE' and perm == 'NONE':
+            continue
+        key = min((k for k in keys if k['source_key'] == src), key=lambda k: k['id'], default=None)
+        if key is None:
+            continue
+        rs = [r for r in ratings if r['source_key'] == src and r['external_key'].upper() == key['external_key'].upper() and r['value_num'] is not None]
+        if src == 'TUEV_REPORT':  # the age class holding the car; older than the oldest class: the nearest (oldest) one; under 2: none
+            oldest = max((r['age_to'] for r in rs), default=0)
+            rs = [r for r in rs if age is not None and age >= 2 and r['age_from'] <= age and (int(age) <= r['age_to'] or r['age_to'] == oldest)]
+        elif src == 'ADAC_PANNENSTATISTIK':
+            rs = [r for r in rs if reg_year and r['reg_year'] == reg_year]
+        r = max(rs, key=lambda r: (r['edition'], r['id']), default=None)
+        if r is None:
+            continue
+        if src == 'TUEV_REPORT':
+            p = ranking_curve([(0.5, 100), (1, 50), (2, 0)], r['value_num'] / r['class_average'])
+        elif src == 'ADAC_PANNENSTATISTIK':
+            p = {1: 100, 2: 75, 3: 50, 4: 25, 5: 0}[r['band']]
+        elif src == 'AUTOSCORE':
+            p = 100 - 10 * r['value_num']  # Autoscore: higher risk is worse
+        else:
+            p = r['value_num']
+        slots[rule['slot']].append({'source_key': src, 'source': SOURCE_NAMES[src], 'value': r['value_num'], 'value_text': r['value_text'],
+                                    'band': r['band'], 'class_average': r['class_average'], 'reg_year': r['reg_year'], 'edition': r['edition'],
+                                    'age_class': [r['age_from'], r['age_to']] if src == 'TUEV_REPORT' else None,
+                                    'nearest_class': src == 'TUEV_REPORT' and int(age) > r['age_to'],
+                                    'points': round(p, 1), 'url': r['url'] or key['url']})
+    slot_out = {s: {'points': round(sum(x['points'] for x in v) / len(v), 1), 'sources': v} if v else None for s, v in slots.items()}
+    present = [x['points'] for x in slot_out.values() if x]
+    return {'score': round(sum(present) / len(present), 1) if len(present) >= config.RELIABILITY_MIN_SLOTS else None,
+            'coverage': len(present) / len(slot_out), 'present': len(present), 'of': len(slot_out), 'slots': slot_out,
+            'missing': [s for s, x in slot_out.items() if not x]}
 
 
 def offer_summary(parts, months):
@@ -588,6 +609,7 @@ def tco_rows(c, p):
     history, opts, quotes = listing_facts(c)
     markets = rows(c, 'SELECT * FROM market_models')
     contract = research.Contract(c, know)
+    src_keys, src_ratings = rows(c, 'SELECT * FROM source_keys'), rows(c, 'SELECT * FROM source_ratings')
     captured = {r[0] for r in c.execute('SELECT DISTINCT listing_id FROM listing_snapshots')}
     units = rows(c, UNITS_SQL)
     ref = next((u for u in units if u['is_reference']), None)
@@ -732,17 +754,17 @@ def tco_rows(c, p):
                                                          (r.get('inspection_action') or '').strip() in check_texts.get(u['id'], ())},
                                             'captured': u['id'] in captured}, today)
         u['research'] = items
-        evidence = {r['part'] for r in rel_rows if r.get('part')}
-        rel_total, rel_parts, u['reliability_detail'] = reliability(rel_rows, rel_checks, research.known_parts(items, evidence))
-        u['reliability_too_new'] = research.too_new_parts(items, evidence)
-        u['reliability_parts'] = rel_parts
+        reg_year = int(u['first_registration'][:4]) if u['first_registration'] else None
+        u['reliability_sources'] = rel = reliability_sources(
+            [k for k in src_keys if k['engine_id'] == u['engine_id'] or k['generation_id'] == u['generation_id']], src_ratings,
+            age if u['first_registration'] else None, reg_year)
         rc = recall_checks.get(u['id'], {})
         insp_ok, insp_problem = counts.get('OK', 0) - rc.get('OK', 0), counts.get('PROBLEM', 0) - rc.get('PROBLEM', 0)
         u['metrics'] = {
             'cost_month': u['known_cost_per_month'] if complete else None,
             'cash_now': cash_now(u, parts),
             'mileage': u['mileage_km'], 'age': age,
-            'reliability': rel_total,
+            'reliability': rel['score'],
             'inspection': insp_problem if insp_ok or insp_problem else None,
             'power': u['power_ps'],
             # ranking inputs (#169): the purchase price for the budget curve,
