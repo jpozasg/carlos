@@ -208,6 +208,7 @@ RATING_SOURCES = {  # level, slot in the score, quality, fields a rating must ca
     'ADAC_GWINFO': dict(level='generation', slot=None, quality='B', required=(), fuel=True),  # keys only, no ratings
 }
 RATING_SLOTS = ('ENGINE', 'HU', 'BREAKDOWNS')
+RELIABILITY_MIN_SLOTS = 1  # of 3; fewer = not scored (owner decision 2026-11-10)
 # EngineScope terms (section 6) forbid reproducing scores without written permission: 'NONE' = link rows only,
 # 'SCORE' = value_num/value_text, 'SCORE_AND_COSTS' = also cost_min_eur/cost_max_eur.
 ENGINESCOPE_PERMISSION = 'NONE'

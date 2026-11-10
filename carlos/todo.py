@@ -57,6 +57,10 @@ def todo(c, p, ranked):
                 t.append('no inspection checklist')
             if u['verdict'] is None:
                 t.append('no verdict')
+            rs = u['reliability_sources']  # a missing source is coverage, not zero (#356)
+            if rs['missing']:
+                t.append(f"reliability from {rs['present']} of {rs['of']} sources" + (' (not scored)' if rs['score'] is None else '')
+                         + f": no published figure for {', '.join(rs['missing'])} (source_keys / source_ratings: Autoscore on the engine; TÜV-Report, ADAC on the generation)")
         # the contract's listing items that no line above covers (an expired quote, a weak point without a checklist item)
         t += [f"listing {i['id']} missing: {i['title']}" for i in u['research']
               if i['id'] in ('lst.insurance', 'lst.checklist') and i['grade'] == 'MISSING']
@@ -69,9 +73,6 @@ def todo(c, p, ranked):
         items = contract.resolved(v['id'])
         t = [f"{i['level']} {i['id']} missing: {i['title']}" for i in items if i['grade'] == 'MISSING']
         t += [f"{i['level']} {i['id']}: {i['hint']}" for i in items if i.get('hint')]
-        loose = [r['id'] for r in know.of('reliability_items', v) if r.get('part') is None]
-        if loose:
-            t.append(f"reliability items without a part (reliability_items.part), reliability unknown: ids {loose}")
         models.append({'vehicle_id': v['id'], 'engine_id': v['engine_id'], 'generation_id': v['generation_id'],
                        'name': variant_name(v), 'state': research.state(items), 'todo': t})
     # each catalogue level on its own rows only, so "researched" does not depend on the listing that triggered it

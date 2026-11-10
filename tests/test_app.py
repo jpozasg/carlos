@@ -376,9 +376,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(b['components']['repairs'], 0)                        # turbo window not reached: 0, not unknown
         self.assertAlmostEqual(a['delta_vs_reference'], a['known_cost_subtotal'] + (ref['components']['purchase_sale'] or 0) - ref['known_cost_subtotal'])
         self.assertEqual(a['initial_outlay'], 6000 - 2500)
-        self.assertEqual(a['metrics']['reliability'], 33.5)                    # 36 − MEDIUM engine item 2 − LOW generation item 0.5
-        self.assertEqual(b['metrics']['reliability'], 33)                      # 36 − HIGH engine item
-        self.assertEqual(a['reliability_parts'], {'ENGINE': 7, 'GEARBOX': 9, 'CHASSIS': 8.5, 'ELECTRICS': 9})   # points left of 9
+        self.assertIsNone(a['metrics']['reliability'])                         # no source rating yet: not scored, never 0 (#356)
+        self.assertEqual((a['reliability_sources']['present'], a['reliability_sources']['missing']), (0, ['ENGINE', 'HU', 'BREAKDOWNS']))
         self.assertNotIn('simplicity', a['metrics'])                           # removed from the ranking (issue #54)
         self.assertEqual(a['metrics']['cash_now'], 6000 + 34 + 159)
         self.assertIsNone(ref['metrics']['cash_now'])
@@ -1385,7 +1384,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(ranking.budget_score(8000, 6500, 8000), 0)
         self.assertLess(80 - ranking.budget_score(6875, 6500, 8000), ranking.budget_score(7250, 6500, 8000) - ranking.budget_score(7625, 6500, 8000))  # falls faster further above the ideal
         self.assertEqual(ranking.score_of('safety', {'safety': 5}, {}), 100)
-        self.assertEqual(ranking.score_of('reliability', {'reliability': 36}, {}), 100.0)  # the weak points alone (#353)
+        self.assertEqual(ranking.score_of('reliability', {'reliability': 80}, {}), 80)  # the source mean as is (#356)
         ref = {'is_reference': 1, 'listing_status': 'OWNED', 'research': [], 'metrics': {'cost_month': 300, 'mileage': 100000, 'age': 10, 'reliability': 27,
                'power': 90, 'safety': 4, 'budget': None, 'inspection': None, 'distance': None}}
         ranking.rank([ref], {k: 1 for k in ranking.CRITERIA}, {})
@@ -1450,36 +1449,42 @@ class AppTest(unittest.TestCase):
         self.assertIn('Early rust', names())
         self.assertNotIn('Facelift wiring', names())
 
-    def test_reliability_parts(self):
-        """Issue #54: each part starts at 9 and loses its 3 worst points (higher is better); a recall drops out once its check is OK; no part = unknown."""
-        rows = [dict(id=i, component=f'c{i}', severity=sev, part=part, is_recall=rec, source_id=1)
-                for i, (sev, part, rec) in enumerate([('HIGH', 'ENGINE', 0), ('MEDIUM', 'ENGINE', 0), ('MEDIUM', 'ENGINE', 0),
-                                                      ('LOW', 'ENGINE', 0), ('HIGH IF APPLICABLE', 'ELECTRICS', 1), ('LOW', 'CHASSIS', 0)], 1)]
-        total, parts, det = costs.reliability(rows, {})
-        self.assertEqual((parts, total), ({'ENGINE': 2, 'GEARBOX': 9, 'CHASSIS': 8.5, 'ELECTRICS': 7.5}, 27))   # the 4th engine point is not counted
-        self.assertFalse(next(d for d in det if d['id'] == 4)['counted'])
-        total, parts, det = costs.reliability(rows, {5: 'OK'})                     # recall checked: done
-        self.assertEqual((parts['ELECTRICS'], total, next(d for d in det if d['id'] == 5)['excluded']), (9, 28.5, 'recall_checked'))
-        self.assertEqual(costs.reliability(rows, {5: 'PROBLEM'})[0], 27)           # still open: counts
-        self.assertIsNone(costs.reliability(rows + [dict(id=9, component='x', severity='LOW', part=None, is_recall=0, source_id=1)], {})[0])
-        self.assertEqual(costs.reliability([], {})[0], 36)                     # every source checked, nothing found: clean (#114)
-        self.assertEqual(costs.reliability([], {}, known={'ENGINE'})[:2], (None, {'ENGINE': 9, 'GEARBOX': None, 'CHASSIS': None, 'ELECTRICS': None}))
-        # API: part is required; a recall gets its own linked check, which decides whether it counts and stays out of inspection
-        self.assertEqual(self.agent('POST', 'reliability_items', {'engine_id': E_A, 'component': 'Injector', 'severity': 'LOW', 'source_id': SRC_GUIDE})[0], 400)
-        self.assertEqual(self.agent('POST', 'reliability_items', {'engine_id': E_A, 'component': 'Injector', 'severity': 'LOW', 'part': 'MOTOR', 'source_id': SRC_GUIDE})[0], 400)
-        st, r = self.agent('POST', 'reliability_items', {'generation_id': G1, 'component': 'Airbag recall', 'severity': 'HIGH IF APPLICABLE', 'part': 'ELECTRICS',
-                                                         'is_recall': 1, 'source_id': SRC_GUIDE, 'inspection_action': 'Dealer check by VIN'})
-        self.assertEqual(st, 201)
-        before = self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'] + 1.5   # the new recall already costs its points (no check yet)
-        st, i = self.agent('POST', 'inspection_items', {'listing_id': CAR_A, 'item': 'Recall: airbag', 'status': 'PENDING', 'reliability_item_id': r['id']})
-        self.assertEqual(st, 201)
-        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before - 1.5)   # pending: counts
-        before -= 1.5
-        self.assertEqual(self.ui('PATCH', f"inspection_items/{i['id']}", {'status': 'PROBLEM'})[0], 200)
-        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
-        self.assertEqual((a['metrics']['reliability'], a['metrics']['inspection']), (before, None))   # open recall counts in reliability only; inspection still unchecked
-        self.ui('PATCH', f"inspection_items/{i['id']}", {'status': 'OK'})
-        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], before + 1.5)
+    def test_reliability_sources(self):
+        """#356: reliability = mean of the slots present (Autoscore inverted, TUEV vs class average, ADAC band); a missing slot is
+        coverage, never 0; EngineScope only with permission; ratings never change the cost."""
+        def K(i, src, key, **kw):
+            return {**dict(id=i, source_key=src, external_key=key, url=f'https://x.test/{key}', engine_id=None, generation_id=None), **kw}
+
+        def R(i, src, key, **kw):
+            return {**dict(id=i, source_key=src, external_key=key, edition='2026', value_num=None, value_text=None, band=None, class_average=None,
+                           age_from=None, age_to=None, reg_year=None, url=f'https://x.test/{src}'), **kw}
+        keys = [K(1, 'AUTOSCORE', 'n46', engine_id=1), K(2, 'TUEV_REPORT', 'Polo', generation_id=1),
+                K(3, 'ADAC_PANNENSTATISTIK', 'Polo', generation_id=1), K(4, 'ENGINESCOPE', 'ea211', engine_id=1)]
+        ratings = [R(1, 'AUTOSCORE', 'N46', value_num=4.0, value_text='CAUTION'), R(2, 'TUEV_REPORT', 'Polo', age_from=6, age_to=7, value_num=10.0, class_average=10.0),
+                   R(3, 'TUEV_REPORT', 'Polo', age_from=10, age_to=11, value_num=5.0, class_average=10.0),
+                   R(4, 'ADAC_PANNENSTATISTIK', 'Polo', reg_year=2014, band=2, value_num=3.1), R(5, 'ENGINESCOPE', 'ea211', value_num=90, value_text='BEST')]
+        f = lambda *a, **kw: costs.reliability_sources(keys, ratings, *a, **kw)
+        r = f(6.5, 2014)
+        self.assertEqual((r['slots']['ENGINE']['points'], r['slots']['HU']['points'], r['slots']['BREAKDOWNS']['points']), (60, 50, 75))   # EngineScope ignored while NONE
+        self.assertEqual((r['score'], r['coverage'], r['missing']), (61.7, 1.0, []))
+        self.assertEqual(r['slots']['ENGINE']['sources'][0]['url'], 'https://x.test/AUTOSCORE')
+        self.assertEqual(f(6.5, 2014, perm='SCORE')['slots']['ENGINE']['points'], 75)                  # (60 + 90) / 2
+        r = f(15, 2005)                                                                                    # older than the oldest class: nearest; no ADAC year
+        self.assertEqual((r['slots']['HU']['points'], r['slots']['HU']['sources'][0]['nearest_class'], r['slots']['BREAKDOWNS'], r['coverage']), (100, True, None, 2 / 3))
+        r = f(1, None)                                                                                     # under 2 years: no TUEV class
+        self.assertEqual((r['missing'], r['score']), (['HU', 'BREAKDOWNS'], 60))                           # one slot is enough
+        self.assertIsNone(costs.reliability_sources([], [], 5, 2020)['score'])                            # none: not scored, not 0
+        # on the listing: ratings fill the metric, and cost_month is the same with and without them
+        base = self.units()[CAR_A]
+        self.assertIsNone(base['metrics']['reliability'])
+        self.assertEqual(self.agent('POST', 'source_keys', {'source_key': 'AUTOSCORE', 'engine_id': E_A, 'external_key': 'n46', 'url': 'https://autoscore.pro/engine/n46',
+                                                            'source_id': SRC_GUIDE, 'checked_date': '2026-11-10'})[0], 201)
+        self.assertEqual(self.agent('POST', 'source_ratings', {'source_key': 'AUTOSCORE', 'external_key': 'n46', 'edition': '2026-11-10', 'value_num': 4.5,
+                                                               'value_text': 'AVOID', 'url': 'https://autoscore.pro/engine/n46', 'source_id': SRC_GUIDE,
+                                                               'checked_date': '2026-11-10'})[0], 201)
+        a = self.units()[CAR_A]
+        self.assertEqual((a['metrics']['reliability'], a['reliability_sources']['present']), (55, 1))
+        self.assertEqual(a['metrics']['cost_month'], base['metrics']['cost_month'])
 
     def test_archive_and_delete(self):
         """Issue #58: archived rows drop out of every read and calculation and can be restored; delete refuses while a
@@ -1489,9 +1494,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 1})[0], 200)
         a2 = self.req('GET', f'/api/listings/{CAR_A}')[1]
         self.assertNotIn(chain['id'], [r['id'] for r in a2['reliability']])
-        self.assertEqual(a2['metrics']['reliability'], a['metrics']['reliability'] + 2)          # the MEDIUM point no longer costs
         self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 0})[0], 200)   # restore
-        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['metrics']['reliability'], a['metrics']['reliability'])
         self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 2})[0], 400)
         st, r = self.agent('DELETE', f"vehicles/{V_A}")
         self.assertEqual(st, 400); self.assertIn('listings.vehicle_id', r['error'])            # still used by a listing
