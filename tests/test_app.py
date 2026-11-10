@@ -536,11 +536,6 @@ class AppTest(unittest.TestCase):
         self.assertNotIn(gap, todo())  # a new car has no registration yet (#162)
         self.agent('PATCH', f"listings/{l['id']}", {'mileage_km': 5000})
         self.assertIn(gap, todo())  # a used car without it still gets the item
-        items = [{'id': f'rel.CHASSIS.{s}', 'grade': 'ACCEPTED', 'na_only': s != 'guide'} for s in ('adac', 'tuev', 'guide')]
-        self.assertNotIn('CHASSIS', research.known_parts(items))
-        self.assertEqual(research.too_new_parts(items), ['CHASSIS'])
-        self.assertIn('CHASSIS', research.known_parts(items, {'CHASSIS'}))  # a documented weak point is evidence
-        self.assertIn('CHASSIS', research.known_parts([{**i, 'na_only': False} for i in items]))
 
     def test_lease_data_127(self):
         post = lambda b: self.req('POST', '/api/parameters', b)[0]
@@ -1180,8 +1175,7 @@ class AppTest(unittest.TestCase):
         self.assertTrue(any(t.startswith('not checked for over') for t in lst[CAR_B]))
         self.assertIn('variant var.tax missing: annual tax from the BMF Kfz-Steuer-Rechner', mod[V_B])   # an estimate is not the calculator
         self.assertIn('variant var.identity missing: HSN/TSN, gearbox, body, emissions class, CO2', mod[V_B2])
-        self.assertIn('variant var.gearbox missing: automatic gearbox weak points checked for this variant', mod[V_B2])
-        self.assertFalse(any(t.startswith('variant var.gearbox missing') for t in mod[V_A]))           # manual gearbox: the generation's checks suffice
+        self.assertIn('generation rel.tuev missing: TÜV-Report key with a rating of the newest imported edition (or a check: N/A, not in the report)', mod[V_A])
         self.assertIn('generation gen.recalls missing: recall search (KBA / manufacturer)', mod[V_A])
         self.assertEqual({x['vehicle_id']: x['state'] for x in d['models']}[V_A], 'incomplete')
         self.assertEqual(set(d['catalogue']), {'generations', 'engines', 'variants'})
@@ -1251,26 +1245,28 @@ class AppTest(unittest.TestCase):
         self.sql_write("UPDATE review_flags SET status='CLEARED'")
         self.assertEqual(self.agent('POST', 'review_flags', flag)[0], 201)            # a cleared flag may repeat
 
-    def test_rel_coverage_343(self):
-        """A fault two sources name must be filed; a FOUND check without named_codes leaves rel.coverage missing."""
+    def test_rel_sources_357(self):
+        """Contract v10: a source key with its rating (or an N/A check) satisfies the fixed reliability items; recalls stay."""
+        from carlos import research
+        self.assertEqual(research.CONTRACT_VERSION, 10)
+        ids = {i[0] for i in research.ITEMS}
+        self.assertLessEqual({'gen.recalls', 'gen.risks', 'eng.risks'}, ids)
+        self.assertFalse(ids & {'rel.coverage', 'gen.baseline', 'var.gearbox'} or any(i.startswith('rel.') and i.count('.') > 1 for i in ids))
         todo = lambda: ' | '.join(next(m for m in self.agent('GET', 'todo')[1]['models'] if m['vehicle_id'] == V_A)['todo'])
-        self.assertNotIn('rel.coverage', todo())                                     # only NONE FOUND checks: nothing named
-        chk = {'generation_id': G1, 'result': 'FOUND', 'source_id': SRC_GUIDE}
-        bad = {**chk, 'task': 'rel.CHASSIS.adac', 'named_codes': ['NOT_A_CODE']}
-        self.assertEqual(self.agent('POST', 'research_checks', bad)[0], 400)
-        self.assertEqual(self.agent('POST', 'research_checks', {**chk, 'task': 'gen.recalls', 'named_codes': ['BRAKES']})[0], 400)
-        self.assertEqual(self.agent('POST', 'research_checks', {**chk, 'task': 'rel.CHASSIS.adac'})[0], 201)
-        self.assertIn('checks without named_codes: rel.CHASSIS.adac', todo())
-        self.sql_write("DELETE FROM research_checks WHERE task='rel.CHASSIS.adac' AND result='FOUND'")
-        for src in ('adac', 'tuev'):
-            self.assertEqual(self.agent('POST', 'research_checks', {**chk, 'task': f'rel.CHASSIS.{src}', 'named_codes': ['BRAKE_LINES']})[0], 201)
-        self.assertIn('faults named by two sources but not filed: CHASSIS BRAKE_LINES', todo())
-        self.sql_write('UPDATE faults SET archived=1')
-        fault = {'component': 'Brake hose', 'component_code': 'BRAKE_LINES', 'part': 'CHASSIS', 'consequence': 'SAFETY', 'existence': 'REPORTED',
-                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 100, 'labor_eur': 100,
-                 'source_id': SRC_GUIDE, 'generation_id': G1}
-        self.assertEqual(self.agent('POST', 'faults', fault)[0], 201)
-        self.assertNotIn('rel.coverage', todo())
+        for iid in ('rel.autoscore', 'rel.enginescope', 'rel.adac_gwinfo', 'rel.adac', 'rel.tuev'):
+            self.assertIn(iid + ' missing', todo())
+        src = fx.SRC_HU  # a B source of the fixture
+        # a key alone does not satisfy a rated source; the key with a rating does; N/A with a reason does too
+        key = {'source_key': 'ADAC_PANNENSTATISTIK', 'external_key': 'Test', 'url': 'https://www.adac.de/x', 'source_id': src,
+               'generation_id': G1, 'checked_date': '2026-11-10'}
+        self.assertEqual(self.agent('POST', 'source_keys', key)[0], 201)
+        self.assertIn('rel.adac missing', todo())
+        self.assertEqual(self.agent('POST', 'source_ratings', {'source_key': 'ADAC_PANNENSTATISTIK', 'external_key': 'test', 'edition': '2026',
+                         'reg_year': 2015, 'band': 2, 'url': 'https://www.adac.de/x', 'source_id': src, 'checked_date': '2026-11-10'})[0], 201)
+        self.assertNotIn('rel.adac missing', todo())
+        self.assertEqual(self.agent('POST', 'research_checks', {'generation_id': G1, 'task': 'rel.tuev', 'result': 'N/A', 'source_id': src,
+                                                                'notes': 'not in the report'})[0], 201)
+        self.assertNotIn('rel.tuev missing', todo())
 
     def test_research_contract(self):
         from unittest import mock
@@ -1287,28 +1283,15 @@ class AppTest(unittest.TestCase):
         bumped = [i[:-1] + (research.CONTRACT_VERSION + 1,) if i[0] == 'eng.coolant' else i for i in research.ITEMS]
         with mock.patch.object(research, 'ITEMS', bumped):
             self.assertIn('eng.coolant', lvl()['missing'])
-        # a part without its required source checks is unknown: reliability unknown, never full points or 0
         a = self.units()[CAR_A]
-        self.assertEqual(a['metrics']['reliability'], 33.5)
-        conf = a['metrics']['confidence']
-        self.assertEqual(conf, research.confidence(a['research']))
-        c = sqlite3.connect(config.DB)
-        check = c.execute('SELECT id FROM research_checks WHERE generation_id=? AND task=?', (G1, 'rel.CHASSIS.adac')).fetchone()[0]
-        c.close()
-        self.assertEqual(self.agent('PATCH', f'research_checks/{check}', {'archived': 1})[0], 200)
-        a = self.units()[CAR_A]
-        self.assertIsNone(a['metrics']['reliability'])
-        self.assertIsNone(a['reliability_parts']['CHASSIS'])
-        self.assertEqual(a['reliability_parts']['ENGINE'], 7)
-        self.assertLess(a['metrics']['confidence'], conf)                       # one required item fewer done
+        self.assertEqual(a['metrics']['confidence'], research.confidence(a['research']))
         # every contract item is documented in the protocol, so code and docs stay in step
         doc = (config.ROOT / 'docs' / 'cost-research-protocol.md').read_text()
-        self.assertEqual([i[0] for i in research.ITEMS if not i[0].startswith('rel.') and f'`{i[0]}`' not in doc], [])
-        self.assertIn('`rel.<PART>.<source>`', doc)
+        self.assertEqual([i[0] for i in research.ITEMS if f'`{i[0]}`' not in doc], [])
         # the schema publishes the contract
         sch = self.agent('GET', 'schema')[1]
         self.assertEqual(sch['research_contract']['version'], research.CONTRACT_VERSION)
-        self.assertIn('rel.ENGINE.engine_specific', {i['id'] for i in sch['research_contract']['items']})
+        self.assertIn('rel.autoscore', {i['id'] for i in sch['research_contract']['items']})
         # the models API and the dossier carry the state per level
         self.assertIn(self.req('GET', f'/api/vehicles/{V_A}')[1]['research']['engine']['state'], ('incomplete', 'researched', 'verified'))
         self.assertIn('listing', self.req('GET', f'/api/listings/{CAR_A}')[1]['research_levels'])

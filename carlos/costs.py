@@ -727,14 +727,14 @@ def tco_rows(c, p):
                 rel_checks[f'R{rid}'] = 'OK'
         items += research.listing_items(u, {'insurance': know.of('insurance_data', v) + quotes.get(u['id'], []), 'tax': {'exempt': True} if electric and taxable == 0 else tax_row, 'valuations': vals.get(u['id'], {}), 'unit_costs': costs,
                                             # a recall always needs its check; any other weak point only when it has an action (#223)
-                                            'weak_points': {r['id'] for r in rel_rows if r.get('is_recall') or (r.get('inspection_action') or '').strip()},
-                                            'checked': set(rel_checks) | {r['id'] for r in rel_rows if not r.get('is_recall') and
+                                            'weak_points': {r['id'] for r in rel_rows if r.get('is_recall') or (r.get('inspection_action') or '').strip()} | {'VIN'},
+                                            'checked': set(rel_checks) | ({'VIN'} if config.VIN_RECALL_CHECK in check_texts.get(u['id'], ()) else set()) | {r['id'] for r in rel_rows if not r.get('is_recall') and
                                                          (r.get('inspection_action') or '').strip() in check_texts.get(u['id'], ())},
                                             'captured': u['id'] in captured}, today)
         u['research'] = items
-        evidence = {r['part'] for r in rel_rows if r.get('part')}
-        rel_total, rel_parts, u['reliability_detail'] = reliability(rel_rows, rel_checks, research.known_parts(items, evidence))
-        u['reliability_too_new'] = research.too_new_parts(items, evidence)
+        # the per-part source checks are gone from the contract (v10, #357); the score itself is replaced by the slots (#351)
+        rel_total, rel_parts, u['reliability_detail'] = reliability(rel_rows, rel_checks)
+        u['reliability_too_new'] = []
         u['reliability_parts'] = rel_parts
         rc = recall_checks.get(u['id'], {})
         insp_ok, insp_problem = counts.get('OK', 0) - rc.get('OK', 0), counts.get('PROBLEM', 0) - rc.get('PROBLEM', 0)

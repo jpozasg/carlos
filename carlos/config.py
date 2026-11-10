@@ -212,3 +212,7 @@ RATING_SLOTS = ('ENGINE', 'HU', 'BREAKDOWNS')
 # 'SCORE' = value_num/value_text, 'SCORE_AND_COSTS' = also cost_min_eur/cost_max_eur.
 ENGINESCOPE_PERMISSION = 'NONE'
 ENGINESCOPE_BANDS = ((85, 'BEST'), (78, 'BUY'), (68, 'ACCEPTABLE'), (48, 'CAUTION'), (0, 'AVOID'))
+
+# Fixed checklist item of every purchase listing (#357): recalls are checked by VIN at a brand dealer; KBA lists the open campaigns.
+VIN_RECALL_CHECK = ('Ask a brand dealer for an open-recall check by VIN '
+                    '(KBA recall database: https://www.kba.de/DE/Themen/Marktbeobachtung/Rueckrufe/rueckrufe_node.html)')

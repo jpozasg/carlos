@@ -148,22 +148,22 @@ class StagingTest(unittest.TestCase):
 
     def test_dry_grade_leaves_the_catalogue_alone(self):
         missing0 = self.api('GET', 'agent/stage')[1]['missing']
-        self.assertIn('gen.baseline', missing0)
+        self.assertIn('rel.tuev', missing0)
         _, s = self.stage('sources', {**SRC, 'engine_id': None, 'generation_id': G1, 'quality': 'B', 'url': 'https://example.test/tuev'})
-        st, t = self.stage('research_checks', {'generation_id': G1, 'task': 'gen.baseline', 'result': 'N/A', 'source_id': s['id'],
+        st, t = self.stage('research_checks', {'generation_id': G1, 'task': 'rel.tuev', 'result': 'N/A', 'source_id': s['id'],
                                                'checked_date': '2026-11-10', 'notes': 'too new for the TÜV and ADAC tables'})
         self.assertEqual(st, 201, t)
         before = {t: self.sql(f'SELECT count(*) FROM {t}')[0][0] for t in ('research_checks', 'sources', 'research_findings')}
         missing1 = self.api('GET', 'agent/stage')[1]['missing']
-        self.assertNotIn('gen.baseline', missing1)
-        self.assertEqual(set(missing0) - set(missing1), {'gen.baseline'})
+        self.assertNotIn('rel.tuev', missing1)
+        self.assertEqual(set(missing0) - set(missing1), {'rel.tuev'})
         self.assertEqual({t: self.sql(f'SELECT count(*) FROM {t}')[0][0] for t in before}, before)  # rolled back: nothing real was written
         # run B has staged nothing: it still lacks the item; the staged to-do reads the run's own staging
-        self.assertIn('gen.baseline', self.api('GET', 'agent/stage', unit='RESEARCH_B')[1]['missing'])
+        self.assertIn('rel.tuev', self.api('GET', 'agent/stage', unit='RESEARCH_B')[1]['missing'])
         st, td = self.api('GET', 'agent/todo')
         self.assertEqual(st, 200)
         mine = next(m for m in td['models'] if m['vehicle_id'] == V_A)['todo']
-        self.assertFalse(any('gen.baseline' in x for x in mine), mine)
+        self.assertFalse(any('rel.tuev' in x for x in mine), mine)
 
     def test_migration_040_keeps_every_038_row(self):
         """The 038 table (its CREATE statement, read from the migration) with rows survives the rebuild; scope starts NULL."""

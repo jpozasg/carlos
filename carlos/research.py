@@ -7,19 +7,16 @@ which listing triggered the research. Each item is graded from the rows on its o
 A level is researched without MISSING items and verified when every item is VERIFIED. The table of items is
 documented in docs/cost-research-protocol.md (a test keeps both in step). Adding an item marks every level it applies to
 incomplete at once; raising an item's `since` makes checks recorded against an older contract stop counting."""
-import datetime, json, re
+import datetime, re
 from . import config
 from .db import rows
 from .ranking import STATUS_POINTS
 
-CONTRACT_VERSION = 9  # 9: rel.coverage, faults named by two sources (#343); 8: gen.recalls needs FOUND or NONE FOUND, N/A no longer counts (#333); 7: engine and family graded as one pool (#331); 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
+CONTRACT_VERSION = 10  # 10: fixed reliability sources per level replace rel.<PART>.<source>, rel.coverage, gen.baseline, var.gearbox; recalls and fault research stay (#357, #351); 9: rel.coverage, faults named by two sources (#343); 8: gen.recalls needs FOUND or NONE FOUND, N/A no longer counts (#333); 7: engine and family graded as one pool (#331); 6: Euro NCAP stars of the generation for the safety criterion (#169); 5: target design levels, faults, statistics baseline, ADAC/TÜV on the generation (#174); 2: jobs matched by code and needing both prices; lst.tax_covered (#106 part 4); 3: electric cars (#125); 4: EVDB consumption (#154)
 GRADE = {'MISSING': 0, 'ACCEPTED': 0.5, 'VERIFIED': 1}
 QUALITY_ORDER = 'ABCD'
 LEVEL_COL = {'generation': 'generation_id', 'engine': 'engine_id', 'variant': 'vehicle_id', 'engine_family': 'engine_family_id',
              'gearbox': 'gearbox_id', 'gearbox_family': 'gearbox_family_id', 'body_style': 'body_style_id'}
-# the same sources for every car with their minimum quality: ADAC, TÜV and a buying guide on the generation for all four parts,
-# an engine-specific source on the engine family and a gearbox-specific one on the gearbox family (#168, #174)
-REL_SOURCES = {'adac': 'B', 'tuev': 'B', 'guide': 'C', 'engine_specific': 'D', 'gearbox_specific': 'D'}  # the engine-/gearbox-specific search lands on forums and guide sites (#315)
 
 
 def _job(*jobs):
@@ -66,31 +63,21 @@ def _fields(*cols, status='status', code=False):
     return cands
 
 
-def _coverage(ctx):
-    """rel.coverage (#343): every component code that >= 2 distinct sources name for a part (research_checks.named_codes of the FOUND
-    rel.<PART>.<source> checks on the variant's levels) has a fault with that part and code on one of those levels. A FOUND check
-    that says nothing about its codes leaves the item missing."""
-    levels = ('generation', 'engine', 'engine_family', 'gearbox')
-    checks = [c for c in ctx['rows']('research_checks', *levels) if c['result'] == 'FOUND' and (c['task'] or '').startswith('rel.')
-              and c['task'].count('.') == 2]
-    blank = [c['task'] for c in checks if c.get('named_codes') is None]
-    named = {}
-    for c in checks:
-        part, src = c['task'].split('.')[1:]
-        for code in json.loads(c['named_codes'] or '[]'):
-            if code != 'OTHER':
-                named.setdefault((part, code), set()).add(src)
-    have = {(f['part'], f['component_code']) for f in ctx['rows']('faults', *levels)}
-    miss = sorted(p + ' ' + k for (p, k), srcs in named.items() if len(srcs) >= 2 and (p, k) not in have)
-    if blank or miss:
-        said = []
-        if blank:
-            said.append('checks without named_codes: ' + ', '.join(sorted(set(blank))))
-        if miss:
-            said.append('faults named by two sources but not filed: ' + ', '.join(miss))
-        ctx['hints']['rel.coverage'] = '; '.join(said)
-        return []
-    return [{'_grade': 'VERIFIED'}]
+def _source(key, ratings=True):
+    """A live source_keys row of `key` on the level (status VERIFIED so the source's quality grades it), with a live rating
+    for it when the source has ratings (#357). TUEV: a rating of the newest imported edition only (see Contract)."""
+    def cands(ctx):
+        return [{**k, 'status': 'VERIFIED'} for k in ctx['rows']('source_keys') if k['source_key'] == key
+                and (not ratings or k['_ratings'])]
+    return cands
+
+
+def _gwinfo(ctx):
+    """An ADAC_GWINFO key for the fuel of every catalogue variant of the generation (a key without a fuel covers all)."""
+    keys = [k for k in ctx['rows']('source_keys') if k['source_key'] == 'ADAC_GWINFO']
+    fuels = ctx['row'].get('_fuels') or set()
+    ok = keys and all(any(k['fuel_type'] in (None, f) for k in keys) for f in fuels)
+    return [{**k, 'status': 'VERIFIED'} for k in keys] if ok else []
 
 
 def _is(col, *values):
@@ -137,10 +124,8 @@ ITEMS = [
      _consumption, ('NONE FOUND',), 'C', always, 1),  # no reported average on the exact variant page: stays unknown, goes to the to-do (#303)
     ('var.tyres', 'variant', 'all-season tyres: size, price, tread life (variant or generation)', _tyres, (), None, always, 1),
     ('var.tax', 'variant', 'annual tax from the BMF Kfz-Steuer-Rechner', _tax, (), 'A', always, 1),
-    ('var.gearbox', 'variant', 'automatic gearbox weak points checked for this variant', None, FOUND_OR_NONE, 'C', automatic, 1),
     # target design (#174): the new levels
     ('var.gearbox_level', 'variant', 'the variant names its gearbox (code, type)', _fields('gearbox_id'), (), None, always, 5),
-    ('gen.baseline', 'generation', 'TÜV/ADAC figures per age class (or a check: N/A, too new)', None, NOT_APPLICABLE, 'B', always, 5),  # rows went with reliability_stats (#353): only its N/A check meets it until contract v10 (#351)
     ('fam.risks', 'engine_family', 'engine family faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
     ('gbx.identity', 'gearbox', 'gearbox code and type', _fields('code', 'type'), (), None, always, 5),
     ('gbx.service', 'gearbox', 'gearbox oil service: interval and workshop price (or a check: none scheduled)', _job('GEARBOX_OIL'), ('NONE FOUND',), None, always, 5),
@@ -148,17 +133,17 @@ ITEMS = [
      _is('type', 'MANUAL', 'DCT'), 5),
     ('gbx.risks', 'gearbox', 'gearbox faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
     ('gen.safety', 'generation', 'Euro NCAP stars and test year (or a check: N/A, never tested)', _fields('ncap_stars', 'ncap_year'), NOT_APPLICABLE, 'B', always, 6),
-    ('rel.coverage', 'variant', 'every fault two reliability sources name is filed (checks list named_codes)', _coverage, (), None, always, 9),
     ('bdy.risks', 'body_style', 'body style faults and maintenance (convertible roof …) or a check: none found', _risks, ('NONE FOUND',), None, always, 5),
 ]
-# weak points: the same four sources per part (docs/cost-research-protocol.md, step 2); the engine part on the engine,
-# the rest on the generation (owner decision 2026-11-05: gearbox on the generation, var.gearbox for automatics)
-for _part in config.RELIABILITY_PARTS:
-    for _src, _q in REL_SOURCES.items():
-        lvl = {'engine_specific': 'engine_family', 'gearbox_specific': 'gearbox'}.get(_src, 'generation')
-        if lvl == 'generation' or (_src, _part) in (('engine_specific', 'ENGINE'), ('gearbox_specific', 'GEARBOX')):
-            ITEMS.append((f'rel.{_part}.{_src}', lvl, f'{_part.lower()} weak points: {_src.replace("_", "-")} source checked',
-                          None, FOUND_OR_NONE, _q, always, 5 if _src == 'gearbox_specific' else 1))
+# fixed reliability sources (#351, #357): a source_keys row (and its rating where the source has ratings) or an N/A check
+# saying why the source does not cover the level; recalls (gen.recalls) and fault research (*.risks) stay
+ITEMS += [
+    ('rel.autoscore', 'engine', 'Autoscore engine key with its rating (or a check: N/A, not listed)', _source('AUTOSCORE'), NOT_APPLICABLE, 'C', combustion, 10),
+    ('rel.enginescope', 'engine', 'EngineScope engine key, link only (or a check: N/A, not listed)', _source('ENGINESCOPE', ratings=False), NOT_APPLICABLE, 'C', combustion, 10),
+    ('rel.adac_gwinfo', 'generation', 'ADAC Gebrauchtwagen-Info PDF for the fuel of every variant (or a check: N/A, no report found)', _gwinfo, NOT_APPLICABLE, 'B', always, 10),
+    ('rel.adac', 'generation', 'ADAC Pannenstatistik key with at least one rating (or a check: N/A, too new or too few registrations)', _source('ADAC_PANNENSTATISTIK'), NOT_APPLICABLE, 'B', always, 10),
+    ('rel.tuev', 'generation', 'TÜV-Report key with a rating of the newest imported edition (or a check: N/A, not in the report)', _source('TUEV_REPORT'), NOT_APPLICABLE, 'B', always, 10),
+]
 ITEM = {i[0]: i for i in ITEMS}
 TASKS = set(ITEM)
 
@@ -188,9 +173,7 @@ def evaluate(level, row, rows, sources):
             continue
         found = list(cands(ctx)) if cands else []
         found += [r for r in rows('research_checks') if r['task'] == iid and r['result'] in results and r['contract_version'] >= since]
-        # na_only: every result is N/A (the source does not cover this model yet, e.g. too new for ADAC/TÜV statistics)
         out.append({'id': iid, 'level': lvl, 'title': title, 'grade': grade_rows(found, sources, min_q),
-                    'na_only': bool(found) and all(x.get('result') == 'N/A' for x in found),
                     **({'hint': ctx['hints'][iid]} if iid in ctx['hints'] else {})})
     return out
 
@@ -213,7 +196,14 @@ class Contract:
         self.rows = {t: {r['id']: r for r in rows(c, f'SELECT * FROM {t}')}
                      for t in ('vehicles', 'engines', 'generations', 'gearboxes', 'engine_families', 'gearbox_families', 'body_styles')}
         self.index = {}
-        for table, rs in know.t.items():
+        # live source_keys with the ratings behind them (#357); the TÜV counts only the newest imported edition
+        ratings = rows(c, 'SELECT * FROM source_ratings WHERE archived = 0')
+        newest = max((r['edition'] for r in ratings if r['source_key'] == 'TUEV_REPORT'), default=None)
+        keys = rows(c, 'SELECT * FROM source_keys WHERE archived = 0')
+        for k in keys:
+            k['_ratings'] = [r for r in ratings if r['source_key'] == k['source_key'] and r['external_key'].upper() == k['external_key'].upper()
+                             and (k['source_key'] != 'TUEV_REPORT' or r['edition'] == newest)]
+        for table, rs in {**know.t, 'source_keys': keys}.items():
             for r in rs:
                 for col in config.LEVEL_COLUMNS:
                     if r.get(col) is not None:
@@ -233,6 +223,9 @@ class Contract:
         key = (level, row['id'])
         if level == 'variant':  # the variant's drivetrain decides which consumption source counts
             row = {**row, 'fuel_type': self.rows['engines'][row['engine_id']]['fuel_type']}
+        if level == 'generation':  # fuels of the catalogue variants: one GW-Info report per fuel (#357)
+            row = {**row, '_fuels': {self.rows['engines'][v['engine_id']]['fuel_type'] for v in self.rows['vehicles'].values()
+                                     if v['generation_id'] == row['id']}}
         if key not in self.cache:
             eng = self.rows['engines'].get(row.get('engine_id')) or {}
             extra = {'generation': ('generation_id', row.get('generation_id')), 'engine': ('engine_id', row.get('engine_id')),
@@ -276,26 +269,6 @@ class Contract:
                         i = {**i, 'grade': 'ACCEPTED', 'hint': f'found on a lower level: move it to the {level}'}
                 out.append(i)
         return out
-
-
-def known_parts(items, evidence=frozenset()):
-    """Reliability parts whose required source checks are all present (owner decision: otherwise the part is unknown).
-    A part whose long-term statistics (the ADAC and TÜV checks) are both N/A (the model is too new for them) is unknown
-    too, never a clean record, unless a weak point was documented for it (`evidence`: parts with reliability rows; a
-    buying guide finding nothing about a brand-new model is no track record; issue #150)."""
-    known = set()
-    for p in config.RELIABILITY_PARTS:
-        its = [i for i in items if i['id'].startswith(f'rel.{p}.') or p == 'GEARBOX' and i['id'] == 'var.gearbox']
-        stats = [i for i in its if i['id'] in (f'rel.{p}.adac', f'rel.{p}.tuev')]
-        if all(i['grade'] != 'MISSING' for i in its) and (p in evidence or not stats or not all(i.get('na_only') for i in stats)):
-            known.add(p)
-    return known
-
-
-def too_new_parts(items, evidence=frozenset()):
-    """The parts unknown only because no source covers the model yet (shown as such in the dossier)."""
-    return [p for p in config.RELIABILITY_PARTS if p not in known_parts(items, evidence)
-            and p in known_parts([{**i, 'na_only': False} for i in items], evidence)]
 
 
 def listing_items(u, rows, today):
