@@ -10,10 +10,11 @@ def req(**kw):
 
 
 class FlagPromptTests(unittest.TestCase):
-    def test_research_prompt_flags_only_unsettled_disagreements(self):
+    def test_research_prompt_uses_the_reliability_harness_not_flags(self):
         txt = (worker.ROOT / 'docs' / 'prompts' / 'units' / 'research.md').read_text()
-        self.assertIn('only when no rule settles it', txt)
-        self.assertNotIn('and raise a `SOURCES_DISAGREE` flag (`flag_review`', txt)
+        self.assertIn('source_key', txt)
+        for gone in ('flag_review', 'SOURCES_DISAGREE', 'rel.<PART>', 'gen.baseline'):
+            self.assertNotIn(gone, txt)
 
 
 class IntervalPromptTests(unittest.TestCase):

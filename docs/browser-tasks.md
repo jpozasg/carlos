@@ -65,6 +65,14 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
 - Build the capture JSONs with a script from the saved file. Non-breaking spaces (`\xa0`) appear in values such as `59\xa0kW`. Then run `capture_listing.py` with `--dry-run`, then for real.
 - The listing links shared by the user may contain `action=parkItem`; always strip it.
 
+## Reliability sources (#351)
+Read by hand in the owner's Chrome, in a new tab, one page per engine or generation, never in bulk and never scripted. Stop at a CAPTCHA, Cloudflare check or login and report.
+- **Autoscore:** `https://autoscore.pro/engine/<slug>` (no `/de/` prefix; about 120 engines, some not listed, e.g. BMW N45: record `rel.autoscore` `N/A`). Read the risk score (0-10) and the verdict verbatim; ignore the issue table and costs (own-use terms, not stored).
+- **EngineScope:** `https://enginescope.gr/engine/<slug>/`. Record the link only; do not copy the score, band or "Total Risk Cost" until written permission is configured (`ENGINESCOPE_PERMISSION`).
+- **ADAC Pannenstatistik:** `https://www.adac.de/rund-ums-fahrzeug/unfall-schaden-panne/adac-pannenstatistik/`; the table is drawn by JavaScript, so read it in Chrome: the series, then the breakdown figure and the band (1 best to 5 worst) per registration year.
+- **ADAC Gebrauchtwagen-Info:** a public PDF per generation and fuel; search `site:assets.adac.de GWInfo <make> <model>` (no index).
+- **TÜV-Report:** the yearly table from the owner's purchased copy, not a web scrape.
+
 ## Electric car consumption: ev-database.org
 - ev-database.org opens with a plain fetch (WebFetch) or in the browser, no bot check; robots.txt allows it. Find the exact variant and battery (e.g. `https://ev-database.org/car/1164/Renault-Zoe-ZE50-R110`) and read the "Vehicle Consumption" line of the real-world section (Wh/km). If WebFetch does not return that line, read the page in the browser.
 - spritmonitor.de is not used: it shows a Cloudflare "Verify you are human" check in the agent's tab (never click it) and plain fetches return 403.
