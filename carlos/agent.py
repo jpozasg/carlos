@@ -2,7 +2,7 @@
 import hashlib, json, math, os, re, time
 from pathlib import Path
 from . import config, research
-from .auth import _KNOW, _LISTING_CHILDREN, ARCHIVABLE, MODEL, OWNED
+from .auth import SOURCE_TABLES, _KNOW, _LISTING_CHILDREN, ARCHIVABLE, MODEL, OWNED
 
 # Format of controlled codes written by the agent (English: upper-case statuses, snake_case kinds).
 CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_events', 'kind'): r'[a-z][a-z_]*',
@@ -42,8 +42,8 @@ AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'ob
                 # target design (#174): levels, knowledge, listing facts
                 'engine_families', 'gearbox_families', 'gearboxes', 'body_styles', 'options', 'faults', 'recalls',
                 'market_models', 'listing_history', 'listing_quotes', 'listing_options',
-                'review_flags', 'flag_reviews'}
-SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
+                'review_flags', 'flag_reviews', 'source_keys', 'source_ratings'}
+SOURCE_REQUIRED = {'source_keys', 'source_ratings', 'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
                    'reliability_items', 'valuations', 'unit_costs', 'listing_snapshots', 'repair_risks', 'tyre_data',
                    'maintenance_resets', 'research_checks', 'faults', 'recalls', 'market_models', 'listing_quotes'}
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'), ('listing_quotes', 'quote_profile'),
@@ -154,7 +154,44 @@ def check_component_code(c, data, row_id):
         raise ValueError('component_code OTHER needs notes saying what the component is')
 
 
-def clean_row(c, table, data, insert):
+def rating_checks(c, table, out, row_id):
+    """source_keys / source_ratings (#354): the source's rules from config.RATING_SOURCES. A PATCH is checked on the row as
+    it will be; archiving alone is never refused."""
+    if set(out) <= {'archived'}:
+        return
+    old = dict(c.execute(f'SELECT * FROM {table}_all WHERE id=?', (row_id,)).fetchone() or {}) if row_id else {}
+    row = {**old, **out}
+    rule = config.RATING_SOURCES.get(row.get('source_key'))
+    if rule is None:
+        raise ValueError(f"source_key must be one of {sorted(config.RATING_SOURCES)}")
+    if table == 'source_keys':
+        level = 'engine' if row.get('engine_id') is not None else 'generation'
+        if level != rule['level']:
+            raise ValueError(f"{row['source_key']} keys attach to a {rule['level']} (engine_id or generation_id)")
+        if row.get('fuel_type') is not None and not rule.get('fuel'):
+            raise ValueError('fuel_type is for ADAC_GWINFO keys only')
+        return
+    if not rule['required']:
+        raise ValueError(f"{row['source_key']} has no ratings (a source_keys link only)")
+    if row['source_key'] == 'ENGINESCOPE':
+        perm = config.ENGINESCOPE_PERMISSION
+        costs = row.get('cost_min_eur') is not None or row.get('cost_max_eur') is not None
+        if perm not in ('SCORE', 'SCORE_AND_COSTS') or costs and perm != 'SCORE_AND_COSTS':
+            raise NotAllowed('ENGINESCOPE: no written permission to store its '
+                             + ('scores' if perm == 'NONE' else 'costs') + ' (terms section 6): a source_keys link only')
+    missing = [k for k in rule['required'] if row.get(k) is None]
+    if missing:
+        raise ValueError(f"{row['source_key']} ratings need {', '.join(missing)}")
+    lo, hi = rule.get('scale', (0, None))
+    if row.get('value_num') is not None and (row['value_num'] < lo or hi is not None and row['value_num'] > hi):
+        raise ValueError(f"value_num must be within {lo}-{hi} for {row['source_key']}")
+    if 'bands' in rule:
+        band = next(b for floor, b in config.ENGINESCOPE_BANDS if row['value_num'] >= floor)
+        if str(row['value_text']).strip().upper() != band:
+            raise ValueError(f"value_text must be the band of the score: {row['value_num']} is {band}")
+
+
+def clean_row(c, table, data, insert, row_id=None):
     """Validates an agent row against the real schema: known columns, types, '' → NULL, source required, one level."""
     if not isinstance(data, dict) or not data:
         raise ValueError('Expected a non-empty JSON object')
@@ -214,10 +251,12 @@ def clean_row(c, table, data, insert):
         raise ValueError(f'sources attach to at most one level: {", ".join(config.LEVEL_COLUMNS)} (none = shared)')
     if table == 'faults':
         fault_checks(c, out)
+    if table in SOURCE_TABLES:
+        rating_checks(c, table, out, row_id)
     return out
 
 
-ADMIN_TABLES = set(MODEL) | set(_KNOW) | {'listings', 'flag_reviews'}  # research and listings: the shared worker (admin) only (#109)
+ADMIN_TABLES = set(MODEL) | set(_KNOW) | {'listings', 'flag_reviews', *SOURCE_TABLES}  # research and listings: the shared worker (admin) only (#109)
 
 
 def check_writable(c, table, row_id, data):
@@ -367,7 +406,7 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
                       ('review_flags', fid, 'update', json.dumps(dict(old)), json.dumps(new), actor or user_id))
         return fid
     distinct = data.pop('distinct_of', None) if table in DUPLICATE_GUARDED and isinstance(data, dict) else None
-    data = clean_row(c, table, data, insert=row_id is None)
+    data = clean_row(c, table, data, insert=row_id is None, row_id=row_id)
     check_parents(c, table, data)
     if table == 'faults':
         check_component_code(c, data, row_id)

@@ -196,3 +196,19 @@ STAGE_TOLERANCE = {
     'tyres': {'size': 'eq', 'price_per_tyre_eur': ('rel', 0.25), 'life_km': ('rel', 0.20)},
 }
 STAGE_MATERIAL_EUR, MAX_DISPUTES = 500, 25
+
+
+# Reliability sources (#351, #354): per-source rules for source_keys / source_ratings, checked by the API (not in SQL).
+RATING_SOURCES = {  # level, slot in the score, quality, fields a rating must carry
+    'AUTOSCORE': dict(level='engine', slot='ENGINE', quality='C', required=('value_num', 'value_text'), scale=(0, 10)),
+    'ENGINESCOPE': dict(level='engine', slot='ENGINE', quality='C', required=('value_num', 'value_text'), scale=(0, 100),
+                        bands=('BEST', 'BUY', 'ACCEPTABLE', 'CAUTION', 'AVOID')),
+    'TUEV_REPORT': dict(level='generation', slot='HU', quality='B', required=('age_from', 'age_to', 'value_num', 'class_average')),
+    'ADAC_PANNENSTATISTIK': dict(level='generation', slot='BREAKDOWNS', quality='B', required=('reg_year', 'band')),
+    'ADAC_GWINFO': dict(level='generation', slot=None, quality='B', required=(), fuel=True),  # keys only, no ratings
+}
+RATING_SLOTS = ('ENGINE', 'HU', 'BREAKDOWNS')
+# EngineScope terms (section 6) forbid reproducing scores without written permission: 'NONE' = link rows only,
+# 'SCORE' = value_num/value_text, 'SCORE_AND_COSTS' = also cost_min_eur/cost_max_eur.
+ENGINESCOPE_PERMISSION = 'NONE'
+ENGINESCOPE_BANDS = ((85, 'BEST'), (78, 'BUY'), (68, 'ACCEPTABLE'), (48, 'CAUTION'), (0, 'AVOID'))

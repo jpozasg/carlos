@@ -181,6 +181,22 @@ def reliability(v, component, issue, evidence, severity, source_id, inspection_a
                                       'applies_from': applies_from, 'applies_to': applies_to})
 
 
+def source_key(source_key, external_key, url, source_id, *, engine_id=None, generation_id=None, fuel_type=None, notes=None):
+    """Link one level to a reliability source's page (#354): AUTOSCORE/ENGINESCOPE on an engine, TUEV_REPORT,
+    ADAC_PANNENSTATISTIK and ADAC_GWINFO (fuel_type) on a generation. external_key is verbatim as the source prints it."""
+    return post('source_keys', {'source_key': source_key, 'external_key': external_key, 'url': url, 'source_id': source_id,
+                                'engine_id': engine_id, 'generation_id': generation_id, 'fuel_type': fuel_type,
+                                'checked_date': DAY, 'notes': notes})
+
+
+def rating(source_key, external_key, edition, url, source_id, *, notes=None, **figures):
+    """What a source publishes for an external_key (#354), verbatim: value_num, value_text, band, age_from/age_to,
+    class_average, reg_year, sample_count (cost_min_eur/cost_max_eur only for EngineScope with permission). A new edition:
+    insert the new rows, then archive() the old ones."""
+    return post('source_ratings', {'source_key': source_key, 'external_key': external_key, 'edition': edition, 'url': url,
+                                   'source_id': source_id, 'checked_date': DAY, 'notes': notes, **figures})
+
+
 def check(level, level_id, task, source_id, result, notes=None, codes=None):
     """Record a research task of the contract as done on one level (issue #114): `task` is a contract item id such as
     'rel.ENGINE.adac' or 'gen.recalls' (GET /api/agent/schema → research_contract), result FOUND, NONE FOUND
