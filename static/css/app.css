@@ -484,3 +484,4 @@ main:focus{outline:none}
   .dtabs button{white-space:nowrap;flex:none}
 }
 @media (max-width:640px){.co-sum td:first-child{min-width:0}.co-sum th:last-child,.co-sum td:last-child{display:none}}
+tr.hl td{background:var(--surface-2);font-weight:600}
