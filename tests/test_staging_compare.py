@@ -51,10 +51,6 @@ class CompareTest(unittest.TestCase):
         a = self.stage('sources', {**ts.SRC, 'engine_id': None, 'generation_id': ts.G1, 'url': 'https://example.test/a'}, 'RESEARCH_A')[1]['id']
         self.assertEqual(self.api('PATCH', f'agent/engines/{E_A}', {'power_kw': 75}, 'RESEARCH_A')[0], 200)
         self.assertEqual(self.api('PATCH', f'agent/engines/{E_A}', {'power_kw': 80}, 'RESEARCH_B')[0], 200)
-        for unit, v in (('RESEARCH_A', 5.0), ('RESEARCH_B', 5.1)):                                                       # ±10 %: agreed
-            self.stage('reliability_stats', {'generation_id': ts.G1, 'kind': 'TUEV', 'age_from': 3, 'age_to': 5, 'value': v, 'unit': '%',
-                                             'report_year': 2025, 'source_id': a if unit == 'RESEARCH_A' else self.stage(
-                                                 'sources', {**ts.SRC, 'engine_id': None, 'generation_id': ts.G1, 'url': 'https://example.test/b'}, unit)[1]['id']}, unit)
         return self.run_compare()
 
     def test_outcomes_and_material(self):
@@ -67,9 +63,8 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(self.match('FUEL_SYSTEM'), ('ONLY_A', 0, []))
         self.assertEqual(self.match('TURBO'), ('ONLY_B', 1, []))
         self.assertEqual(self.match('patch:engines'), ('DISPUTED', 1, ['power_kw']))
-        self.assertEqual(self.match('stats:TUEV'), ('AGREED', 0, []))
-        self.assertEqual((out['matches'], out['material']), (9, 5))
-        self.assertEqual(out['agreement'], round(3 / 9, 4))
+        self.assertEqual((out['matches'], out['material']), (8, 5))
+        self.assertEqual(out['agreement'], round(2 / 8, 4))
         self.assertEqual(out['per_kind']['fault']['agreement'], round(2 / 7, 4))
 
     def test_compare_is_idempotent(self):

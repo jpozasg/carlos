@@ -31,7 +31,7 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'faults.shape': config.FAULT_SHAPES, 'faults.component_code': config.FAULT_COMPONENT_CODES,
                'review_flags.kind': ['STATS_MISMATCH', 'SOURCES_DISAGREE', 'FIX_UNCERTAIN', 'OTHER'],
                'review_flags.status': ['OPEN', 'CLEARED'], 'flag_reviews.outcome': ['CONFIRMED', 'RESOLVED'], 'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
-               'recalls.part': config.RELIABILITY_PARTS, 'reliability_stats.kind': ['TUEV', 'ADAC'],
+               'recalls.part': config.RELIABILITY_PARTS,
                'maintenance_items.kind': ['JOB', 'WEAR'], 'listing_history.status': ['DONE', 'PRESENT', 'OPEN', 'NOT AFFECTED'],
                'listing_history.evidence': ['DOCUMENTED', 'SELLER CLAIM', 'OBSERVED', 'VIN CHECK'],
                'listing_history.category': ['maintenance', 'repairs'], 'listing_history.job': config.JOBS}
@@ -41,11 +41,11 @@ AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'ob
                 'listing_snapshots', 'repair_risks', 'tyre_data', 'maintenance_resets', 'research_checks',
                 # target design (#174): levels, knowledge, listing facts
                 'engine_families', 'gearbox_families', 'gearboxes', 'body_styles', 'options', 'faults', 'recalls',
-                'reliability_stats', 'market_models', 'listing_history', 'listing_quotes', 'listing_options',
+                'market_models', 'listing_history', 'listing_quotes', 'listing_options',
                 'review_flags', 'flag_reviews'}
 SOURCE_REQUIRED = {'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
                    'reliability_items', 'valuations', 'unit_costs', 'listing_snapshots', 'repair_risks', 'tyre_data',
-                   'maintenance_resets', 'research_checks', 'faults', 'recalls', 'reliability_stats', 'market_models', 'listing_quotes'}
+                   'maintenance_resets', 'research_checks', 'faults', 'recalls', 'market_models', 'listing_quotes'}
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'), ('listing_quotes', 'quote_profile'),
                 ('faults', 'curve_km'), ('faults', 'curve_age'), ('research_checks', 'named_codes'), ('market_models', 'band_counts'), ('market_models', 'sample_json'))
 RULES = ('null = unknown (never 0); archive outdated rows with PATCH archived=1 (listings: listing_status WITHDRAWN); DELETE only after the owner confirmed it; source quality A–D; free text '
@@ -353,12 +353,11 @@ def open_flag(c, data):
     return r[0] if r else None
 
 
-def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, check=True):
+def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
     """Inserts (row_id None) or updates a row of this account in one transaction and records it in change_log.
     Admin inserts of generations, engines, variants and level sources go to the shared catalogue (owner_id NULL);
     knowledge rows follow their level, except an account's own premium or USER DATA figure, which stays private.
-    `actor` is who wrote it (the admin acting for the account), for the change log. `check=False` leaves consistency.check
-    to the caller (the staging merge runs it once at the end)."""
+    `actor` is who wrote it (the admin acting for the account), for the change log."""
     if table == 'review_flags' and row_id is None and (fid := open_flag(c, data)):  # a second flag of the kind joins the open one
         old = c.execute('SELECT what, why FROM main.review_flags WHERE id=?', (fid,)).fetchone()
         new = {k: '; '.join(dict.fromkeys([old[k], str(data.get(k) or '')]))[:1500] for k in ('what', 'why')}
@@ -398,9 +397,6 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, check=
             clear_if_agreed(c, c.execute('SELECT flag_id FROM main.flag_reviews WHERE id=?', (row_id,)).fetchone()[0])
         if table == 'review_flags' and data.get('status') == 'CLEARED':
             raise ValueError('a flag is cleared only by two independent reviews reaching the same conclusion (flag_reviews)')
-    if check and table in ('faults', 'reliability_stats'):
-        from . import consistency
-        consistency.check(c)
     return row_id
 
 

@@ -74,7 +74,7 @@ USER_PREMIUM = 'USER DATA'
 # Knowledge tables attach to exactly one level: variant (vehicle_id), engine (engine_id) or generation (generation_id).
 SCOPED_TABLES = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data',
                  'research_checks',  # research_checks: the contract's recorded source checks (issue #114)
-                 'faults', 'recalls', 'reliability_stats',  # target design (#174): faults, recalls, TÜV/ADAC baseline
+                 'faults', 'recalls',  # target design (#174): faults, recalls
                  'review_flags')  # problems to review on a level (#168)
 SCOPE_COLUMNS = ('vehicle_id', 'engine_id', 'generation_id')
 # Target design levels (docs/target-design.md §2): the new tables and maintenance/research_checks/sources carry all of them.
@@ -100,11 +100,6 @@ FORUM_MAX_BAND = 'common'
 CURVE_END_KM, CURVE_END_YEARS = 300_000, 20
 FAULT_SHAPES = ['WEAR_KM', 'AGE', 'WINDOW', 'RANDOM']
 HEAVY_USE_MIX = ('Mostly town',)  # setup driving_mix values that mean heavy use (short trips)
-# Statistics vs faults (#168): a model whose TÜV/ADAC figure is STATS_MISMATCH_RATIO × the class average or more while its
-# faults predict at most 1 / ratio × the catalogue average for that age (or the other way round) is flagged and gets a
-# follow-up research request; nothing is scaled automatically.
-STATS_MISMATCH_RATIO = 1.5
-TYPICAL_KM_PER_YEAR = 15000  # to place an age class on a fault's km curve in the consistency check
 NCAP_REGIME_YEAR = 2009  # Euro NCAP's stricter overall rating; earlier ratings count one star less (#169)
 PRIVATE_SALE_DISCOUNT = 0.05  # asking → private sale price (#166): ESTIMATED, range 3–10 %, no primary source found
 MARKET_MIN_PER_BAND, MARKET_MAX_AGE_DAYS = 5, 183  # resale sample (#166): ≥ 5 cars in each of the three bands, 6 months
@@ -199,6 +194,5 @@ STAGE_TOLERANCE = {
             'reference_cost_eur': ('rel', 0.30), 'diy_parts_cost_eur': ('rel', 0.40)},
     'observation': {'value_num': ('rel', 0.03)},
     'tyres': {'size': 'eq', 'price_per_tyre_eur': ('rel', 0.25), 'life_km': ('rel', 0.20)},
-    'stats': {'value': ('rel', 0.10), 'class_average': ('rel', 0.10)},
 }
 STAGE_MATERIAL_EUR, MAX_DISPUTES = 500, 25

@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=42). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=43). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -344,13 +344,6 @@ CREATE TABLE recalls (
  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) + (gearbox_id IS NOT NULL)
       + (engine_family_id IS NOT NULL) + (gearbox_family_id IS NOT NULL) + (body_style_id IS NOT NULL) + (option_id IS NOT NULL) = 1));
-CREATE TABLE reliability_stats (
- id INTEGER PRIMARY KEY AUTOINCREMENT, generation_id INTEGER NOT NULL REFERENCES generations(id),
- kind TEXT NOT NULL CHECK (kind IN ('TUEV', 'ADAC')), age_from INTEGER NOT NULL, age_to INTEGER NOT NULL,
- value REAL NOT NULL, unit TEXT NOT NULL, sample_count INTEGER, report_year INTEGER,
- source_id INTEGER NOT NULL REFERENCES sources(id), notes TEXT,
- archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id), class_average REAL CHECK (class_average IS NULL OR class_average > 0),
- CHECK (age_to >= age_from));
 CREATE TABLE market_models (
  id INTEGER PRIMARY KEY AUTOINCREMENT, generation_id INTEGER NOT NULL REFERENCES generations(id),
  engine_id INTEGER NOT NULL REFERENCES engines(id), gearbox_id INTEGER REFERENCES gearboxes(id),
@@ -488,6 +481,41 @@ CREATE TABLE research_matches (
  flag_id INTEGER REFERENCES review_flags(id),
  CHECK (a_id IS NOT NULL OR b_id IS NOT NULL),
  CHECK (verdict IS NOT 'OWN' OR verdict_id IS NOT NULL));
+CREATE TABLE source_keys (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ source_key TEXT NOT NULL,
+ engine_id INTEGER REFERENCES engines(id),
+ generation_id INTEGER REFERENCES generations(id),
+ fuel_type TEXT CHECK (fuel_type IS NULL OR fuel_type IN ('Petrol', 'Diesel', 'Hybrid', 'Plug-in hybrid', 'Electric')),
+ external_key TEXT NOT NULL,
+ url TEXT NOT NULL CHECK (url LIKE 'https://%'),
+ source_id INTEGER NOT NULL REFERENCES sources(id),
+ checked_date TEXT NOT NULL, notes TEXT,
+ archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+ owner_id INTEGER REFERENCES users(id) CHECK (owner_id IS NULL),
+ CHECK ((engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1));
+CREATE TABLE source_ratings (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ source_key TEXT NOT NULL,
+ external_key TEXT NOT NULL,
+ edition TEXT NOT NULL,
+ age_from INTEGER, age_to INTEGER,
+ reg_year INTEGER,
+ value_num REAL CHECK (value_num IS NULL OR value_num >= 0),
+ value_text TEXT,
+ band INTEGER CHECK (band IS NULL OR band BETWEEN 1 AND 5),
+ class_average REAL CHECK (class_average IS NULL OR class_average > 0),
+ cost_min_eur REAL CHECK (cost_min_eur IS NULL OR cost_min_eur >= 0),
+ cost_max_eur REAL,
+ sample_count INTEGER CHECK (sample_count IS NULL OR sample_count > 0),
+ url TEXT NOT NULL CHECK (url LIKE 'https://%'),
+ source_id INTEGER NOT NULL REFERENCES sources(id),
+ checked_date TEXT NOT NULL, notes TEXT,
+ archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+ owner_id INTEGER REFERENCES users(id) CHECK (owner_id IS NULL),
+ CHECK (age_to IS NULL OR (age_from IS NOT NULL AND age_to >= age_from)),
+ CHECK (age_from IS NULL OR reg_year IS NULL),
+ CHECK (cost_max_eur IS NULL OR cost_min_eur IS NULL OR cost_max_eur >= cost_min_eur));
 CREATE INDEX idx_observations_scope ON observations (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_risks_scope ON repair_risks (vehicle_id, engine_id, generation_id);
 CREATE INDEX idx_reliability_scope ON reliability_items (vehicle_id, engine_id, generation_id);
@@ -518,3 +546,7 @@ CREATE UNIQUE INDEX research_findings_key ON research_findings (request_id, key)
  WHERE status = 'STAGED' AND kind NOT IN ('fault', 'check', 'flag');
 CREATE INDEX research_findings_parent ON research_findings (parent_id, run, kind);
 CREATE INDEX research_matches_parent ON research_matches (parent_id, outcome);
+CREATE UNIQUE INDEX ux_source_keys ON source_keys
+ (source_key, coalesce(engine_id, -1), coalesce(generation_id, -1), coalesce(fuel_type, '')) WHERE archived = 0;
+CREATE UNIQUE INDEX ux_source_ratings ON source_ratings
+ (source_key, upper(external_key), edition, coalesce(age_from, -1), coalesce(reg_year, -1)) WHERE archived = 0;

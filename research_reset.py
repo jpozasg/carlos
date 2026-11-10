@@ -23,7 +23,7 @@ from pathlib import Path
 
 import migrate
 
-RESEARCH = ('maintenance_items', 'faults', 'recalls', 'reliability_items', 'repair_risks', 'reliability_stats',
+RESEARCH = ('maintenance_items', 'faults', 'recalls', 'reliability_items', 'repair_risks',
             'market_models', 'observations', 'insurance_data', 'tax_data', 'tyre_data', 'research_checks',
             'research_matches', 'research_findings', 'flag_reviews', 'review_flags', 'catalogue_links', 'listing_options', 'maintenance_resets', 'unit_costs')
 LEVELS = ('vehicles', 'engines', 'gearboxes', 'engine_families', 'gearbox_families', 'body_styles', 'options', 'generations')

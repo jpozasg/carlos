@@ -221,8 +221,7 @@ class AppTest(unittest.TestCase):
     def test_review_flags_168(self):
         """#168: a flag lives on its level and is cleared only when two different workers resolve it with the same
         conclusion; a CONFIRMED review or a lone resolution keeps it open; it cannot be cleared by hand; every review is
-        kept; the variant and every inheriting listing show it. TÜV/ADAC figures that clearly disagree with the faults
-        raise a STATS_MISMATCH flag with one follow-up request, which a worker finishes without a listing."""
+        kept; the variant and every inheriting listing show it."""
         st, f = self.agent('POST', 'review_flags', {'engine_id': E_A, 'kind': 'SOURCES_DISAGREE', 'what': 'Chain life',
                                                     'why': 'ADAC and the guide disagree'})
         self.assertEqual(st, 201)
@@ -240,31 +239,14 @@ class AppTest(unittest.TestCase):
         self.assertEqual(len(a['review_flags'][0]['reviews']), 3)
         self.assertEqual(rev('run 4', 'RESOLVED', 'guide outdated'), 201)
         self.assertEqual(status(), 'CLEARED')
-        # statistics vs faults: G1 far worse than the class average, G2 average, while G1's faults predict almost nothing
-        self.agent('POST', 'faults', {'engine_id': E_B, 'component': 'Turbo', 'component_code': 'TURBO', 'part': 'ENGINE', 'consequence': 'COST',
-                                      'existence': 'CONFIRMED', 'frequency_band': 'widespread', 'shape': 'WEAR_KM',
-                                      'parts_eur': 900, 'source_id': SRC_GUIDE})
+        # what the Models page shows for the new levels; reliability_stats is gone (#353): not writable
         self.agent('POST', 'faults', {'generation_id': G1, 'component': 'Trim', 'component_code': 'BODY_FITTINGS', 'part': 'CHASSIS', 'consequence': 'COSMETIC',
                                       'existence': 'CONFIRMED', 'frequency_band': 'rare', 'shape': 'RANDOM',
                                       'parts_eur': 50, 'source_id': SRC_GUIDE})
-        stat = {'kind': 'TUEV', 'age_from': 6, 'age_to': 7, 'unit': '% major defects', 'class_average': 10, 'source_id': fx.SRC_HU}
-        self.assertEqual(self.agent('POST', 'reliability_stats', {**stat, 'generation_id': G2, 'value': 10})[0], 201)
-        self.assertEqual(self.agent('POST', 'reliability_stats', {**stat, 'generation_id': G1, 'value': 20})[0], 201)
-        flags = [x for x in self.req('GET', f'/api/vehicles/{V_A}')[1]['review_flags'] if x['kind'] == 'STATS_MISMATCH']
-        self.assertEqual(len(flags), 1)
-        self.assertIn('missing faults', flags[0]['why'])
-        v = self.req('GET', f'/api/vehicles/{V_A}')[1]   # what the Models page shows for the new levels
-        self.assertEqual(([x['component'] for x in v['faults']], len(v['reliability_stats']), v['gearbox_family_name']), (['Trim'], 1, None))
-        self.agent('POST', 'reliability_stats', {**stat, 'generation_id': G1, 'value': 21, 'age_from': 8, 'age_to': 9})
-        with sqlite3.connect(config.DB) as c:
-            reqs = c.execute("SELECT id, url FROM research_requests WHERE kind='FOLLOW_UP'").fetchall()
-        self.assertEqual(reqs, [(reqs[0][0], f"carlos://follow-up/flag/{flags[0]['id']}")])   # one flag, one request
-        from carlos import research_requests
-        with sqlite3.connect(config.DB) as c:
-            c.row_factory = sqlite3.Row
-            c.execute("UPDATE research_requests SET status='RUNNING', worker='w' WHERE id=?", (reqs[0][0],))
-            research_requests.finish(c, reqs[0][0], {'status': 'DONE', 'result': 'reviewed'})
-            self.assertEqual(c.execute('SELECT status FROM research_requests WHERE id=?', (reqs[0][0],)).fetchone()[0], 'DONE')
+        v = self.req('GET', f'/api/vehicles/{V_A}')[1]
+        self.assertEqual(([x['component'] for x in v['faults']], 'reliability_stats' in v, v['gearbox_family_name']), (['Trim'], False, None))
+        self.assertNotEqual(self.agent('POST', 'reliability_stats', {'generation_id': G1, 'kind': 'TUEV', 'age_from': 6, 'age_to': 7,
+                                                                     'value': 20, 'unit': '%', 'source_id': fx.SRC_HU})[0], 201)
 
     def test_fault_costs_174(self):
         """Step 2 (#174, method #168): a fault's expected cost is the conditional chance over the owner's km × its price; a
@@ -1395,7 +1377,7 @@ class AppTest(unittest.TestCase):
     def test_rank_scoring(self):
         """#169: fixed curves; a car is scored only when complete; cost and power in percent against the current car;
         adding a car never changes the order of the others."""
-        m = lambda **kw: {k: kw.get(k) for k in list(ranking.CRITERIA) + ['reliability_stats']}
+        m = lambda **kw: {k: kw.get(k) for k in ranking.CRITERIA}
         car = lambda i, **kw: {'id': i, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'research': [], 'metrics': m(**kw)}
         rows = [{'id': 1, 'is_reference': 1, 'listing_status': 'OWNED', 'research': [], 'metrics': m(cost_month=400, mileage=200000, power=100)},
                 car(2, cost_month=400, mileage=100000, power=100), car(3, cost_month=360, mileage=50000, power=110),
@@ -1420,17 +1402,15 @@ class AppTest(unittest.TestCase):
         self.assertEqual(ranking.budget_score(8000, 6500, 8000), 0)
         self.assertLess(80 - ranking.budget_score(6875, 6500, 8000), ranking.budget_score(7250, 6500, 8000) - ranking.budget_score(7625, 6500, 8000))  # falls faster further above the ideal
         self.assertEqual(ranking.score_of('safety', {'safety': 5}, {}), 100)
-        self.assertAlmostEqual(ranking.score_of('reliability', {'reliability': 36, 'reliability_stats': 1.0}, {}), 2 / 3 * 100 + 1 / 3 * 50)
-        self.assertEqual(ranking.score_of('reliability', {'reliability': 36, 'reliability_stats': None}, {}), 100.0)  # no TÜV/ADAC figure: the weak points alone (#321)
+        self.assertEqual(ranking.score_of('reliability', {'reliability': 36}, {}), 100.0)  # the weak points alone (#353)
         ref = {'is_reference': 1, 'listing_status': 'OWNED', 'research': [], 'metrics': {'cost_month': 300, 'mileage': 100000, 'age': 10, 'reliability': 27,
-               'reliability_stats': None, 'power': 90, 'safety': 4, 'budget': None, 'inspection': None, 'distance': None}}
+               'power': 90, 'safety': 4, 'budget': None, 'inspection': None, 'distance': None}}
         ranking.rank([ref], {k: 1 for k in ranking.CRITERIA}, {})
         self.assertIsNotNone(ref['score'])  # the owned car is scored without budget, inspection and distance (#321)
         cand = {'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'research': [], 'metrics': {**ref['metrics'], 'budget': 5000, 'distance': 20}}
         ranking.rank([cand], {k: 1 for k in ranking.CRITERIA}, {'budget_ideal_eur': 6000, 'budget_max_eur': 8000})
         self.assertIsNotNone(cand['score'])  # not inspected yet: scored without the inspection criterion (#323)
         self.assertEqual(costs.safety_stars({'ncap_stars': 5, 'ncap_year': 2005, 'esp': 0}), 3)            # old regime and no ESP
-        self.assertEqual(costs.stats_ratio([{'value': 6, 'class_average': 4, 'age_from': 6, 'age_to': 7}], 7.5), 1.5)
 
     def test_questionnaire_weights(self):
         """#169: six tasks of six cars on a 3 × 3 grid; every criterion four times, every pair at least twice; simulated
