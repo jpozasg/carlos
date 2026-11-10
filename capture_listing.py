@@ -183,7 +183,8 @@ def checklist_items(detail, existing):
     """(item text, link) for the weak points that have no checklist item yet; link = {column: id} (reliability_item_id,
     fault_id or recall_id). `detail` is the listing detail: its reliability items, faults (fault_plan) and recalls (#223).
     A reliability item and a fault get their `inspection_action` (none, no item); a recall row always gets an item naming
-    the recall (issue #54); one item per weak point; the same check text is not listed twice."""
+    the recall (issue #54); one item per weak point; the same check text is not listed twice. The VIN recall check
+    (config.VIN_RECALL_CHECK, with the KBA link) is added once to every list (#357)."""
     linked = {(c, i[c]) for i in existing if not i.get('archived') for c in LINK_COLUMNS if i.get(c) is not None}
     texts = {i['item'].strip() for i in existing if not i.get('archived')}
     out = []
@@ -207,6 +208,8 @@ def checklist_items(detail, existing):
             continue  # the same check already on the list for another weak point
         out.append((text, {col: r['id']}))
         texts.add(text)
+    if config.VIN_RECALL_CHECK not in texts:  # fixed for every listing, whatever recalls are researched (#357)
+        out.append((config.VIN_RECALL_CHECK, {}))
     return out
 
 

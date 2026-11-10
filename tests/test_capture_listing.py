@@ -67,7 +67,7 @@ class CaptureListingTest(unittest.TestCase):
         self.assertEqual(d['media'][0]['snapshot_id'], s['snapshot_id'])
         actions = {r['inspection_action'] for r in d['reliability'] if r['inspection_action']}
         self.assertTrue(actions)
-        self.assertEqual({i['item'] for i in d['inspection']}, actions)
+        self.assertEqual({i['item'] for i in d['inspection']}, actions | {config.VIN_RECALL_CHECK})  # the fixed VIN recall item (#357)
         self.assertTrue(all(i['status'] == 'PENDING' for i in d['inspection']))
         self.assertEqual([e['kind'] for e in d['events']], ['found'])
         self.assertIn('6990 EUR', d['events'][0]['text'])

@@ -13,17 +13,16 @@ SERVER_UNITS = ('MERGE',)  # the worker runs no Claude for these
 DUAL_UNITS = ('RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE')
 RESEARCH_MAX_ATTEMPTS = 2  # a research run closes DONE with gaps after this many attempts (the other run and the merge may still cover them)
 
-_PARTS = ('ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS')
 UNIT_ITEMS = {
     'CAPTURE': ['lst.capture', 'lst.photos'],
-    'VARIANT': ['var.identity', 'var.consumption', 'var.tyres', 'var.gearbox', 'var.gearbox_level', 'gbx.identity', 'rel.coverage'],
-    'GENERATION': ['gen.identity', 'gen.facelift', 'gen.recalls', 'gen.risks', 'gen.baseline', 'gen.safety', 'bdy.risks']
-                  + [f'rel.{p}.{s}' for p in _PARTS for s in ('adac', 'tuev', 'guide')],
+    'VARIANT': ['var.identity', 'var.consumption', 'var.tyres', 'var.gearbox_level', 'gbx.identity'],
+    'GENERATION': ['gen.identity', 'gen.facelift', 'gen.recalls', 'gen.risks', 'gen.safety', 'bdy.risks',
+                   'rel.adac_gwinfo', 'rel.adac', 'rel.tuev'],
     'GEN_MAINTENANCE': ['gen.hu', 'gen.brake_fluid', 'gen.brakes'],
     'ENGINE': ['eng.identity', 'eng.identity_ev', 'eng.hv_battery', 'eng.drive_coolant', 'eng.reduction_gear_oil', 'eng.oil',
                'eng.spark_plugs', 'eng.timing_belt', 'eng.timing_chain', 'eng.coolant',
-               'eng.risks', 'fam.risks', 'rel.ENGINE.engine_specific'],
-    'GEARBOX': ['gbx.service', 'gbx.clutch', 'gbx.risks', 'rel.GEARBOX.gearbox_specific'],
+               'eng.risks', 'fam.risks', 'rel.autoscore', 'rel.enginescope'],
+    'GEARBOX': ['gbx.service', 'gbx.clutch', 'gbx.risks'],
     'TAX': ['var.tax', 'lst.tax_covered'],
     'LISTING': ['lst.valuation', 'lst.purchase_sale', 'lst.checklist'],
     'INSURANCE': ['lst.insurance'],
