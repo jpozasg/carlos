@@ -131,7 +131,6 @@ def budget_score(price, ideal, top):
 
 SAFETY_POINTS = {0: 0, 1: 10, 2: 25, 3: 40, 4: 70, 5: 100}
 REFERENCE_SKIPS = ('budget', 'inspection', 'distance')  # criteria that do not apply to the owned reference car
-STATS_CURVE = [(0.5, 100), (1.0, 50), (2.0, 0)]  # TÜV/ADAC ÷ class average: half = 100, average = 50, double = 0
 
 
 def median(vals):
@@ -150,10 +149,7 @@ def score_of(k, m, ctx):
     if k == 'budget':
         return budget_score(v, ctx['ideal'], ctx['max'])
     if k == 'reliability':
-        s = m.get('reliability_stats')
-        if v is None:
-            return None
-        return v / 36 * 100 if s is None else 2 / 3 * (v / 36 * 100) + 1 / 3 * curve(STATS_CURVE, s)  # no TÜV/ADAC figure for this model and age: the weak points alone (#321)
+        return None if v is None else v / 36 * 100  # the TÜV/ADAC third went with reliability_stats (#353); source_ratings replace it (#351)
     if v is None:
         return None
     if k == 'mileage':

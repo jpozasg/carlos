@@ -536,14 +536,6 @@ def lease_costs(u, p, running, vollkasko, wallbox):
     return parts, det, annual_ins
 
 
-def stats_ratio(rows, age):
-    """TÜV/ADAC figure of the model at the car's age class ÷ the class average (1 = average, lower is better); the mean of
-    TÜV and ADAC when both exist; None without a figure for that age."""
-    rs = [r['value'] / r['class_average'] for r in rows if age is not None and r.get('class_average')
-          and r['age_from'] <= age <= r['age_to'] + 1]  # +1: an age between two classes takes the lower one
-    return round(sum(rs) / len(rs), 3) if rs else None
-
-
 def safety_stars(u):
     """Euro NCAP stars adjusted for the test regime (#169): a rating from before the stricter 2009 overall rating counts
     one star less; a car without ESP loses another; None when the generation's rating is unknown."""
@@ -753,10 +745,9 @@ def tco_rows(c, p):
             'reliability': rel_total,
             'inspection': insp_problem if insp_ok or insp_problem else None,
             'power': u['power_ps'],
-            # ranking inputs (#169): the purchase price for the budget curve, TÜV/ADAC against the class at this age,
+            # ranking inputs (#169): the purchase price for the budget curve,
             # Euro NCAP adjusted for the test regime, the distance to view (per account, on the listing)
             'budget': None if u['is_reference'] or u['offer'] != 'purchase' else u['price_eur'],
-            'reliability_stats': stats_ratio(know.of('reliability_stats', v), age),
             'safety': safety_stars(u),
             'distance': 0 if u['is_reference'] else u.get('distance_km') if u.get('distance_km') is not None else geo.km(p.get('postal_code'), u.get('postal_code')),
             'confidence': research.confidence(items),  # the contract's grades (issue #114), not the number of rows
@@ -859,7 +850,7 @@ def listing_detail(c, listing_id, p, ranked):
              events=q('SELECT * FROM listing_events WHERE listing_id=? ORDER BY event_date, id'),
              snapshots=q('SELECT * FROM listing_snapshots WHERE listing_id=? ORDER BY captured_at, id'),
              media=q('SELECT * FROM listing_media WHERE listing_id=? ORDER BY id'),
-             reliability=know.of('reliability_items', v, reg), reliability_stats=know.of('reliability_stats', v), maintenance=know.of('maintenance_items', v, reg),
+             reliability=know.of('reliability_items', v, reg), maintenance=know.of('maintenance_items', v, reg),
              insurance=know.of('insurance_data', v), tax=know.of('tax_data', v), observations=know.of('observations', v),
              tyres=know.of('tyre_data', v),
              # a listing awaiting research has no variant, engine or generation yet (#194)
@@ -878,7 +869,7 @@ def listing_detail(c, listing_id, p, ranked):
     # the dossier lists the sources these rows cite too (shared sources such as the HU fee have no vehicle)
     have = {s['id'] for s in u['sources']}
     cited = {x['source_id'] for x in u['maintenance_plan'] + u['repair_risks'] + u['tyres'] + u['insurance'] + u['tax']
-             + u.get('fault_plan', []) + u['recalls'] + u['quotes'] + u['reliability_stats']
+             + u.get('fault_plan', []) + u['recalls'] + u['quotes']
              + u['observations'] if x['source_id'] and x['source_id'] not in have}
     if cited:
         u['sources'] += rows(c, f"SELECT * FROM sources WHERE id IN ({','.join('?' * len(cited))}) ORDER BY id", tuple(cited))

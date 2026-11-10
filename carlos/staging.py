@@ -13,7 +13,7 @@ RUN = {'RESEARCH_A': 'A', 'RESEARCH_B': 'B', 'ARBITER': 'C'}
 # real table -> finding kind (section 2.1); a PATCH of a real row is always kind 'patch', an insert of the three model tables is refused
 KIND = {'sources': 'source', 'engine_families': 'level', 'gearbox_families': 'level', 'gearboxes': 'level', 'body_styles': 'level',
         'options': 'level', 'faults': 'fault', 'recalls': 'recall', 'maintenance_items': 'job', 'research_checks': 'check',
-        'observations': 'observation', 'tyre_data': 'tyres', 'reliability_stats': 'stats', 'review_flags': 'flag'}
+        'observations': 'observation', 'tyre_data': 'tyres', 'review_flags': 'flag'}
 PATCHABLE = set(KIND) | {'generations', 'engines', 'vehicles', 'repair_risks'}  # never reliability_items (legacy), listing or insurance data
 KIND_ORDER = ('source', 'level', 'patch', 'fault', 'recall', 'job', 'check', 'observation', 'tyres', 'stats', 'flag')
 MODEL_LEVEL = {'generations': 'generation_id', 'engines': 'engine_id', 'vehicles': 'vehicle_id', 'gearboxes': 'gearbox_id',
@@ -631,7 +631,7 @@ def _summary(m):
 def merge(c, parent_id, owner_id, actor=None):
     """Writes the agreed and arbitrated findings of a listing request through agent_write (validation, change_log, catalogue ownership,
     the #221 duplicate guard). Idempotent: matches already merged are left alone. Returns the report; `accounts` are the accounts whose
-    dossiers changed. consistency.check runs once at the end, not after every fault."""
+    dossiers changed."""
     from .agent import agent_write, linked_accounts
     ms = [dict(r) for r in c.execute('SELECT * FROM main.research_matches WHERE parent_id=? ORDER BY id', (parent_id,))]
     if not ms:
@@ -646,7 +646,7 @@ def merge(c, parent_id, owner_id, actor=None):
     lv = c.execute('SELECT l.vehicle_id FROM main.listings l JOIN main.research_requests r ON r.listing_id=l.id WHERE r.id=?', (parent_id,)).fetchone()
 
     def write(table, rid, p):
-        out = agent_write(c, table, rid, p, owner_id, True, actor, check=False)
+        out = agent_write(c, table, rid, p, owner_id, True, actor)
         touched.append((table, out))
         return out
 
@@ -772,6 +772,5 @@ def merge(c, parent_id, owner_id, actor=None):
         c.commit()
         if not written and reason:
             report['skipped'].append({'match': m['id'], 'key': m['key'], 'reason': reason})
-    consistency.check(c)
     report['accounts'] = sorted({o for t, i in touched for o in linked_accounts(c, t, i)})
     return report

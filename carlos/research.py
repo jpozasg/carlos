@@ -39,13 +39,6 @@ def _risks(ctx):
     return [] if bad else rs + fs
 
 
-def _stats(ctx):
-    """TÜV/ADAC figures for the generation by age class (the reliability baseline, #174). Both sources are wanted, as published
-    (ADAC has no class average, #299): with only one kind the item stays open until an N/A check says the other has no figure."""
-    rs = ctx['rows']('reliability_stats')
-    return rs if {r['kind'] for r in rs} >= {'TUEV', 'ADAC'} else []
-
-
 def _consumption(ctx):
     """The primary real-world consumption of the variant: one source per drivetrain (kWh for an electric car)."""
     if electric(ctx):  # a modelled figure per variant (EVDB, #154): no owner reports, so no sample size or range
@@ -147,7 +140,7 @@ ITEMS = [
     ('var.gearbox', 'variant', 'automatic gearbox weak points checked for this variant', None, FOUND_OR_NONE, 'C', automatic, 1),
     # target design (#174): the new levels
     ('var.gearbox_level', 'variant', 'the variant names its gearbox (code, type)', _fields('gearbox_id'), (), None, always, 5),
-    ('gen.baseline', 'generation', 'TÜV/ADAC figures per age class (or a check: N/A, too new)', _stats, NOT_APPLICABLE, 'B', always, 5),
+    ('gen.baseline', 'generation', 'TÜV/ADAC figures per age class (or a check: N/A, too new)', None, NOT_APPLICABLE, 'B', always, 5),  # rows went with reliability_stats (#353): only its N/A check meets it until contract v10 (#351)
     ('fam.risks', 'engine_family', 'engine family faults, each priced with a probability (or a check: none found)', _risks, ('NONE FOUND',), None, always, 5),
     ('gbx.identity', 'gearbox', 'gearbox code and type', _fields('code', 'type'), (), None, always, 5),
     ('gbx.service', 'gearbox', 'gearbox oil service: interval and workshop price (or a check: none scheduled)', _job('GEARBOX_OIL'), ('NONE FOUND',), None, always, 5),

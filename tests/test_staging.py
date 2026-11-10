@@ -150,12 +150,10 @@ class StagingTest(unittest.TestCase):
         missing0 = self.api('GET', 'agent/stage')[1]['missing']
         self.assertIn('gen.baseline', missing0)
         _, s = self.stage('sources', {**SRC, 'engine_id': None, 'generation_id': G1, 'quality': 'B', 'url': 'https://example.test/tuev'})
-        for age in ((3, 5), (6, 8)):
-            for kind in ('TUEV', 'ADAC'):
-                st, t = self.stage('reliability_stats', {'generation_id': G1, 'kind': kind, 'age_from': age[0], 'age_to': age[1], 'value': 5.0, 'unit': '% defects',
-                                                         'report_year': 2025, 'source_id': s['id']})
-                self.assertEqual(st, 201, t)
-        before = {t: self.sql(f'SELECT count(*) FROM {t}')[0][0] for t in ('reliability_stats', 'sources', 'research_findings')}
+        st, t = self.stage('research_checks', {'generation_id': G1, 'task': 'gen.baseline', 'result': 'N/A', 'source_id': s['id'],
+                                               'checked_date': '2026-11-10', 'notes': 'too new for the TÜV and ADAC tables'})
+        self.assertEqual(st, 201, t)
+        before = {t: self.sql(f'SELECT count(*) FROM {t}')[0][0] for t in ('research_checks', 'sources', 'research_findings')}
         missing1 = self.api('GET', 'agent/stage')[1]['missing']
         self.assertNotIn('gen.baseline', missing1)
         self.assertEqual(set(missing0) - set(missing1), {'gen.baseline'})
