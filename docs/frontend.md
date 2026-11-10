@@ -55,3 +55,6 @@ Moved, not removed: the faults table (Maintenance & repairs to Reliability, grou
 
 ## Checking changes
 Start the app and open the pages in a browser; or headless: `chromium --headless=new --screenshot=out.png --window-size=1280,900 http://127.0.0.1:8000/#/compare` with a session cookie set by a bootstrap page (see `tests/` for the API side). Check phone width (390 px), every theme, light and dark, and the console for errors.
+
+## Reliability sources in the UI (#359, plan #351 section 5)
+Compare (details): the Reliability row shows the 0-100 score with "n of 3 sources" (`reliability_sources.present`/`of`); below it one row per slot (`rel_slot_ENGINE`, `rel_slot_HU`, `rel_slot_BREAKDOWNS`) with the slot points and a link to each source rating (`slots[k].sources[].url`; the tooltip gives the published value and edition); a slot without a source reads "not covered", never 0. The CSV has `reliability_engine/hu/breakdowns`. Sources: a fixed "Reliability sources" block (quality, level, terms, link pattern). Ranking: the formula table's reliability text and `rel_ranking_note`. The 36-point part rows are gone from Compare; the Dossier and Models pages are changed by #358.

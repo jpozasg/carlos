@@ -1,7 +1,7 @@
 // Compare: overview table, cost composition, break-even, detail table, photo cards. State in S (app.js).
 import { S, refreshTco, go } from '../app.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media, scoreTxt, notScoredTxt } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media, scoreTxt, notScoredTxt, safeUrl } from '../ui.js';
 // cars a ranking filter (Settings) excludes (#169)
 export const filteredNote = () => { const n = S.units.filter(u => (u.excluded || '').startsWith('filter:')).length; return n ? `<p class="small muted">${t('filtered_n', { n })} <a href="#/settings">${t('filters_title')}</a></p>` : ''; };
 import { costStack, beChart, beTable, beHover, beColors } from '../charts.js';
@@ -108,6 +108,14 @@ function costs(us) {
   if (!selComps().length) return `<div class="card">${legend}<p class="empty">${t('cost_none_selected')}</p></div>`;
   return `<div class="card">${legend}${costStack(us, comps, costSel, S.p, selCost) || `<p class="empty">${t('select_one')}</p>`}<p class="small muted" style="margin:8px 0 0">${t('chart_note')}</p></div>`;
 }
+const config_slots = ['ENGINE', 'HU', 'BREAKDOWNS'];
+// One reliability slot: its points and a link to each source rating behind them (value as published in the tooltip).
+function relCell(u, k) {
+  const sl = u.reliability_sources?.slots?.[k];
+  if (!sl) return `<span class="muted">${t('rel_not_covered')}</span>`;
+  return `${num(sl.points, 0)} ${sl.sources.map(x => { const tip = `${x.source}: ${x.value_text ?? x.value ?? (x.band != null ? x.band + '/5' : '')} (${x.edition})`;
+    return x.url ? `<a class="small" href="${safeUrl(x.url)}" target="_blank" rel="noopener" title="${esc(tip)}" aria-label="${esc(t('rel_open_source') + ': ' + tip)}">${esc(x.source)}</a>` : `<span class="small" title="${esc(tip)}">${esc(x.source)}</span>`; }).join(' · ')}`;
+}
 function details(us) {
   if (!us.length) return '';
   const dash = '<span class="muted">—</span>';
@@ -115,7 +123,7 @@ function details(us) {
     [t('g_unit'), [[t('asking_price'), u => u.is_reference ? `<span class="muted">${t('owned')}</span>` : eP(u.price_eur)], [t('mileage'), u => u.mileage_km == null ? PEND() : num(u.mileage_km, 0) + ' km'],
       [t('age'), u => u.metrics.age == null ? PEND() : yrs(u.metrics.age)], [t('km_per_year'), u => u.metrics.km_per_year == null ? PEND() : num(u.metrics.km_per_year, 0)],
       [t('power'), u => u.power_ps == null ? PEND() : num(u.power_ps, 0) + ' PS'], [t('insurance_year'), u => eP(u.annual_insurance)], [t('tax_year'), u => eP(u.annual_tax)],
-      [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : num(u.metrics.reliability, 1)], ...['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'].map(k => [`· ${t('part_' + k)}`, u => (u.reliability_parts || {})[k] == null ? PEND() : num(u.reliability_parts[k], 1)]),
+      [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : `${num(u.metrics.reliability, 0)}${u.reliability_sources ? ` <span class="muted small">${t('rel_coverage', { n: u.reliability_sources.present, m: u.reliability_sources.of })}</span>` : ''}`], ...config_slots.map(k => [`· ${t('rel_slot_' + k)}`, u => relCell(u, k)]),
       [t('c_confidence'), u => u.metrics.confidence == null ? PEND() : num(u.metrics.confidence, 0) + ' %'],
       [t('score'), u => u.score == null || u.excluded ? `<span class="pending" title="${esc(notScoredTxt(u))}">${esc(notScoredTxt(u))}</span>` : `<b>${scoreTxt(u)}</b>${u.rank ? ` <span class="muted">${t('rank_n', { n: u.rank })}</span>` : ''}`],
       [t('consumption'), u => u.consumption == null ? PEND() : `${num(u.consumption)} ${esc(u.consumption_unit || 'l/100 km')}<br><span class="muted">${num(u.consumption_min)}–${num(u.consumption_max)} · n=${u.consumption_sample ?? '?'}</span>`]]],
@@ -155,7 +163,7 @@ function exportCsv() {
   const us = ordered(), cols = [['rank', u => u.rank], ['score', u => u.score], ['make', u => u.make], ['model', u => u.model], ['trim', u => u.trim], ['listing_id', u => u.listing_id],
     ['reference', u => u.is_reference ? 1 : 0], ['status', u => u.listing_status], ['price_eur', u => u.price_eur], ['mileage_km', u => u.mileage_km], ['age_years', u => u.metrics.age], ['km_per_year', u => u.metrics.km_per_year],
     ['consumption_l_100km', u => u.consumption], ['insurance_eur_year', u => u.annual_insurance], ['tax_eur_year', u => u.annual_tax], ['power_ps', u => u.power_ps],
-    ['reliability_points', u => u.metrics.reliability], ...['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'].map(k => [`reliability_${k.toLowerCase()}`, u => (u.reliability_parts || {})[k]]), ['confidence_pct', u => u.metrics.confidence],
+    ['reliability_points', u => u.metrics.reliability], ...config_slots.map(k => [`reliability_${k.toLowerCase()}`, u => u.reliability_sources?.slots?.[k]?.points]), ['confidence_pct', u => u.metrics.confidence],
     ...S.components.map(k => [k + '_eur_period', u => u.components[k]]), ['known_subtotal_eur', u => u.known_cost_subtotal], ['known_eur_month', u => u.known_cost_per_month],
     ['tco_complete', u => u.tco_complete ? 1 : 0], ['budget_status', u => u.budget_status], ['url', u => u.url]];
   const q = v => v == null ? '' : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);

@@ -39,7 +39,7 @@ function draw() {
     </div>
     <details class="card formula"><summary><b>${t('formula_title')}</b></summary><p class="small">${esc(t('formula_text'))}</p>
       <div class="tablewrap"><table><thead><tr><th>${t('criterion')}</th><th>${t('better')}</th><th>${t('basis')}</th></tr></thead><tbody>${CRIT().map(k => `<tr><td><b>${t('c_' + k)}</b></td><td>${t('better_' + R.criteria[k].better)}</td><td class="small">${esc(t('cb_' + k))}</td></tr>`).join('')}</tbody></table></div>
-      <p class="small muted">${t('quiz_method')}</p></details></div>`;
+      <p class="small">${t('rel_ranking_note')}</p><p class="small muted">${t('quiz_method')}</p></details></div>`;
 }
 function runQuiz() {
   root.innerHTML = `<div class="section quiz-page"><h2>${t('quiz_title')}</h2><p class="lead">${t('quiz_lead')}</p><div id="qzHost"></div></div>`;
