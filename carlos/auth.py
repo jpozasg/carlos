@@ -17,7 +17,8 @@ _LISTING_CHILDREN = ('valuations', 'unit_costs', 'inspection_items', 'listing_ev
                      'listing_history', 'listing_quotes', 'listing_options')
 # Archivable tables (issue #58): <table> shows only rows with archived=0 (every read and calculation), <table>_all
 # also the archived ones (to restore a row with PATCH archived=0). Both are filtered by account.
-ARCHIVABLE = tuple(t for t in _KNOW if t != 'review_flags') + ('valuations', 'unit_costs', 'inspection_items', 'maintenance_resets', 'listing_history', 'listing_quotes')
+SOURCE_TABLES = ('source_keys', 'source_ratings')  # shared reliability sources (#354): catalogue only, owner_id NULL
+ARCHIVABLE = tuple(t for t in _KNOW if t != 'review_flags') + SOURCE_TABLES + ('valuations', 'unit_costs', 'inspection_items', 'maintenance_resets', 'listing_history', 'listing_quotes')
 # The view each level column is checked against: a knowledge row is visible when its level is (#174).
 LEVEL_VIEW = {'vehicle_id': 'vehicles', 'engine_id': 'engines', 'generation_id': 'generations', 'gearbox_id': 'gearboxes',
               'engine_family_id': 'engine_families', 'gearbox_family_id': 'gearbox_families', 'body_style_id': 'body_styles',
@@ -43,6 +44,9 @@ _BASE = {**{t: f'SELECT * FROM main.{t} WHERE owner_id={{o}}' + (f' OR owner_id 
          **{t: f'SELECT * FROM main.{t} WHERE (' + _visible(cols)
                + (' OR coalesce(' + ', '.join(cols) + ') IS NULL' if t == 'maintenance_items' else '')
                + ') AND (owner_id IS NULL OR owner_id={o})' for t, cols in KNOW_LEVELS.items()},
+         'source_keys': 'SELECT * FROM main.source_keys WHERE engine_id IN (SELECT id FROM engines) OR generation_id IN (SELECT id FROM generations)',
+         'source_ratings': 'SELECT * FROM main.source_ratings r WHERE EXISTS (SELECT 1 FROM main.source_keys k WHERE k.source_key=r.source_key '
+                           'AND upper(k.external_key)=upper(r.external_key) AND (k.engine_id IN (SELECT id FROM engines) OR k.generation_id IN (SELECT id FROM generations)))',
          'flag_reviews': 'SELECT * FROM main.flag_reviews WHERE flag_id IN (SELECT id FROM review_flags)',
          'market_models': 'SELECT * FROM main.market_models WHERE generation_id IN (SELECT id FROM generations) '
                           'AND engine_id IN (SELECT id FROM engines) AND (owner_id IS NULL OR owner_id={o})',

@@ -1934,6 +1934,36 @@ class AppTest(unittest.TestCase):
                      '- Workshop price within ±30 %: 100 % (1/1)', '- A: none'):
             self.assertIn(line, out)
 
+    def test_rating_sources_api(self):
+        """source_keys / source_ratings (#354): per-source rules, EngineScope permission, archive instead of delete."""
+        K = {'source_key': 'AUTOSCORE', 'engine_id': E_A, 'external_key': 'n46', 'url': 'https://autoscore.pro/engine/n46',
+             'source_id': SRC_GUIDE, 'checked_date': '2026-11-10'}
+        R = {'source_key': 'AUTOSCORE', 'external_key': 'n46', 'edition': '2026-11-10', 'value_num': 4.5, 'value_text': 'AVOID',
+             'url': K['url'], 'source_id': SRC_GUIDE, 'checked_date': '2026-11-10'}
+        self.assertEqual(self.agent('POST', 'source_keys', K)[0], 201)
+        self.assertEqual(self.agent('POST', 'source_keys', {**K, 'external_key': 'x', 'engine_id': None, 'generation_id': G1})[0], 400)  # wrong level
+        self.assertEqual(self.agent('POST', 'source_keys', {**K, 'fuel_type': 'Diesel'})[0], 400)    # fuel: GW-Info only
+        self.assertEqual(self.agent('POST', 'source_keys', {**K, 'source_key': 'NOPE'})[0], 400)
+        self.assertEqual(self.agent('POST', 'source_keys', {**K, 'source_id': None})[0], 400)
+        st, r = self.agent('POST', 'source_ratings', R)
+        self.assertEqual(st, 201)
+        self.assertEqual(self.agent('POST', 'source_ratings', {**R, 'edition': '2027', 'value_num': 11})[0], 400)    # off the scale
+        self.assertEqual(self.agent('POST', 'source_ratings', {**R, 'edition': '2027', 'value_text': None})[0], 400)  # required field
+        self.assertEqual(self.agent('POST', 'source_ratings', {**R, 'source_key': 'ADAC_GWINFO'})[0], 400)          # keys only
+        # EngineScope: link rows only until written permission
+        E = {**R, 'source_key': 'ENGINESCOPE', 'external_key': 'vw-ea211-10', 'value_num': 86, 'value_text': 'BEST'}
+        self.assertEqual(self.agent('POST', 'source_keys', {**K, 'source_key': 'ENGINESCOPE', 'external_key': 'vw-ea211-10'})[0], 201)
+        self.assertEqual(self.agent('POST', 'source_ratings', E)[0], 403)
+        with mock.patch.object(config, 'ENGINESCOPE_PERMISSION', 'SCORE'):
+            self.assertEqual(self.agent('POST', 'source_ratings', {**E, 'value_text': 'AVOID'})[0], 400)            # band disagrees
+            self.assertEqual(self.agent('POST', 'source_ratings', {**E, 'cost_min_eur': 200})[0], 403)
+            self.assertEqual(self.agent('POST', 'source_ratings', E)[0], 201)
+        # one live row per key and edition; a new edition replaces the old by archiving, never deleting
+        self.assertGreaterEqual(self.agent('POST', 'source_ratings', R)[0], 400)
+        self.assertEqual(self.agent('PATCH', f'source_ratings/{r["id"]}', {'archived': 1})[0], 200)
+        self.assertEqual(self.agent('POST', 'source_ratings', R)[0], 201)
+        self.assertEqual(self.agent('POST', 'source_keys', K, token='bad')[0], 401)
+
 
 if __name__ == '__main__':
     unittest.main()
