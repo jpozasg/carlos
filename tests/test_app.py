@@ -1904,6 +1904,28 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('POST', '/api/requests', {'url': f'carlos://listing/{CAR_A}'})[0], 201)
         self.assertEqual(self.req('POST', '/api/requests', {'url': 'carlos://listing/99999'})[0], 400)
 
+    def test_research_reset_reliability_361(self):
+        """#361: --reliability archives rel.* checks only (dry run first), keeps faults, --delete removes them."""
+        import research_reset
+        c = sqlite3.connect(config.DB)
+        total0 = c.execute("SELECT count(*) FROM research_checks").fetchone()[0]
+        for task in ('rel.ENGINE.adac', 'rel.HU.tuev', 'eng.code'):
+            c.execute("INSERT INTO research_checks (engine_id, task, source_id, result, contract_version) VALUES (?, ?, ?, 'N/A', 9)",
+                      (E_A, task, SRC_GUIDE))
+        c.commit()
+        live = lambda: c.execute("SELECT count(*) FROM research_checks WHERE task LIKE 'rel.%' AND archived=0").fetchone()[0]
+        n = live()
+        self.assertGreaterEqual(n, 2)
+        self.assertEqual(research_reset.reset_reliability(config.DB), n)
+        self.assertEqual(live(), n)   # dry run
+        self.assertEqual(research_reset.reset_reliability(config.DB, apply=True), n)
+        self.assertEqual(live(), 0)
+        self.assertEqual(c.execute("SELECT count(*) FROM research_checks").fetchone()[0], total0 + 3)   # archived, not deleted
+        self.assertEqual(c.execute("SELECT count(*) FROM research_checks WHERE task='eng.code' AND archived=0").fetchone()[0], 1)
+        research_reset.reset_reliability(config.DB, apply=True, delete=True)
+        self.assertEqual(c.execute("SELECT count(*) FROM research_checks WHERE task LIKE 'rel.%'").fetchone()[0], 0)
+        c.close()
+
     def test_pilot_compare_identical_runs(self):
         """#167 pilot: comparing a run with itself reports full agreement and no failures."""
         import pilot_compare

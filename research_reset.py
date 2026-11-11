@@ -16,7 +16,13 @@ Listings keep hsn, tsn, engine_code_seen, build_date and trim, so the worker re-
 --keep-tax-insurance keeps tax_data and insurance_data, and with them the catalogue levels (variant, engine, generation, ...) they
 need; every other level row and all other research is emptied.
 
-Usage: python research_reset.py <cars.sqlite> [--apply] [--keep-account 5] [--drop-requests] [--keep-tax-insurance]"""
+--reliability (issue #361, umbrella #351 §8) is a separate, narrow reset: it touches only the old per-part reliability research
+checks (research_checks whose task starts with 'rel.'). Dry run by default; --apply ARCHIVES them (archived=1, reversible, backup first).
+Faults, repair_risks, recalls and everything else stay untouched. --delete (with --apply) removes them for good: use it ONLY after the
+owner confirmed that exact deletion in the session (AGENTS.md: never delete without the owner's confirmation).
+
+Usage: python research_reset.py <cars.sqlite> [--apply] [--keep-account 5] [--drop-requests] [--keep-tax-insurance]
+       python research_reset.py <cars.sqlite> --reliability [--apply] [--delete]"""
 import sqlite3
 import sys
 from pathlib import Path
@@ -126,9 +132,41 @@ def run(db, apply=False, keep=5, drop_requests=False, keep_ti=False):
         c.close()
 
 
+def reset_reliability(db, apply=False, delete=False):
+    """Archives (or, with delete, removes) the live rel.* research checks; prints each task with its count. Returns the row count."""
+    db = Path(db)
+    c = sqlite3.connect(db, isolation_level=None)
+    try:
+        where = "task LIKE 'rel.%' AND archived = 0" if not delete else "task LIKE 'rel.%'"
+        for task, n in c.execute(f'SELECT task, count(*) FROM research_checks WHERE {where} GROUP BY task ORDER BY task').fetchall():
+            print(f'{n:6d}  {task}')
+        total = c.execute(f'SELECT count(*) FROM research_checks WHERE {where}').fetchone()[0]
+        verb = 'deleted' if delete else 'archived'
+        print(f'{total:6d}  research_checks would be {verb} (faults, repair_risks, recalls untouched)')
+        if not apply or not total:
+            print('Dry run: nothing changed. Run with --apply (a backup is made first).' if total else 'Nothing to do.')
+            return total
+        print('Backup:', migrate.backup(db))
+        c.execute('BEGIN')
+        try:
+            c.execute(f'DELETE FROM research_checks WHERE {where}' if delete else f'UPDATE research_checks SET archived=1 WHERE {where}')
+            if c.execute('PRAGMA foreign_key_check').fetchall():
+                raise sqlite3.IntegrityError('foreign key violations')
+            c.execute('COMMIT')
+        except Exception:
+            c.execute('ROLLBACK'); raise
+        print(f'Reliability checks {verb}.')
+        return total
+    finally:
+        c.close()
+
+
 if __name__ == '__main__':
     args = sys.argv[1:]
     if not args or args[0].startswith('-'):
         raise SystemExit(__doc__)
+    if '--reliability' in args:
+        reset_reliability(args[0], '--apply' in args, '--delete' in args)
+        raise SystemExit(0)
     keep = int(args[args.index('--keep-account') + 1]) if '--keep-account' in args else 5
     run(args[0], "--apply" in args, keep, '--drop-requests' in args, '--keep-tax-insurance' in args)
