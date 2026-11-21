@@ -49,6 +49,12 @@ How to gather data in the user's own Chrome (Claude in Chrome) for Carlos. Rules
 5. Structured facts for the ranking filters, the distance and the dossier (#169) go in `listing` as the ad states them (null when not shown, never guessed): `seller_type` DEALER/PRIVATE, `warranty` 1/0, `hu_until` YYYY-MM (HU/TÜV month), `service_history` YES (Scheckheft/invoices shown) / CLAIMED (only stated) / NO, `accident_free` YES (documented) / CLAIMED ("unfallfrei" stated) / NO, `postal_code` (the car's 5-digit postcode) and, for a **dealer ad, always** the dealer's rating: `seller_rating` (stars, e.g. 4.8) and `seller_reviews` (count) from the rating line (mobile.de "Händlerbewertung"); null for a private seller.
 6. Write the capture JSON and run `python capture_listing.py <file> --dry-run`, then run it without `--dry-run`. Add listing-specific checklist items and warnings.
 
+### A car without a link (issue #375)
+The owner can give the facts in the session instead of a link (no ad, a car seen in person or told by phone). No worker is needed; the coordinating agent does it with the owner's data, acting for the account (`X-Carlos-Account`):
+1. Ask only for what is missing: make, model, year or first registration, engine/fuel, power, gearbox, mileage, asking price, location/postcode, seller type, HSN/TSN if known, the seller's claims (accident, owners, HU, service history), equipment, photos (files). Never fill a gap by guessing: it stays null.
+2. Create the shell (generation, engine, variant) as in `docs/prompts/units/capture.md` step 2, then write a capture JSON **without `url`** (`platform` defaults to `manual`, `capture_method` to "entered by the owner"; the source is `user_data`, quality D) and run `python capture_listing.py <file> --dry-run`, then for real. Photos come in as `{"file": ...}`.
+3. Log a `user_data` entry with what the owner said, verbatim where it is a claim. Then queue the research with `POST /api/requests {"url": "carlos://listing/<id>"}`: the CAPTURE unit has no ad to read and goes on to the variant, generation, engine and tax research.
+
 ### Leasing offers (issue #127)
 **Out of scope since #165**: a used ad's lease tab is ignored and a lease-only ad is not captured; kept for reference.
 - The price box has tabs "Finanzierung" and "Leasing" (checked 2026-11-05 on a used VW Golf Variant: purchase 20,980 € **and** lease from 223 €/month). Click the **Leasing** tab (read only; never "Leasingangebot anfragen"), then read the tab panel: `[...document.querySelectorAll('[role=tabpanel]')].map(e => e.innerText)`.

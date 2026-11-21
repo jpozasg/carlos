@@ -31,8 +31,8 @@ SOH_CHECK = ('Battery state of health: ask for a SoH certificate (method, date, 
              '>= 88 % at 100,000 km; check the remaining battery warranty (usually 8 years / 160,000 km / 70 %)')
 CAPTURE_FORMAT = '''Capture JSON (null = unknown, never 0):
 {
-  "url": "https://suchen.mobile.de/fahrzeuge/details.html?id=...",   required
-  "platform": "mobile.de",                                           required
+  "url": "https://suchen.mobile.de/fahrzeuge/details.html?id=...",   the ad; omit it for a car the owner describes (no link, #375)
+  "platform": "mobile.de",                                           optional without a url (default "manual")
   "listing_id": "54052815747808",                                    platform's own id
   "vehicle_id": 7,                                                   required: existing vehicles.id
   "captured_at": "2026-11-02T15:30",                                 required
@@ -98,7 +98,10 @@ def validate(cap):
     """Checks the capture before any write, so a bad file never leaves a half-imported listing."""
     if not isinstance(cap, dict):
         raise ValueError('The capture must be a JSON object')
-    for k in ('url', 'platform', 'captured_at'):
+    if 'url' not in cap or cap['url'] is None:  # a car the owner describes without a link (#375): no ad to match or re-read
+        cap['url'] = None  # an empty text '' is still refused below
+        cap.setdefault('platform', 'manual'); cap.setdefault('capture_method', 'entered by the owner')
+    for k in ('platform', 'captured_at') + (() if cap['url'] is None else ('url',)):
         if not isinstance(cap.get(k), str) or not cap[k].strip():
             raise ValueError(f'{k} is required (text)')
     if not isinstance(cap.get('vehicle_id'), int) or isinstance(cap.get('vehicle_id'), bool):
@@ -149,7 +152,7 @@ def find_existing(api, cap):
     for row in api.call('GET', '/api/listings')['listings']:
         if row['is_reference']:
             continue
-        if row['url'] == cap['url'] or (cap.get('listing_id') and row['listing_id'] == str(cap['listing_id'])
+        if (cap['url'] and row['url'] == cap['url']) or (cap.get('listing_id') and row['listing_id'] == str(cap['listing_id'])
                                         and (row['platform'] or '').lower() == cap['platform'].lower()):
             return row
     return None
@@ -247,7 +250,12 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
             'url': cap['url'], 'source_type': 'listing', 'quality': cap.get('source_quality', 'A'), 'accessed_date': day,
             'supports': 'Asking price, mileage, registration, seller, equipment and seller claims as published',
             'limitations': 'Asking price, not a transaction. Claims about accidents, owners, HU and history are not '
-                           'an independent inspection.'}, 'listing source')
+                           'an independent inspection.'} if cap['url'] else {
+            'vehicle_id': cap['vehicle_id'], 'title': f"{cap.get('title') or 'Car'} described by the owner",
+            'source_type': 'user_data', 'quality': cap.get('source_quality', 'D'), 'accessed_date': day,
+            'supports': 'Asking price, mileage, registration and equipment as the owner states them (no ad link)',
+            'limitations': 'Told by the owner, not checked against an ad or documents; the price is an asking price, not a transaction.'},
+            'listing source')
         ids['listing'] = write('POST', '/api/agent/listings', {
             'vehicle_id': cap['vehicle_id'], 'source_id': source_id, 'platform': cap['platform'],
             'listing_id': None if cap.get('listing_id') is None else str(cap['listing_id']), 'url': cap['url'],
