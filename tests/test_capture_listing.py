@@ -52,6 +52,13 @@ class CaptureListingTest(unittest.TestCase):
     def detail(self, lid):
         return self.api.call('GET', f'/api/listings/{lid}')
 
+    def test_car_without_a_link(self):  # #375
+        cap = self.capture(); cap.pop('url'); cap.pop('platform'); cap.pop('listing_id'); cap['photos'] = []
+        a, b = self.run_import(dict(cap)), self.run_import(dict(cap, title='Other'))
+        self.assertTrue(a['new_listing'] and b['new_listing'])  # an empty url never matches another listing
+        d = self.detail(a['listing_id'])
+        self.assertEqual((d['url'], d['platform'], d['price_eur']), (None, 'manual', 6990.0))
+
     def test_new_listing_full_workflow(self):
         s = self.run_import(self.capture())
         self.assertTrue(s['new_listing'])
