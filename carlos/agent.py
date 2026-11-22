@@ -31,7 +31,8 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'recalls.part': config.RELIABILITY_PARTS,
                'maintenance_items.kind': ['JOB', 'WEAR'], 'listing_history.status': ['DONE', 'PRESENT', 'OPEN', 'NOT AFFECTED'],
                'listing_history.evidence': ['DOCUMENTED', 'SELLER CLAIM', 'OBSERVED', 'VIN CHECK'],
-               'listing_history.category': ['maintenance', 'repairs'], 'listing_history.job': config.JOBS}
+               'listing_history.category': ['maintenance', 'repairs'], 'listing_history.job': config.JOBS,
+               'faults.job': config.JOBS}
 # Tables the agent may write. Those in the second set require source_id on insert.
 AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
                 'maintenance_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',

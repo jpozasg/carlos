@@ -8,13 +8,13 @@ import json, math
 
 # key: better direction, unit, how the value is obtained (for the explanation). Values live in row['metrics'].
 CRITERIA = {
-    'cost_month': {'better': 'lower', 'unit': 'eur_month', 'basis': 'Complete TCO over the period ÷ months: fuel, insurance, tax, maintenance, expected and certain repairs, tyres, purchase/sale costs and depreciation. Scored in percent against the current car\'s cost per month (else the median of the candidates): points = 60 − 112·ln(cost ÷ anchor), 0–100 (≈ +10.7 points per 10 % cheaper).'},
+    'cost_month': {'better': 'lower', 'unit': 'eur_month', 'basis': 'Complete TCO over the period ÷ months: fuel, insurance, tax, maintenance, expected and certain repairs, tyres, purchase/sale costs and depreciation. Scored in percent against the current car\'s cost per month (else the median of the candidates): points = 60 − 112·ln(cost ÷ anchor) (≈ +10.7 points per 10 % cheaper), shown 0–100; the sum uses the unclipped value so the order never depends on the anchor.'},
     'budget': {'better': 'lower', 'unit': 'eur', 'basis': 'Asking price against your budget: 100 points up to 55 % of the ideal budget, slowly down to 80 at the ideal, then falling faster and faster to 0 at the maximum; above the maximum the car is not ranked (switchable).'},
     'mileage': {'better': 'lower', 'unit': 'km', 'basis': 'Odometer reading: ≤ 50,000 km = 100 points, 150,000 km = 50, ≥ 250,000 km = 0.'},
     'age': {'better': 'lower', 'unit': 'years', 'basis': 'Years since first registration: ≤ 3 years = 100 points, 10 = 50, ≥ 20 = 0.'},
     'reliability': {'better': 'higher', 'unit': 'points', 'basis': 'One value, 0-100: the mean of the slots with a published figure - engine (Autoscore, risk inverted; EngineScope when permitted), HU defects (TÜV-Report against the class average) and breakdowns (ADAC band). A missing slot lowers coverage, never the score; unknown without any slot.'},
-    'inspection': {'better': 'lower', 'unit': 'problems', 'basis': 'Checklist items marked PROBLEM at a viewing: none = 100 points, each problem −25; unknown until at least one item was checked.'},
-    'power': {'better': 'higher', 'unit': 'ps', 'basis': 'Engine power in percent against the current car (else the median of the candidates): points = 60 + 112·ln(PS ÷ anchor), 0–100.'},
+    'inspection': {'better': 'lower', 'unit': 'problems', 'basis': 'Checklist items marked PROBLEM at a viewing: none = 100 points, each problem −25, times the share of the checklist checked (coverage shown); unknown until at least one item was checked.'},
+    'power': {'better': 'higher', 'unit': 'ps', 'basis': 'Engine power in percent against the current car (else the median of the candidates): points = 60 + 112·ln(PS ÷ anchor), shown 0–100 (summed unclipped, as cost).'},
     'safety': {'better': 'higher', 'unit': 'stars', 'basis': 'Euro NCAP stars of the generation; a rating from before the stricter 2009 test counts one star less, no ESP one star less: 5 = 100 points, 4 = 70, 3 = 40, 2 = 25, 1 = 10, 0 = 0.'},
     'distance': {'better': 'lower', 'unit': 'km', 'basis': 'Distance from your postcode to the car: ≤ 25 km = 100 points, 100 km = 50, ≥ 200 km = 0.'},
 }
@@ -114,8 +114,14 @@ def curve(points, v):
 
 
 def log_score(v, anchor, sign):
-    """Percent against an anchor (#169): 60 at the anchor, ±112 points per natural-log unit (≈ 10.7 per 10 %), 0–100."""
-    return min(100.0, max(0.0, 60 + sign * 112 * math.log(v / anchor))) if v and anchor and v > 0 and anchor > 0 else None
+    """Percent against an anchor (#169): 60 at the anchor, ±112 points per natural-log unit (≈ 10.7 per 10 %). Not clipped:
+    a clip at 0 or 100 made the order depend on the anchor; shown points are clipped by shown_points()."""
+    return 60 + sign * 112 * math.log(v / anchor) if v and anchor and v > 0 and anchor > 0 else None
+
+
+def shown_points(p):
+    """The 0–100 points a criterion shows (the weighted sum uses the unclipped value)."""
+    return None if p is None else min(100.0, max(0.0, p))
 
 
 def budget_score(price, ideal, top):
@@ -156,8 +162,8 @@ def score_of(k, m, ctx):
         return curve([(50_000, 100), (150_000, 50), (250_000, 0)], v)
     if k == 'age':
         return curve([(3, 100), (10, 50), (20, 0)], v)
-    if k == 'inspection':
-        return max(0.0, 100 - 25 * v)
+    if k == 'inspection':  # a part-checked list scores only its checked share
+        return max(0.0, 100 - 25 * v) * m['inspection_coverage']
     if k == 'safety':
         return SAFETY_POINTS.get(int(v), 0)
     if k == 'distance':
@@ -218,10 +224,11 @@ def rank(rows, weights, p=None):
         scored = bool(total_w) and not missing and not research_left and r['listing_status'] != 'WITHDRAWN'
         score = round(sum(used[k] * parts[k] for k in used) / total_w, 1) if scored else None
         r.update(score=score, rank=None, excluded=excluded,
-                 score_parts={k: round(parts[k]) for k in used if parts[k] is not None},
+                 score_parts={k: round(shown_points(parts[k])) for k in used if parts[k] is not None},
                  not_scored=None if scored else {'criteria': missing, 'research': research_left},
                  explain=[{'criterion': k, 'value': m.get(k), 'unit': CRITERIA[k]['unit'], 'better': CRITERIA[k]['better'],
-                           'weight': weights.get(k, 0), 'score': None if parts[k] is None else round(parts[k]),
+                           'weight': weights.get(k, 0), 'score': None if parts[k] is None else round(shown_points(parts[k])),
+                           'coverage': m.get('inspection_coverage') if k == 'inspection' else None,
                            'contribution': round(used[k] * parts[k] / total_w, 1) if score is not None and k in used else None,
                            'anchor': ctx['cost_anchor'] if k == 'cost_month' else ctx['power_anchor'] if k == 'power' else None,
                            'why_missing': None if parts[k] is not None else ('weight 0' if k not in used else 'no value for this car')}
