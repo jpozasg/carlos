@@ -334,9 +334,10 @@ def history_effects(h, m_rows):
 
 
 def quote_for(qs, is_reference):
-    """The listing's insurance quote behind the cost: the reference car's own premium (USER DATA), else the newest."""
+    """The listing's insurance quote behind the cost: the reference car's own premium (USER DATA), else the newest by quote date
+    (a later entry of an older quote never replaces a fresher one), then by id. An expired quote is still used (owner decides)."""
     user = [q for q in qs if q['premium_status'] == config.USER_PREMIUM] if is_reference else []
-    return max(user or qs, key=lambda q: q['id'], default=None)
+    return max(user or qs, key=lambda q: (q.get('quote_date') or '', q['id']), default=None)
 
 
 def diy_choice(c):
@@ -758,7 +759,7 @@ def listing_detail(c, listing_id, p, ranked):
              unit_costs=q('SELECT * FROM unit_costs WHERE listing_id=? ORDER BY id'),
              maintenance_resets=q('SELECT * FROM maintenance_resets WHERE listing_id=? ORDER BY id'),
              history=q('SELECT * FROM listing_history WHERE listing_id=? ORDER BY id'),
-             quotes=q('SELECT * FROM listing_quotes WHERE listing_id=? ORDER BY id'),
+             quotes=q('SELECT * FROM listing_quotes WHERE listing_id=? ORDER BY id'), quote_max_age_days=config.QUOTE_MAX_AGE_DAYS,
              recalls=know.of('recalls', v, reg), review_flags=know.of('review_flags', v),
              inspection=q('SELECT * FROM inspection_items WHERE listing_id=? ORDER BY id'),
              events=q('SELECT * FROM listing_events WHERE listing_id=? ORDER BY event_date, id'),

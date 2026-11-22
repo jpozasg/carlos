@@ -88,6 +88,7 @@ class MergeTest(ts.StagingTest):
                    diffs=json.dumps([{'field': 'power_kw', 'a': 99, 'b': 77, 'rule': 'equal'}]))
         r = self.merge()
         self.assertEqual(len(r['disagreements']), 2)
+        self.assertEqual(self.sql("SELECT count(*) FROM research_matches WHERE parent_id=100 AND merged LIKE '%disagrees%'"), [(2,)])
         self.assertEqual(self.sql('SELECT power_kw FROM engines WHERE id=?', (E_A,)), [(74,)])      # identity left alone
         self.assertEqual(self.sql('SELECT count(*) FROM review_flags'), [(0,)])                    # review flags are retired (#397)
         pf = next(x for x in r['disagreements'] if 'power_kw' in x['what'])

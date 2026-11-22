@@ -808,7 +808,8 @@ def merge(c, parent_id, owner_id, actor=None):
             c.execute("UPDATE main.research_findings SET status='SKIPPED', updated_at=datetime('now') WHERE id=? AND status='STAGED'", (s,))
         if disagree and two_runs:  # the less favourable side was written; the disagreement stays in the report (review flags are retired, #397)
             report['disagreements'].append({'match': m['id'], 'key': m['key'], 'what': _summary(m)})
-        res = {'ids': [ids[w['id']] for w in written], **({'skipped' if not written else 'note': reason} if reason else {})}
+        res = {'ids': [ids[w['id']] for w in written], **({'skipped' if not written else 'note': reason} if reason else {}),
+               **({'disagrees': 1} if disagree and two_runs or m['id'] in {u[0]['id'] for u in unsettled} else {})}  # counted by the MERGE result
         c.execute('UPDATE main.research_matches SET merged=? WHERE id=?', (json.dumps(res), m['id']))
         c.commit()
         if not written and reason:

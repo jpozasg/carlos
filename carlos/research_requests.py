@@ -47,7 +47,7 @@ def _detail(c, d):
         ms = [json.loads(r[0]) for r in c.execute('SELECT merged FROM main.research_matches WHERE parent_id=? AND merged IS NOT NULL', (d['parent_id'],))]
         return {'agreement': staging.agreement(c, d['parent_id'])['agreement'], 'written': sum(len(m.get('ids') or []) for m in ms),
                 'skipped': sum(1 for m in ms if m.get('skipped')),
-                'flags': c.execute('SELECT count(*) FROM main.research_matches WHERE parent_id=? AND flag_id IS NOT NULL', (d['parent_id'],)).fetchone()[0]}
+                'disagreements': sum(1 for m in ms if m.get('disagrees'))}
     return None
 
 
@@ -116,7 +116,7 @@ def everything(c):
     return out
 
 
-def claim(c, worker, worker_id=None):
+def claim(c, worker, worker_id=None, missing=None):
     """Takes the oldest QUEUED request (or an abandoned RUNNING one) for `worker`, atomically; None when idle.
     The request gets a fresh per-request token (issue #141), returned once as `request_token`."""
     worker = str(worker or 'worker').strip()[:60]
@@ -143,6 +143,15 @@ def claim(c, worker, worker_id=None):
     if not row:
         return None
     r = dict(c.execute(f'SELECT {COLS} FROM main.research_requests WHERE id=?', (row[0],)).fetchone())
+    if r['unit'] == 'INSURANCE' and not owner_is_admin(c, r['owner_id']):  # queued before the pause (#399): skipped, never run
+        with c:
+            c.execute("UPDATE main.research_requests SET status='SKIPPED', result=?, finished_at=datetime('now'), request_token_hash=NULL WHERE id=?",
+                      (WORKER_QUOTES_PAUSED, r['id']))
+            if worker_id is not None:
+                c.execute("UPDATE main.workers SET state='idle', request_id=NULL WHERE id=?", (worker_id,))
+        if r['parent_id'] is not None:
+            _closed(c, r['id'], missing)  # lets the parent finish (INSURANCE is the last stage)
+        return claim(c, worker, worker_id, missing)
     r['missing'] = json.loads(r['missing']) if r['missing'] else []
     r['scope'] = json.loads(r['scope']) if r['scope'] else None
     return {**r, 'request_token': raw}
@@ -363,11 +372,23 @@ def release_shared(c, x, missing=None):
             advance(c, w['parent_id'], missing)
 
 
+WORKER_QUOTES_PAUSED = ("Worker insurance quotes run only for the owner's own account until a lawyer has answered "
+                        "(2026-11-22); enter the quote by hand in the dossier's Costs tab")
+
+
+def owner_is_admin(c, owner_id):
+    r = c.execute('SELECT role FROM main.users WHERE id=?', (owner_id,)).fetchone()
+    return bool(r) and r[0] == 'admin'
+
+
 def _insurance_skip(c, parent):
     """Why the INSURANCE unit does not run for this request (None: it runs). Order: reference car (its premium is the owner's
-    USER DATA), the account's consent (Settings, preference insurance_worker_quotes), a complete insurance profile."""
+    USER DATA), an account that is not the owner's own admin account (paused, #399), the account's consent (Settings,
+    preference insurance_worker_quotes), a complete insurance profile."""
     if c.execute('SELECT is_reference FROM main.listings WHERE id=?', (parent['listing_id'],)).fetchone()[0]:
         return "Reference car: the premium is the owner's USER DATA"
+    if not owner_is_admin(c, parent['owner_id']):
+        return WORKER_QUOTES_PAUSED
     prefs = {r[0]: r[1] for r in c.execute('SELECT preference_key, preference_value FROM main.project_preferences WHERE owner_id=?', (parent['owner_id'],))}
     if not prefs.get('insurance_worker_quotes'):
         return 'Insurance quotes not enabled for this account (Settings)'

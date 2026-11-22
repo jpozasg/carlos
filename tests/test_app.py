@@ -1066,6 +1066,82 @@ class AppTest(unittest.TestCase):
         go()
         self.assertEqual(parts()['INSURANCE'], 'SKIPPED')
 
+    def test_worker_quotes_only_for_the_owner_399(self):
+        """Until a lawyer answers, the INSURANCE unit runs for an admin (the owner's own) account only; another account cannot
+        consent and a unit queued earlier reads none of its profile."""
+        from carlos import db, research_requests as rq
+        rt = self.run_token('INSURANCE')
+        self.assertEqual(self.req('GET', '/api/parameters', token=rt)[0], 200)                    # the owner's own account: as before
+        uid2, c2 = self.second_account()
+        self.sql_write('UPDATE research_requests SET owner_id=? WHERE unit=?', (uid2, 'INSURANCE'))
+        for path in ('/api/parameters', '/api/preferences', '/api/tco'):                          # a unit queued before the pause
+            self.assertEqual(self.req('GET', path, token=rt)[0], 403, path)
+        self.assertEqual(self.req('POST', '/api/preferences', {'insurance_worker_quotes': 'yes'}, token=None, cookie=c2)[0], 403)
+        # and when the worker claims it, it is SKIPPED with the reason instead of being handed out (the claim then finds nothing)
+        self.sql_write("UPDATE research_requests SET status='QUEUED', request_token_hash=NULL, claimed_at=NULL, worker=NULL WHERE unit='INSURANCE'")
+        self.assertIsNone(self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request'])
+        self.assertEqual(self.sql("SELECT status, result FROM research_requests WHERE unit='INSURANCE'")[0], ('SKIPPED', rq.WORKER_QUOTES_PAUSED))
+        c = db.connect()
+        try:
+            parent = {'listing_id': CAR_A, 'owner_id': uid2}
+            self.assertEqual(rq._insurance_skip(c, parent), rq.WORKER_QUOTES_PAUSED)
+            self.assertNotEqual(rq._insurance_skip(c, {**parent, 'owner_id': 1}), rq.WORKER_QUOTES_PAUSED)
+        finally:
+            c.close()
+
+    def test_manual_quote_399(self):
+        """Any account enters an insurance quote for its own car: validated, stored as QUOTE from a user_data source (quality D),
+        costed like a worker quote, logged, clears the to-do line; never another account's car or the reference car."""
+        uid2, c2 = self.second_account()
+        st, adm = self.login()
+        today = datetime.date.today()
+        post = lambda body, ck=adm: self.req('POST', '/api/ui/listing_quotes', body, token=None, cookie=ck)
+        self.agent('PATCH', 'insurance_data/1', {'quote_date': '2026-01-01'})
+        todo = lambda: {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[CAR_A]
+        self.assertTrue(any('lst.insurance missing' in x and 'Costs tab' in x for x in todo()))
+        good = {'listing_id': CAR_A, 'premium_eur': 50, 'period': 'month', 'insurer': ' Example ', 'cover': 'Vollkasko', 'deductible_eur': 300, 'sf_class': 'SF 2'}
+        st, r = post(good)
+        self.assertEqual(st, 201, r)
+        q = self.sql('SELECT annual_premium_eur, premium_status, insurer, quote_date, quote_profile, notes FROM listing_quotes WHERE id=?', (r['id'],))[0]
+        self.assertEqual(q[:3], (600.0, 'QUOTE', 'Example'))
+        self.assertEqual(q[3], datetime.date.today().isoformat())
+        self.assertEqual(json.loads(q[4]), {'cover': 'Vollkasko', 'deductible_eur': 300.0, 'sf_class': 'SF 2', 'entered_period': 'month'})
+        self.assertIn('50.00 EUR per month', q[5])
+        self.assertEqual(self.sql("SELECT s.source_type, s.quality FROM sources s JOIN listing_quotes q ON q.source_id=s.id WHERE q.id=?", (r['id'],))[0], ('user_data', 'D'))
+        self.assertEqual(self.sql("SELECT kind, text FROM listing_events WHERE listing_id=? ORDER BY id DESC LIMIT 1", (CAR_A,))[0][0], 'user_data')
+        self.assertEqual(self.units()[CAR_A]['annual_insurance'], 600.0)           # costed like a worker quote
+        self.assertFalse(any('lst.insurance missing' in x for x in todo()))
+        post({**good, 'premium_eur': 700, 'period': 'year'})
+        self.assertEqual(self.sql("SELECT count(*) FROM sources WHERE source_type='user_data'")[0][0], 1)  # one source per account
+        self.assertEqual(self.units()[CAR_A]['annual_insurance'], 700.0)           # the newest quote counts
+        # validation
+        for bad in ({'premium_eur': 0}, {'premium_eur': -5}, {'premium_eur': 'abc'}, {'premium_eur': None}, {'premium_eur': True}, {'premium_eur': 30000},
+                    {'period': 'week'}, {'quote_date': '2999-01-01'}, {'quote_date': 'yesterday'}, {'cover': 'Gold'}, {'deductible_eur': -1},
+                    {'insurer': 'x' * 81}, {'sf_class': 'SF 12345678'}, {'listing_id': 'x'}, {'listing_id': 99999}, {'listing_id': REF},
+                    {'premium_eur': 10 ** 400}, {'premium_eur': float('nan')}, {'deductible_eur': 10 ** 400}, {'listing_id': 10 ** 400},
+                    {'insurer': {'a': 1}}, {'tariff': ['x']}, {'sf_class': 5}, {'cover': ['Vollkasko']}, {'period': {'x': 1}},
+                    {'quote_date': (today - datetime.timedelta(days=config.QUOTE_MAX_AGE_DAYS + 1)).isoformat()}, {'quote_date': '2999-01-01'}):
+            self.assertEqual(post({**good, **bad})[0], 400, bad)
+        self.assertIn('older than', post({**good, 'quote_date': '2001-01-01'})[1]['error'])           # an accurate message, not "future"
+        self.assertIn('future', post({**good, 'quote_date': '2999-01-01'})[1]['error'])
+        # free text: control characters and runs of whitespace become one space (it reaches the log and the Markdown dossiers)
+        st, rr = post({**good, 'insurer': 'Ex\nample\x00  AG', 'tariff': 'a\r\n\t b', 'sf_class': 'SF\x7f1', 'premium_eur': 701})
+        self.assertEqual(st, 201, rr)
+        self.assertEqual(self.sql('SELECT insurer, tariff FROM listing_quotes WHERE id=?', (rr['id'],))[0], ('Ex ample AG', 'a b'))
+        self.assertNotRegex(self.sql("SELECT text FROM listing_events WHERE listing_id=? ORDER BY id DESC LIMIT 1", (CAR_A,))[0][0], r'[\x00-\x1f\x7f]')
+        # an older quote entered later never replaces a fresher one; the oldest accepted date and one day ahead (browser clock) are fine
+        old = (today - datetime.timedelta(days=config.QUOTE_MAX_AGE_DAYS)).isoformat()
+        self.assertEqual(post({**good, 'premium_eur': 123, 'period': 'year', 'quote_date': old})[0], 201)
+        self.assertEqual(self.units()[CAR_A]['annual_insurance'], 8412.0)
+        st, rr = post({**good, 'premium_eur': 702, 'period': 'year', 'quote_date': (today + datetime.timedelta(days=1)).isoformat()})
+        self.assertEqual(st, 201, rr)
+        self.assertEqual(self.sql('SELECT quote_date FROM listing_quotes WHERE id=?', (rr['id'],))[0][0], today.isoformat())  # clamped to the server's today
+        self.assertEqual(self.req('PATCH', f'/api/ui/listing_quotes/{r["id"]}', {'premium_eur': 1}, token=None, cookie=adm)[0], 404)
+        self.assertEqual(post(good, ck='nope')[0], 401)
+        # another account cannot quote this car, and its own quote does not appear in this account
+        self.assertEqual(post(good, ck=c2)[0], 400)
+        self.assertEqual(self.sql('SELECT count(*) FROM listing_quotes WHERE listing_id=?', (CAR_A,))[0][0], 5)
+
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
             self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{i}'})
@@ -1263,7 +1339,7 @@ class AppTest(unittest.TestCase):
         self.assertNotIn('items', e_a)
         # an expired quote is the listing's own research item
         self.agent('PATCH', 'insurance_data/1', {'quote_date': '2026-01-01'})
-        self.assertIn(f'listing lst.insurance missing: an insurance quote younger than {config.QUOTE_MAX_AGE_DAYS} days',
+        self.assertIn(f'listing lst.insurance missing: an insurance quote younger than {config.QUOTE_MAX_AGE_DAYS} days (enter it in the dossier Costs tab)',
                       {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[CAR_A])
         self.agent('PATCH', f'listings/{CAR_A}', {'verdict': 'Strong candidate'})
         self.assertNotIn('no verdict', {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[CAR_A])

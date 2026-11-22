@@ -1,5 +1,5 @@
 ## Unit INSURANCE (listing id = {LISTING_ID})
-Owns the insurance quote of this car: one `listing_quotes` row (status `QUOTE`). Last stage of a listing request, only for accounts that switched on "Insurance quotes by the worker" in Settings (preference `insurance_worker_quotes`). Read `docs/browser-tasks.md` ("Insurance: CHECK24") and the protocol's step 11 first.
+Owns the insurance quote of this car: one `listing_quotes` row (status `QUOTE`). Last stage of a listing request, **only for the owner's own account (an admin account) until a lawyer has answered (2026-11-22, issue #399)**: every other account's unit is SKIPPED by the server ("Worker insurance quotes run only for the owner's own account…") and its request token reads nothing; those accounts enter quotes by hand in the dossier's Costs tab. For the owner's account it runs only when it switched on "Insurance quotes by the worker" in Settings (preference `insurance_worker_quotes`). If the server answers 403 with that reason, end `CARLOS_RESULT failed: paused for this account`; never work around it. Read `docs/browser-tasks.md` ("Insurance: CHECK24") and the protocol's step 11 first.
 Browser: Claude in Chrome, a new tab of your own, closed at the end. Nothing else is done in the browser.
 
 Steps:

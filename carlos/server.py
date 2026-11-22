@@ -11,6 +11,7 @@ from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RETIRED_T
 from .costs import budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
 from .models import model_tree, variant_detail
+from .quotes import manual_quote
 from .ranking import CRITERIA, TASKS, check_answers, rank, ranking_state, weights_from, weights_from_answers
 from .todo import todo
 
@@ -247,6 +248,8 @@ class Handler(BaseHTTPRequestHandler):
             reads = self.command == 'GET' and (RUN_GET.fullmatch(p) or p in PROFILE_GET and self.request['unit'] == 'INSURANCE')
             if admin or self.headers.get('X-Carlos-Account') or not (reads or self.command in ('POST', 'PATCH') and p.startswith('/api/agent/')):
                 raise NotAllowed("A request token reads and writes research data for the requester's account only (no admin, settings, profile, queue or deletes)")
+            if self.request['unit'] == 'INSURANCE' and not rq.owner_is_admin(c, self.request['owner_id']):
+                raise NotAllowed(rq.WORKER_QUOTES_PAUSED)  # a unit queued before the pause never reads another account's profile
             self.curator, self.uid = True, self.request['owner_id']  # curator, never admin: the token inherits no admin check
             auth.scope(c, self.uid, curator=True)
             return self.user
@@ -471,7 +474,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         # writes
         agent = re.fullmatch(r'/api/agent/([\w-]+)(?:/(-?\d+))?', path)
-        ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|media|decision)(?:/(\d+))?', path)
+        ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|listing_quotes|media|decision)(?:/(\d+))?', path)
         req = re.fullmatch(r'/api/(?:requests|worker/requests)/(\d+)', path)
         if (agent and agent[2] and method in ('PATCH', 'DELETE', 'POST') and self.admin and self.request is None
                 and self.headers.get('Authorization') and not self.headers.get('X-Carlos-Account')):
@@ -511,7 +514,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self.admin:
                 raise NotAllowed('The research queue is worked by the shared worker (an admin token)')
             if path == '/api/worker/claim' and method == 'POST':
-                self.send_json({'request': rq.claim(c, self.read_json().get('worker'))})
+                self.send_json({'request': rq.claim(c, self.read_json().get('worker'), missing=self.missing_items)})
             elif req and method == 'POST':
                 self.send_json(rq.finish(c, int(req[1]), self.read_json(), missing=self.missing_items, staged=self.staged_missing))
             else:
@@ -535,6 +538,8 @@ class Handler(BaseHTTPRequestHandler):
                 if d['insurance_worker_quotes'] not in (None, '', 'yes'):
                     raise ValueError("insurance_worker_quotes: 'yes' or empty (off)")
                 if d['insurance_worker_quotes'] == 'yes':
+                    if not rq.owner_is_admin(c, uid):  # until a lawyer answers (2026-11-22, #399)
+                        raise NotAllowed(rq.WORKER_QUOTES_PAUSED)
                     d = {**d, 'insurance_worker_quotes': f'yes {datetime.date.today().isoformat()}'}
             with c:
                 for k, v in d.items():
@@ -631,7 +636,7 @@ class Handler(BaseHTTPRequestHandler):
             self.read_json()
             with c:
                 c.execute("UPDATE main.workers SET last_seen=datetime('now') WHERE id=?", (w['id'],))
-            self.send_json({'request': rq.claim(c, w['name'], w['id'])})
+            self.send_json({'request': rq.claim(c, w['name'], w['id'], self.missing_items)})
         elif req and method == 'POST':
             own = c.execute("SELECT 1 FROM main.research_requests WHERE id=? AND worker=? AND status='RUNNING'", (int(req[1]), w['name'])).fetchone()
             if own is None:
@@ -685,6 +690,8 @@ class Handler(BaseHTTPRequestHandler):
             src = self.user_source(c, uid, today)
             new_id = agent_write(c, 'listing_events', None, {'listing_id': row_id, 'event_date': today, 'kind': 'decision',
                                                              'text': verdicts[d] or 'Decision reset by the owner: back under review', 'source_id': src}, uid)
+        elif kind == 'listing_quotes' and method == 'POST' and row_id is None:  # a manual insurance quote (#399)
+            new_id = manual_quote(c, uid, data, today)
         elif kind == 'listing_events' and method == 'POST':
             src = c.execute("SELECT id FROM sources WHERE source_type='user_reported' ORDER BY id LIMIT 1").fetchone()
             if src is None:

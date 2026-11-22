@@ -10,7 +10,7 @@ export const notScoredTxt = u => u.excluded === 'over_max' ? t('excluded_over_ma
   : [u.not_scored.criteria.length ? t('ns_criteria', { l: u.not_scored.criteria.map(k => t('c_' + k)).join(', ') }) : '',
      u.not_scored.research.length ? t('ns_research', { n: u.not_scored.research.length }) : ''].filter(Boolean).join(' · ') || t('not_ranked');
 // eight validated series colours (docs/frontend.md) by the criterion's position; a ninth gets a neutral colour, never an undefined --s9
-export const critColor = (k, keys) => { const i = keys.indexOf(k); return i >= 0 && i < 8 ? `var(--s${i + 1})` : 'var(--text-3)'; };
+export const critColor = (k, keys) => { const i = keys.indexOf(k); return i >= 0 && i < 9 ? `var(--s${i + 1})` : 'var(--text-3)'; };
 export const PEND = () => `<span class="pending">${t('pending')}</span>`;
 export const eP = n => n == null ? PEND() : euro(n);
 // totals reduce to {sum, missing, n}: a row without a figure is counted as missing, never added as 0 (docs/frontend.md)
@@ -37,6 +37,14 @@ export function toast(msg, bad) {
   const el = $('toast'); el.textContent = msg; el.className = 'show' + (bad ? ' bad' : '');
   clearTimeout(el._h); el._h = setTimeout(() => el.className = bad ? 'bad' : '', 3500);
 }
+// a request-sending control: disabled and aria-busy while `work` runs, restored in finally so a double submit is impossible
+export async function busy(btn, work) {
+  const label = btn.textContent; btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = t('saving');
+  try { return await work(); }
+  finally { if (btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = label; } }
+}
+// an ISO date (YYYY-MM-DD) as the reader's locale writes it
+export const fmtDate = iso => /^\d{4}-\d\d-\d\d/.test(iso || '') ? new Intl.DateTimeFormat(locale(), { dateStyle: 'medium' }).format(new Date(iso.slice(0, 10) + 'T12:00:00')) : '';
 export const empty = x => `<p class="empty">${x}</p>`;
 export const facts = pairs => `<dl class="facts">${pairs.map(([k, v]) => `<dt>${k}</dt><dd>${v ?? PEND()}</dd>`).join('')}</dl>`;
 export const media = fp => '/media/' + esc(fp);
