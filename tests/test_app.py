@@ -219,15 +219,23 @@ class AppTest(unittest.TestCase):
             c.close()
 
     def test_retired_tables_are_read_only_397(self):
-        """reliability_items, repair_risks, review_flags and flag_reviews (retired with #351) are no longer writable through the
-        agent API (403 for every method) and stay out of the writable tables; the old rows can still be read."""
+        """reliability_items, repair_risks, review_flags and flag_reviews (retired with #351) take no new rows and no edits through the
+        agent API (403) and stay out of the writable tables; a legacy row can still be archived, restored or (owner-confirmed) deleted,
+        and the old rows can still be read."""
         for t in ('reliability_items', 'repair_risks', 'review_flags', 'flag_reviews'):
             self.assertEqual(self.agent('POST', t, {'component': 'x'})[0], 403, t)
-            self.assertEqual(self.agent('PATCH', f'{t}/1', {'archived': 1})[0], 403, t)
-            self.assertEqual(self.agent('DELETE', f'{t}/1')[0], 403, t)
+            self.assertEqual(self.agent('PATCH', f'{t}/1', {'component': 'y'})[0], 403, t)
+            self.assertEqual(self.agent('PATCH', f'{t}/1', {'archived': 1, 'component': 'y'})[0], 403, t)
             self.assertNotIn(t, self.agent('GET', 'schema')[1]['writable_tables'])
             self.assertEqual(self.req('GET', f'/api/admin/data/{t}')[0], 200, t)
         self.assertTrue(self.req('GET', '/api/admin/data/reliability_items')[1])      # the fixture's old rows are still there
+        rid = self.req('GET', '/api/admin/data/reliability_items')[1][0]['id']
+        self.assertEqual(self.agent('PATCH', f'reliability_items/{rid}', {'archived': 1})[0], 200)   # archive
+        self.assertEqual(self.agent('PATCH', f'reliability_items/{rid}', {'archived': 0})[0], 200)   # restore
+        self.assertEqual(self.agent('PATCH', 'repair_risks/999', {'archived': 1})[0], 404)
+        st, r = self.agent('DELETE', f'reliability_items/{rid}')
+        self.assertEqual(st, 200, r)
+        self.assertEqual(self.sql('SELECT count(*) FROM reliability_items WHERE id=?', (rid,)), [(0,)])
 
     def test_models_page_faults_and_no_reliability_stats(self):
         # what the Models page shows for the new levels; reliability_stats is gone (#353): not writable

@@ -1085,7 +1085,7 @@
   "other": "{n} coches ocultos por los filtros de arriba."
  },
  "rk_faults_total": "Puntos débiles (esperado, {n})",
- "rk_repairs_total": "Reparaciones: riesgos + puntos débiles + seguras",
+ "rk_repairs_total": "Reparaciones: puntos débiles + seguras",
  "saving": "Guardando…",
  "q_title": "Introducir un presupuesto de seguro",
  "q_lead": "Tú mismo introduces el presupuesto; Carlos no obtiene nada. Se guarda como presupuesto tuyo (calidad de fuente D, sin verificar) y alimenta el coste del seguro como cualquier otro presupuesto. Uno más reciente sustituye al anterior en el cálculo.",

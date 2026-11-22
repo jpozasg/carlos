@@ -1085,7 +1085,7 @@
   "other": "{n} cars are hidden by the toggles above."
  },
  "rk_faults_total": "Weak points (expected, {n})",
- "rk_repairs_total": "Repairs: risks + weak points + certain",
+ "rk_repairs_total": "Repairs: weak points + certain",
  "saving": "Saving…",
  "q_title": "Enter an insurance quote",
  "q_lead": "You type the quote in yourself; Carlos fetches nothing. It is stored as a quote from you (source quality D, unverified) and feeds the insurance cost like any other quote. A newer quote replaces an older one in the calculation.",

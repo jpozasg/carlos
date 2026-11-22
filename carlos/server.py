@@ -480,12 +480,10 @@ class Handler(BaseHTTPRequestHandler):
                 and self.headers.get('Authorization') and not self.headers.get('X-Carlos-Account')):
             # the admin agent token reaches every account (issue #143): a row of another account is written as that account
             table, rid = ('listings', int(agent[2])) if agent[1] == 'media' else (agent[1], int(agent[2]))
-            owner = row_owner(c, table, rid, None) if table in AGENT_TABLES and (method != 'POST' or agent[1] == 'media') else None
+            owner = row_owner(c, table, rid, None) if table in AGENT_TABLES | RETIRED_TABLES and (method != 'POST' or agent[1] == 'media') else None
             if owner is not None and owner != uid:
                 self.uid = uid = owner
                 auth.scope(c, uid, curator=True)
-        if agent and agent[1] in RETIRED_TABLES:
-            raise NotAllowed(f'{agent[1]} is retired (#351, #397): kept read-only; file faults, recalls and source ratings instead')
         if agent and agent[1] == 'disputes' and self.staged_run():  # #253 P3: the arbiter's verdicts
             if method != 'PATCH' or not agent[2]:
                 self.send_json({'error': 'PATCH /api/agent/disputes/<id> {"verdict", "reason"} answers a dispute'}, 405); return
@@ -581,7 +579,7 @@ class Handler(BaseHTTPRequestHandler):
             if created:
                 export_markdown(c, uid)
             self.send_json({'table': 'listing_media', 'id': row_id, 'created': created}, 201 if created else 200)
-        elif agent and agent[1] in AGENT_TABLES and method == 'DELETE':
+        elif agent and agent[1] in AGENT_TABLES | RETIRED_TABLES and method == 'DELETE':  # a retired row may still be deleted (owner-confirmed)
             if not agent[2]:
                 self.send_json({'error': 'DELETE /api/agent/<table>/<id> deletes one row (ask the owner first)'}, 405); return
             if not self.admin:
@@ -590,8 +588,10 @@ class Handler(BaseHTTPRequestHandler):
             removed = agent_delete(c, agent[1], int(agent[2]), uid)
             self.export_all(c, uid, others)
             self.send_json({'table': agent[1], 'id': int(agent[2]), 'deleted': True, 'removed_children': removed})
-        elif agent and agent[1] in AGENT_TABLES:
+        elif agent and agent[1] in AGENT_TABLES | RETIRED_TABLES:
             data = self.read_json()
+            if agent[1] in RETIRED_TABLES and (method != 'PATCH' or set(data) != {'archived'}):  # retired (#351, #397): only archive or restore
+                raise NotAllowed(f'{agent[1]} is retired: no new rows or edits, only PATCH {{"archived": 0|1}} and DELETE; file faults, recalls and source ratings instead')
             if (method == 'PATCH') != bool(agent[2]):
                 self.send_json({'error': 'POST /api/agent/<table> inserts; PATCH /api/agent/<table>/<id> updates'}, 405); return
             if self.request is not None:  # a non-staged unit (the staged runs went to staging above): its own tables and its car's levels (#386)

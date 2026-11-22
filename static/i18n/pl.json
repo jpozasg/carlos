@@ -1088,7 +1088,7 @@
   "other": "{n} aut jest ukrytych przez przełączniki powyżej."
  },
  "rk_faults_total": "Słabe punkty (oczekiwane, {n})",
- "rk_repairs_total": "Naprawy: ryzyka + słabe punkty + pewne",
+ "rk_repairs_total": "Naprawy: słabe punkty + pewne",
  "saving": "Zapisywanie…",
  "q_title": "Wpisz ofertę ubezpieczenia",
  "q_lead": "Ofertę wpisujesz sam; Carlos niczego nie pobiera. Zapisuje się jako Twoja oferta (jakość źródła D, niezweryfikowana) i zasila koszt ubezpieczenia jak każda inna oferta. Nowsza oferta zastępuje starszą w obliczeniach.",

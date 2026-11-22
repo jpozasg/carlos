@@ -217,9 +217,9 @@ LINK_COLUMNS = ('reliability_item_id', 'fault_id', 'recall_id')
 
 
 def checklist_items(detail, existing):
-    """(item text, link) for the weak points that have no checklist item yet; link = {column: id} (reliability_item_id,
-    fault_id or recall_id). `detail` is the listing detail: its reliability items, faults (fault_plan) and recalls (#223).
-    A reliability item and a fault get their `inspection_action` (none, no item); a recall row always gets an item naming
+    """(item text, link) for the weak points that have no checklist item yet; link = {column: id} (fault_id or recall_id;
+    reliability_item_id only for an old row of the retired table). `detail` is the listing detail: its faults (fault_plan) and recalls (#223).
+    A fault gets its `inspection_action` (none, no item); a recall row always gets an item naming
     the recall (issue #54); one item per weak point; the same check text is not listed twice. The VIN recall check
     (config.VIN_RECALL_CHECK, with the KBA link) is added once to every list (#357)."""
     linked = {(c, i[c]) for i in existing if not i.get('archived') for c in LINK_COLUMNS if i.get(c) is not None}
@@ -311,13 +311,13 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
         r = api.call('POST', f'/api/agent/media/{lid}?{q}', raw=body, ctype=info)
         archived += r['created']
 
-    # checklist from the model's reliability items (new listings only; re-captures keep the user's ticks)
+    # checklist from the model's faults and recalls (new listings only; re-captures keep the user's ticks)
     if existing is None:
         d = {} if dry_run else api.call('GET', f'/api/listings/{lid}')
         for item, link in checklist_items(d, []) + ([(SOH_CHECK, {})] if d.get('fuel_type') == 'Electric' else []):
             write('POST', '/api/agent/inspection_items', {'listing_id': lid, 'item': item, 'status': 'PENDING', **link}, 'checklist item')
         if dry_run:
-            log('[dry-run] checklist items from the model reliability_items.inspection_action')
+            log('[dry-run] checklist items from the faults (inspection_action) and recalls of the model')
 
     # log; price/mileage changes update the listing and get their own entry
     photo_note = f'{archived} new photo(s) archived' + (f', {len(skipped)} skipped' if skipped else '')

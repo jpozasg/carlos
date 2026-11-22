@@ -1085,7 +1085,7 @@
   "other": "{n} Autos sind durch die Schalter oben ausgeblendet."
  },
  "rk_faults_total": "Schwachstellen (erwartet, {n})",
- "rk_repairs_total": "Reparaturen: Risiken + Schwachstellen + sicher",
+ "rk_repairs_total": "Reparaturen: Schwachstellen + sicher",
  "saving": "Speichern…",
  "q_title": "Versicherungsangebot eintragen",
  "q_lead": "Du trägst das Angebot selbst ein; Carlos ruft nichts ab. Es wird als dein Angebot gespeichert (Quellenqualität D, ungeprüft) und fließt wie jedes andere Angebot in die Versicherungskosten ein. Ein neueres Angebot ersetzt ein älteres in der Berechnung.",

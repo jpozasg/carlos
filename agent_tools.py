@@ -193,8 +193,8 @@ def check(level, level_id, task, source_id, result, notes=None, codes=None):
 
 
 def checklist_from_reliability(listing_id):
-    """One checklist item per weak point of the model (reliability item, fault with an inspection_action, recall row; #223), linked by
-    reliability_item_id / fault_id / recall_id; idempotent, so run it again after adding faults or recalls (capture_listing does this at
+    """One checklist item per weak point of the model (fault with an inspection_action, recall row; #223), linked by
+    fault_id / recall_id; idempotent, so run it again after adding faults or recalls (capture_listing does this at
     capture time). A recall gets its own item naming the recall, because its result decides whether it counts."""
     u = listing(listing_id)
     added = 0
@@ -205,16 +205,16 @@ def checklist_from_reliability(listing_id):
 
 
 def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, notes, level='variant', job=None,
-         applies_from=None, applies_to=None):
+         applies_from=None, applies_to=None, kind='JOB'):
     """Maintenance item: `parts` = DIY parts price (+ `hours`), `workshop` = total workshop price; give both for a job an
     owner may do themselves (`job` in config.DIYABLE_JOBS): each account's DIY choice picks one at calculation time, and the
-    research contract matches jobs by `job` (config.JOBS). `diy` is only the default for rows without a job.
+    research contract matches jobs by `job` (config.JOBS). `diy` is only the default for rows without a job. `kind='WEAR'` for generic wear (clutch, brakes, battery, bulbs, wipers).
     Engine jobs (oil, plugs, timing drive, coolant) belong on the engine; brakes, HU, wipers on the generation."""
     return post('maintenance_items', {**scope(v, level), 'item': name, 'job': job, 'interval_km': km, 'interval_months': months,
                                       'schedule': 'ITEM', 'diy': 1 if diy else 0, 'diy_parts_cost_eur': parts,
                                       'reference_cost_eur': workshop, 'diy_hours': hours, 'labor_included': 0 if diy else 1,
                                       'status': status, 'source_id': source_id, 'notes': notes, 'active': 1,
-                                      'applies_from': applies_from, 'applies_to': applies_to})
+                                      'applies_from': applies_from, 'applies_to': applies_to, 'kind': kind})
 
 
 def hu(v, level='generation'):

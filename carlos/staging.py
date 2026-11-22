@@ -692,6 +692,7 @@ def merge(c, parent_id, owner_id, actor=None):
     ids = {i: f['merged_id'] for i, f in fs.items() if f['status'] == 'MERGED' and f['merged_id']}
     skipped_f, redirect, touched, orphans, seen = set(), {}, [], [], set()
     alias, unsettled = _identities(c, fs, ms)
+    disagreed = {}  # match id -> what: one entry per match, however many loops see it
     report = {'parent_id': parent_id, 'counts': {}, 'written': 0, 'skipped': [], 'disagreements': [], 'orphans': orphans}
     for m in ms:
         report['counts'][m['outcome']] = report['counts'].get(m['outcome'], 0) + 1
@@ -760,15 +761,21 @@ def merge(c, parent_id, owner_id, actor=None):
         a = fs[m['a_id']]
         try:
             write(a['target_table'], a['target_id'], {col: real(w)})
-            report['disagreements'].append({'match': m['id'], 'key': m['key'], 'what': f'{_summary(m)}; linked to run 1\'s {col}'})
+            disagreed[m['id']] = {'match': m['id'], 'key': m['key'], 'what': f'{_summary(m)}; linked to run 1\'s {col}'}
         except (_Skip, ValueError, Conflict, sqlite3.Error) as e:
             report['skipped'].append({'match': m['id'], 'key': m['key'], 'reason': f'level link not written: {e}'})
 
     two_runs = any(m['b_id'] for m in ms)  # one research run (#283): a finding only run A made is no disagreement (#319)
-    for m in sorted(ms, key=lambda m: (KIND_ORDER.index(m['kind']), m['id'])):
+    for m in sorted(ms, key=lambda m: (KIND_ORDER.index(m['kind']) if m['kind'] in KIND_ORDER else len(KIND_ORDER), m['id'])):
         if m['merged']:
             continue
-        written, reason, disagree = [], None, False
+        if m['kind'] not in KIND_ORDER:  # a match of a retired kind (the old 'flag'): nothing to write, reported
+            why = f"retired finding kind '{m['kind']}'"
+            c.execute('UPDATE main.research_matches SET merged=? WHERE id=?', (json.dumps({'skipped': why}), m['id']))
+            c.commit()
+            report['skipped'].append({'match': m['id'], 'key': m['key'], 'reason': why})
+            continue
+        written, reason, disagree, failed = [], None, False, False
         try:
             plan, reason, disagree = _plan(c, fs, m)
             a, b = fs.get(m['a_id']), fs.get(m['b_id'])
@@ -791,11 +798,11 @@ def merge(c, parent_id, owner_id, actor=None):
                     written.append(f)
                 except Conflict as e:  # never forced: the row exists, the run should have extended it
                     hit = (e.payload.get('conflict') or [{}])[0]
-                    reason = f'exists as {hit["table"]} #{hit["id"]}' if hit.get('id') else str(e)
+                    reason, failed = f'exists as {hit["table"]} #{hit["id"]}' if hit.get('id') else str(e), True
                 except (_Skip, ValueError, sqlite3.Error) as e:
-                    reason = f'not written: {e}'
+                    reason, failed = f'not written: {e}', True
         except _Skip as e:
-            reason = f'not written: {e}'
+            reason, failed = f'not written: {e}', True
         skipped_f |= {s for s in (m['a_id'], m['b_id'], m['verdict_id']) if s in fs and s not in {w['id'] for w in written}}
         report['written'] += len(written)
         for w in written:
@@ -806,13 +813,14 @@ def merge(c, parent_id, owner_id, actor=None):
             c.execute("UPDATE main.research_findings SET payload=? WHERE id=?", (json.dumps(fs[s]['p'], ensure_ascii=False), s))
             report.setdefault('dropped', []).append({'finding': -s, 'key': fs[s]['key'], 'reason': why})
             c.execute("UPDATE main.research_findings SET status='SKIPPED', updated_at=datetime('now') WHERE id=? AND status='STAGED'", (s,))
-        if disagree and two_runs:  # the less favourable side was written; the disagreement stays in the report (review flags are retired, #397)
-            report['disagreements'].append({'match': m['id'], 'key': m['key'], 'what': _summary(m)})
+        if disagree and two_runs and not failed:  # the less favourable side was written; the disagreement stays in the report (review flags are retired, #397)
+            disagreed.setdefault(m['id'], {'match': m['id'], 'key': m['key'], 'what': _summary(m)})
         res = {'ids': [ids[w['id']] for w in written], **({'skipped' if not written else 'note': reason} if reason else {}),
-               **({'disagrees': 1} if disagree and two_runs or m['id'] in {u[0]['id'] for u in unsettled} else {})}  # counted by the MERGE result
+               **({'disagrees': 1} if m['id'] in disagreed else {})}  # counted by the MERGE result
         c.execute('UPDATE main.research_matches SET merged=? WHERE id=?', (json.dumps(res), m['id']))
         c.commit()
         if not written and reason:
             report['skipped'].append({'match': m['id'], 'key': m['key'], 'reason': reason})
+    report['disagreements'] = list(disagreed.values())
     report['accounts'] = sorted({o for t, i in touched for o in linked_accounts(c, t, i)})
     return report

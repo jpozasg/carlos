@@ -244,7 +244,7 @@ def clean_row(c, table, data, insert, row_id=None):
     return out
 
 
-ADMIN_TABLES = set(MODEL) | set(_KNOW) | {'listings', *SOURCE_TABLES}  # research and listings: the shared worker (admin) only (#109)
+ADMIN_TABLES = set(MODEL) | set(_KNOW) | RETIRED_TABLES | {'listings', *SOURCE_TABLES}  # research and listings: the shared worker (admin) only (#109)
 
 
 def check_writable(c, table, row_id, data):
