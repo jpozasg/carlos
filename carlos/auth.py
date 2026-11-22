@@ -19,7 +19,7 @@ _LISTING_CHILDREN = ('valuations', 'unit_costs', 'inspection_items', 'listing_ev
 # Archivable tables (issue #58): <table> shows only rows with archived=0 (every read and calculation), <table>_all
 # also the archived ones (to restore a row with PATCH archived=0). Both are filtered by account.
 SOURCE_TABLES = ('source_keys', 'source_ratings')  # shared reliability sources (#354): catalogue only, owner_id NULL
-ARCHIVABLE = tuple(t for t in _KNOW if t != 'review_flags') + SOURCE_TABLES + ('valuations', 'unit_costs', 'inspection_items', 'maintenance_resets', 'listing_history', 'listing_quotes')
+ARCHIVABLE = tuple(t for t in _KNOW if t != 'review_flags') + SOURCE_TABLES + ('valuations', 'unit_costs', 'inspection_items', 'maintenance_resets', 'listing_history', 'listing_quotes', 'listing_media')
 # The view each level column is checked against: a knowledge row is visible when its level is (#174).
 LEVEL_VIEW = {'vehicle_id': 'vehicles', 'engine_id': 'engines', 'generation_id': 'generations', 'gearbox_id': 'gearboxes',
               'engine_family_id': 'engine_families', 'gearbox_family_id': 'gearbox_families', 'body_style_id': 'body_styles',

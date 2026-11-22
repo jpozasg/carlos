@@ -1,6 +1,6 @@
 """API, calculation and migration tests on a synthetic database (tests/fixture.py), never on real data.
 Run: python -m unittest -v"""
-import datetime, json, os, re, shutil, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
+import datetime, json, math, os, re, shutil, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -568,6 +568,80 @@ class AppTest(unittest.TestCase):
         # (c) the owner's own chance for this car overrides the curve after the fix
         o = plan(belt, 60000, chance={1: {'probability': 0.3, 'reason': 'x'}})
         self.assertEqual((round(o['expected_eur'], 2), o['probability'], o['owner_chance']['probability']), (300.0, 0.3, 0.3))
+
+    def test_fault_price_and_hours_follow_the_diy_choice_c4(self):
+        """C4 (improve-core): a fault with a maintenance job code is priced like a maintenance job: the account's DIY choice
+        (diy_jobs) picks the DIY parts price or the workshop price, never the other one; the owner's hours are shown
+        (listing diy_hours, the fault row) and never priced. A DIY fault without a DIY price is unknown, not workshop-priced."""
+        from carlos import costs
+        curve = [[0, 0], [300000, 0.5]]
+        st, f = self.agent('POST', 'faults', {'generation_id': G1, 'component': 'Clutch judder', 'component_code': 'CLUTCH', 'part': 'GEARBOX',
+                                              'consequence': 'COST', 'existence': 'CONFIRMED', 'curve_km': curve, 'probability_basis': 'ESTIMATE',
+                                              'parts_eur': 300, 'labor_eur': 200, 'diy_parts_eur': 100, 'diy_hours': 3, 'job': 'CLUTCH',
+                                              'source_id': SRC_GUIDE})
+        self.assertEqual(st, 201, f)
+        fid = f['id']
+        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        p = costs.conditional(curve, a['mileage_km'], a['mileage_km'] + a['period_km'], config.CURVE_END_KM)
+        plan = lambda: {x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[fid]
+        hours = lambda: self.req('GET', f'/api/listings/{CAR_A}')[1]['diy_hours'] or 0
+        self.sql_write("INSERT INTO project_preferences (preference_key, preference_value, unit, status) VALUES ('diy_jobs', 'clutch', 'text', 'USER_SETTING')")
+        on, hours_on = plan(), hours()
+        self.assertEqual((on['diy'], on['price_eur']), (True, 100))                       # the DIY parts price, not 500
+        self.assertAlmostEqual(on['expected_eur'], round(p * 100, 2), places=2)
+        self.assertAlmostEqual(on['diy_hours_expected'], round(p * 3, 2), places=2)     # hours shown, not priced
+        self.sql_write("UPDATE project_preferences SET preference_value='yearly service' WHERE preference_key='diy_jobs'")
+        off = plan()
+        self.assertEqual((off['diy'], off['price_eur'], off['diy_hours_expected']), (False, 500, None))
+        self.assertAlmostEqual(off['expected_eur'], round(p * 500, 2), places=2)
+        self.sql_write("UPDATE project_preferences SET preference_value='clutch' WHERE preference_key='diy_jobs'")
+        self.assertEqual(self.agent('PATCH', f'faults/{fid}', {'diy_parts_eur': None})[0], 200)
+        self.assertIsNone(plan()['expected_eur'])                                          # DIY without its price: unknown
+        self.assertIsNone(self.req('GET', f'/api/listings/{CAR_A}')[1]['components']['repairs'])
+        self.assertEqual(self.agent('PATCH', f'faults/{fid}', {'diy_parts_eur': 100})[0], 200)
+        self.assertEqual(self.agent('PATCH', f'faults/{fid}', {'archived': 1})[0], 200)
+        self.assertAlmostEqual(hours(), hours_on - round(p * 3, 2), places=2)              # the fault's hours leave with it
+        self.assertEqual(self.agent('POST', 'faults', {**{k: v for k, v in f.items() if k not in ('id', 'archived')}, 'job': 'NOT_A_JOB'})[0], 400)
+
+    def test_a_certain_repair_and_its_fault_are_not_both_counted_c3(self):
+        """C3 (improve-core): a certain repair that fixes a fault (a unit_costs repair linked by fault_id, or a PRESENT history
+        item with fault_id) replaces that fault's expected cost for the period, never adds to it. A DONE fix is different: the
+        part is new from that km, so its chance over the period still counts (owner rule 2026-11-22)."""
+        from carlos import costs
+        curve = [[0, 0], [300000, 0.5]]
+        st, f = self.agent('POST', 'faults', {'generation_id': G1, 'component': 'Timing belt tensioner', 'component_code': 'TIMING_BELT',
+                                              'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'CONFIRMED', 'curve_km': curve,
+                                              'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600, 'source_id': SRC_GUIDE})
+        self.assertEqual(st, 201, f)
+        fid = f['id']
+        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        p = costs.conditional(curve, a['mileage_km'], a['mileage_km'] + a['period_km'], config.CURVE_END_KM)
+        plan = lambda: {x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[fid]
+        repairs = lambda: self.req('GET', f'/api/listings/{CAR_A}')[1]['cost_detail']
+        before = repairs()
+        self.assertAlmostEqual(plan()['expected_eur'], round(p * 1000, 2), places=2)
+        row = next(u for u in self.sql('SELECT id FROM unit_costs WHERE listing_id=? AND item=?', (CAR_A, 'Timing chain tensioner due')))
+        self.assertEqual(self.agent('PATCH', f'unit_costs/{row[0]}', {'fault_id': fid})[0], 200)   # the certain 500 € fixes this fault
+        self.assertEqual((plan()['expected_eur'], plan()['covered_by_certain']), (0.0, True))
+        after = repairs()
+        self.assertAlmostEqual(after['repairs_expected'], before['repairs_expected'] - round(p * 1000, 2), places=2)
+        self.assertEqual(after['repairs_certain'], before['repairs_certain'])                    # the certain cost itself is unchanged
+        self.assertEqual(self.agent('PATCH', f'unit_costs/{row[0]}', {'fault_id': None})[0], 200)
+        # a PRESENT history item with fault_id: certain, and the same fault adds no expected cost
+        self.assertAlmostEqual(plan()['expected_eur'], round(p * 1000, 2), places=2)
+        st, present = self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'fault_id': fid, 'item': 'Chain tensioner rattles',
+                                                             'status': 'PRESENT', 'category': 'repairs', 'parts_eur': 150, 'labor_eur': 100,
+                                                             'evidence': 'OBSERVED'})
+        self.assertEqual(st, 201)
+        self.assertEqual((plan()['expected_eur'], plan()['covered_by_certain']), (0.0, True))
+        self.assertEqual(repairs()['repairs_certain'], before['repairs_certain'] + 250)
+        # a DONE fix at today's km is not a certain cost of the period: the new part's chance still counts (the PRESENT row is
+        # archived: its repair is the DONE row now)
+        self.assertEqual(self.agent('PATCH', f"listing_history/{present['id']}", {'archived': 1})[0], 200)
+        self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'fault_id': fid, 'item': 'Tensioner renewed', 'status': 'DONE',
+                                                                'km': a['mileage_km'], 'evidence': 'DOCUMENTED'})[0], 201)
+        self.assertGreater(plan()['expected_eur'], 0)
+        self.assertFalse(plan()['covered_by_certain'])
 
     def test_a_certain_cost_without_a_figure_is_unknown_388(self):
         """C6 (data-truth review): a certain cost with neither parts nor labour is a pending price, so its component is
@@ -1572,6 +1646,34 @@ class AppTest(unittest.TestCase):
         self.assertIsNotNone(cand['score'])  # not inspected yet: scored without the inspection criterion (#323)
         self.assertEqual(costs.safety_stars({'ncap_stars': 5, 'ncap_year': 2005, 'esp': 0}), 3)            # old regime and no ESP
 
+    def test_cost_order_ignores_the_other_cars_r3(self):
+        """R3 (improve-core): the cost anchor is the candidates' median, so adding or removing an unrelated car shifts every
+        car's cost points by the same amount. Clipping the points at 0–100 let two cars tie at the top and made their order
+        depend on that anchor; unclipped, the order and the gap between two cars never change."""
+        car = lambda i, cost: {'id': i, 'is_reference': 0, 'listing_status': 'UNDER REVIEW', 'research': [], 'budget_status': 'within',
+                               'metrics': {k: None for k in ranking.CRITERIA} | {'cost_month': cost}}
+        w = {k: 0 for k in ranking.CRITERIA} | {'cost_month': 5}
+        gaps = []
+        for extra in ([], [car(3, 1000)], [car(3, 1000), car(4, 1000)], [car(3, 400), car(4, 400), car(5, 1000)]):
+            rows = [car(1, 250), car(2, 270), *extra]
+            ranking.rank(rows, w)
+            r = {x['id']: x['score'] for x in rows}
+            self.assertGreater(r[1], r[2], extra)                       # the cheaper car stays ahead
+            gaps.append(r[1] - r[2])
+        self.assertTrue(all(abs(g - 112 * math.log(270 / 250)) < 0.11 for g in gaps), gaps)   # the same gap every time (scores rounded to 0.1)
+
+    def test_inspection_points_follow_the_checked_share_r1(self):
+        """R1 (improve-core): the inspection points are 100 − 25 per PROBLEM, scaled by the share of the checklist that was
+        checked (coverage shown beside them). One ticked OK item of two is 50 points, not a full 100."""
+        insp = lambda: next(e for e in self.units()[CAR_A]['explain'] if e['criterion'] == 'inspection')
+        self.assertIsNone(insp()['score'])                                                    # nothing checked: not scored (#323)
+        self.sql_write("UPDATE inspection_items SET status='OK' WHERE id=1")
+        self.assertEqual((insp()['value'], insp()['coverage'], insp()['score']), (0, 0.5, 50))
+        self.sql_write("UPDATE inspection_items SET status='OK' WHERE id=2")
+        self.assertEqual((insp()['coverage'], insp()['score']), (1.0, 100))
+        self.sql_write("UPDATE inspection_items SET status='PROBLEM' WHERE id=2")
+        self.assertEqual((insp()['value'], insp()['score']), (1, 75))                         # one problem: 100 − 25, all checked
+
     def test_questionnaire_weights(self):
         """#169: six tasks of six cars on a 3 × 3 grid; every criterion four times, every pair at least twice; simulated
         respondents get their favourite at 5 and their least important criterion at 1."""
@@ -1856,6 +1958,81 @@ class AppTest(unittest.TestCase):
         self.assertIn('| Getriebe | Automatik |', md)
         self.assertIn(f'../../media/{L}/', md)
         self.assertEqual(len(list((config.MEDIA_DIR / str(L)).iterdir())), 1)  # no orphan files
+
+    def photo_status(self, path, cookie):
+        """The HTTP status of a file request made with a login session (images are not JSON, so req() cannot read them)."""
+        r = urllib.request.Request(self.base + path, headers={'Cookie': f'{auth.COOKIE}={cookie}'})
+        try:
+            return urllib.request.urlopen(r).status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_remove_photo_archive_then_delete_for_good(self):
+        """Owner-approved removal (plate or VIN in a photo): archive hides at once and keeps the file; the permanent
+        delete needs an archived photo, its own id and confirm: true, and only then removes the row and the file."""
+        adm = self.login()[1]
+        self.assertEqual(self.upload(fx.jpeg([(0xE0, b'a' * 60)]), CAR_A)[0], 201)
+        self.assertEqual(self.upload(fx.jpeg([(0xE0, b'b' * 60)]), CAR_A)[0], 201)
+        media = self.req('GET', f'/api/listings/{CAR_A}')[1]['media']
+        keep, gone = media[0], media[1]
+        files = {m['id']: config.MEDIA_DIR / m['file_path'] for m in media}
+        ui = lambda method, mid, body=None, **kw: self.req(method, f'/api/ui/photo/{mid}', body, **{'token': None, 'cookie': adm, **kw})
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 1}, token=TOKEN)[0], 403)   # login session only, never an agent token
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 2})[0], 400)                 # only 0 or 1
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 1, 'x': 1})[0], 400)
+        self.assertEqual(ui('PATCH', 99999, {'archived': 1})[0], 404)
+        # archive: hidden from the listing, the cover, the count and the photo URL, the file stays
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 1}), (200, {'table': 'listing_media', 'id': gone['id'], 'archived': 1}))
+        d = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertEqual([m['id'] for m in d['media']], [keep['id']])
+        self.assertEqual((d['photo_count'], d['cover']), (1, keep['file_path']))
+        self.assertEqual([m['id'] for m in d['removed_media']], [gone['id']])
+        self.assertEqual(self.photo_status('/media/' + gone['file_path'], adm), 404)
+        self.assertTrue(files[gone['id']].is_file())
+        # permanent delete: needs the archived photo, its own id and confirm: true
+        self.assertEqual(ui('DELETE', keep['id'], {'id': keep['id'], 'confirm': True})[0], 400)   # not archived: archive first
+        self.assertEqual(ui('DELETE', gone['id'], {'confirm': True})[0], 400)                      # no id in the body
+        self.assertEqual(ui('DELETE', gone['id'], {'id': gone['id'], 'confirm': 'yes'})[0], 400)   # confirm must be true
+        self.assertEqual(ui('DELETE', gone['id'], {'id': keep['id'], 'confirm': True})[0], 400)    # another photo's id
+        self.assertTrue(files[gone['id']].is_file())
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM listing_media WHERE id=?', (gone['id'],))[0][0], 1)
+        # restore: shown again, file served
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 0})[0], 200)
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['photo_count'], 2)
+        self.assertEqual(self.photo_status('/media/' + gone['file_path'], adm), 200)
+        # archived again, then deleted for good: the row and the file go, and the change is logged
+        ui('PATCH', gone['id'], {'archived': 1})
+        self.assertEqual(ui('DELETE', gone['id'], {'id': gone['id'], 'confirm': True}), (200, {'table': 'listing_media', 'id': gone['id'], 'deleted': True}))
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM listing_media WHERE id=?', (gone['id'],))[0][0], 0)
+        self.assertFalse(files[gone['id']].is_file())
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM change_log WHERE table_name='listing_media' AND row_id=? AND action='delete'", (gone['id'],))[0][0], 1)
+        self.assertTrue(files[keep['id']].is_file())                                    # the other photo is untouched
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['photo_count'], 1)
+
+    def test_removed_photo_is_not_brought_back_by_a_recapture(self):
+        adm = self.login()[1]
+        jpg = fx.jpeg([(0xE0, b'c' * 60)])
+        self.assertEqual(self.upload(jpg, CAR_A)[0], 201)
+        mid = self.req('GET', f'/api/listings/{CAR_A}')[1]['media'][0]['id']
+        self.assertEqual(self.req('PATCH', f'/api/ui/photo/{mid}', {'archived': 1}, token=None, cookie=adm)[0], 200)
+        st, again = self.upload(jpg, CAR_A)                                             # the same photo captured again
+        self.assertEqual((st, again['created'], again['id']), (200, False, mid))         # answered as a duplicate: stays removed
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['photo_count'], 0)
+        st, why = self.ui('POST', f'media/{CAR_A}', raw=jpg, ctype='image/jpeg')                  # the owner adds it again from the phone
+        self.assertEqual(st, 409)
+        self.assertIn('restore it', why['error'])
+
+    def test_remove_photo_is_scoped_to_the_account(self):
+        adm = self.login()[1]
+        self.assertEqual(self.upload(fx.jpeg([(0xE0, b'd' * 60)]), CAR_A)[0], 201)
+        mid = self.req('GET', f'/api/listings/{CAR_A}')[1]['media'][0]['id']
+        _, maria = self.second_account()
+        for method, body in (('PATCH', {'archived': 1}), ('DELETE', {'id': mid, 'confirm': True})):
+            self.assertEqual(self.req(method, f'/api/ui/photo/{mid}', body, token=None, cookie=maria)[0], 404, method)   # not her listing
+        self.assertEqual(self.sql('SELECT archived FROM listing_media WHERE id=?', (mid,))[0][0], 0)
+        self.assertEqual(self.req('PATCH', f'/api/ui/photo/{mid}', {'archived': 1}, token=None, cookie=adm)[0], 200)
+        self.assertEqual(self.req('DELETE', f'/api/ui/photo/{mid}', {'id': mid, 'confirm': True}, token=None, cookie=maria)[0], 404)
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM listing_media WHERE id=?', (mid,))[0][0], 1)
 
     def test_storage_and_health(self):
         st = self.req('GET', '/api/storage')[1]

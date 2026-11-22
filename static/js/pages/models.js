@@ -3,7 +3,7 @@
 import { S, go } from '../app.js';
 import { get } from '../api.js';
 import { t, tv } from '../i18n.js';
-import { esc, num, PEND, eP, euro, partsLaborP, empty, facts, gaps, lvlTag, qTag, sevTag, intervalTxt, safeUrl, store, modelsHref, carLabel, researchLevels, flagsCard, faultProb } from '../ui.js';
+import { $, esc, num, PEND, eP, euro, partsLaborP, empty, facts, gaps, lvlTag, qTag, sevTag, intervalTxt, safeUrl, store, modelsHref, carLabel, researchLevels, flagsCard, faultProb } from '../ui.js';
 
 let root, filters = store.get('mfilters', { make: '', model: '', engine: '', transmission: '', fuel: '' });
 const vlist = tree => tree.makes.flatMap(mk => mk.models.flatMap(md => md.generations.flatMap(g => g.engines.flatMap(e => e.variants.map(v => ({ v, mk, md, g, e }))))));
@@ -69,7 +69,7 @@ async function variant(id) {
 }
 export async function render(main, r) {
   if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="models"></div>'; root = main.firstElementChild;
-    root.addEventListener('change', e => { const k = e.target.dataset.mf; if (!k) return; filters[k] = e.target.value; prune(); store.set('mfilters', filters); listTree(S.models); }); }
+    root.addEventListener('change', e => { const k = e.target.dataset.mf; if (!k) return; filters[k] = e.target.value; prune(); store.set('mfilters', filters); listTree(S.models); $('f-' + k)?.focus(); }); }  // the tree redraw replaces the select: focus stays on it
   if (r.id) { await variant(r.id); return; }
   if (['make', 'model', 'engine', 'fuel', 'transmission'].some(k => r.q[k])) { filters = { make: r.q.make || '', model: r.q.model || '', engine: r.q.engine || '', transmission: r.q.transmission || '', fuel: r.q.fuel || '' }; store.set('mfilters', filters); }
   if (!S.models) { root.innerHTML = '<div class="skel"></div>'; S.models = await get('/api/models'); }

@@ -7,7 +7,7 @@ import markdown_export
 from . import auth, config, research, research_requests as rq, research_units, staging
 from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RETIRED_TABLES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_level, resolve_variant, row_owner, save_media,
-                    storage_usage, table_columns)
+                    photo_write, storage_usage, table_columns)
 from .costs import Knowledge, budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
 from .models import model_tree, variant_detail
@@ -614,7 +614,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         # writes
         agent = re.fullmatch(r'/api/agent/([\w-]+)(?:/(-?\d+))?', path)
-        ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|listing_quotes|listing_history|media|decision)(?:/(\d+))?', path)
+        ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|listing_quotes|listing_history|media|photo|decision)(?:/(\d+))?', path)
         req = re.fullmatch(r'/api/(?:requests|worker/requests)/(\d+)', path)
         if (agent and agent[2] and method in ('PATCH', 'DELETE', 'POST') and self.admin and self.request is None
                 and self.headers.get('Authorization') and not self.headers.get('X-Carlos-Account')):
@@ -699,7 +699,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'token': auth.new_token(c, uid), 'note': 'Shown once; the previous token no longer works'}, 201)
         elif ui:
             result = self.ui_write(c, method, ui[1], int(ui[2]) if ui[2] else None, uid)
-            if ui[1] in ('media', 'inspection_items'):  # photos and checklist ticks: the dossier follows a little later (export_later)
+            if ui[1] in ('media', 'photo', 'inspection_items'):  # photos and checklist ticks: the dossier follows a little later (export_later)
                 export_later(uid, self.curator)
             else:
                 self.export_all(c, uid)
@@ -813,7 +813,13 @@ class Handler(BaseHTTPRequestHandler):
             if not self.headers.get('Content-Type', '').startswith('image/'):
                 raise UnsupportedMediaType('Content-Type must be image/jpeg, image/png or image/webp')
             new_id, created = save_media(c, row_id, self.rfile.read(self.body_length(config.MAX_IMAGE_BYTES)), {'url': ['user upload (viewing mode)']})
+            if not created and c.execute('SELECT archived FROM main.listing_media WHERE id=?', (new_id,)).fetchone()[0]:  # a removed photo is not re-added silently
+                raise Conflict({'error': 'This photo was removed from the dossier: restore it under Removed photos first'})
             return {'table': 'listing_media', 'id': new_id, 'created': created}
+        if kind == 'photo':  # remove, restore or delete one photo of the dossier: the login session only, never an agent token
+            if row_id is None or self.headers.get('Authorization'):
+                raise NotAllowed('Photos are removed from the dossier with the login session: PATCH or DELETE /api/ui/photo/<id>')
+            return photo_write(c, row_id, method, self.read_json(), uid)
         data = self.read_json()
         if kind == 'inspection_items' and method == 'PATCH' and row_id is not None:
             data = {k: v for k, v in data.items() if k in ('status', 'notes')}
