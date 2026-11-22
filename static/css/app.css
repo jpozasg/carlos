@@ -282,6 +282,7 @@ tr.off td{filter:saturate(.2)}/* a deselected car is greyed, never faded: opacit
 .contrib i{display:block;height:100%;flex:none;box-sizing:border-box}.contrib i+i{border-left:2px solid var(--surface)}
 a.carlink,.gen-head a,.ehead a,.sources h3 a,[data-page=sources] h3 a{color:inherit;text-decoration:none}a.carlink:hover,.gen-head a:hover,.ehead a:hover,[data-page=sources] h3 a:hover{text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px}
 .rank-car{display:inline-flex;align-items:center;gap:8px;font-weight:600;text-decoration:none;color:var(--text)}.rank-car:hover span{text-decoration:underline}
+.rank-list .why{margin:2px 0 0}.wmsg{color:var(--bad-ink)}.wmsg:empty{margin:0}
 .rank-layout{display:grid;gap:16px;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:start;margin-bottom:16px}
 .callout{display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;justify-content:space-between;background:var(--accent-soft);border-radius:var(--radius-s);padding:12px 14px;margin:0 0 14px}
 .callout p{margin:0;flex:1 1 260px;font-size:14px}
@@ -484,7 +485,8 @@ main:focus{outline:none}
   .selbar b{flex-basis:100%}
   .sr-legend span{white-space:normal;overflow:visible}
   .tablewrap td:first-child{min-width:170px}
-  .be-wrap{overflow-x:auto}.be-wrap svg[data-be]{min-width:640px}
+  /* the chart's labels are 11 units in a 1100-wide viewBox: under 640 px they draw at ~6 px, so the table below it (same numbers) is the phone view */
+  .be-wrap{display:none}
 }
 .plate-more>summary{display:none}
 /* phone dossier: shorter photo, facts collapsed, one-line sticky tab bar, so the tabs are near the top */

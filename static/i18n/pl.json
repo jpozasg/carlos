@@ -85,6 +85,8 @@
  "rel_where": "Ich oczekiwany koszt wchodzi do napraw w karcie Koszty.",
  "co_certain_items": "Pewne pozycje dla tego auta",
  "rank_n": "#{n}",
+  "rank_why": "Najwyższa waga: {top}; dane dla {n} z {m} kryteriów.",
+  "rank_cov": "Dane dla {n} z {m} kryteriów.",
  "not_ranked": "Poza rankingiem",
  "compare": "Porównaj",
  "open_dossier": "Otwórz dossier",

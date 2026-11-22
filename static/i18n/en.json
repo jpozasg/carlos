@@ -84,6 +84,8 @@
  "rel_where": "Their expected cost counts under repairs in the Costs tab.",
  "co_certain_items": "Certain items for this car",
  "rank_n": "#{n}",
+  "rank_why": "Highest weight: {top}; data for {n} of {m} criteria.",
+  "rank_cov": "Data for {n} of {m} criteria.",
  "not_ranked": "Not ranked",
  "compare": "Compare",
  "open_dossier": "Open the dossier",
