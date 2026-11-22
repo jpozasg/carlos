@@ -114,6 +114,24 @@ class Evenness(unittest.TestCase):
         self.assertEqual(codes.count('CHECK_NO_EVIDENCE'), 2)
         self.assertIn('NONE_FOUND_CONTRADICTED', codes)
 
+    def test_tax_rows_follow_their_registration_window(self):
+        for annual, lo, hi in ((120, None, '2010-12'), (130, '2011-01', None), (140, '2012-01', None)):  # the car: first registered 2011-06
+            self.sql("INSERT INTO tax_data (vehicle_id, annual_tax_eur, status, basis, source_id, registered_from, registered_to) "
+                     "VALUES (?, ?, 'VERIFIED', 'test window', ?, ?, ?)", fixture.V_A, annual, fixture.SRC_TAX_OFFICIAL, lo, hi)
+        c = sqlite3.connect(self.path)
+        rows = evenness.Car(c, evenness.q(c, 'SELECT * FROM listings WHERE id=?', fixture.CAR_A)[0]).rows('tax_data')
+        c.close()
+        self.assertEqual(sorted(r['annual_tax_eur'] for r in rows), [94, 130])  # the 2010 and the 2012 windows are left out
+
+    def test_risk_check_contradicts_only_faults_on_its_own_level(self):
+        self.sql("INSERT INTO engine_families (id, name) VALUES (1, 'AM family')")
+        self.sql('UPDATE engines SET family_id=1 WHERE id=?', fixture.E_A)
+        self.sql("INSERT INTO research_checks (engine_family_id, task, source_id, result, notes, contract_version) VALUES (1, 'fam.risks', ?, 'NONE FOUND', 'https://example.test/fam', 10)",
+                 fixture.SRC_GUIDE)
+        self.assertNotIn('NONE_FOUND_CONTRADICTED', self.car()[1])  # the only fault is on the engine: 'fam' is not 'eng'
+        self.fault('engine_family_id', 1, component='Oil pump', component_code='OIL_PUMP')
+        self.assertIn('NONE_FOUND_CONTRADICTED', self.car()[1])
+
     def test_listing_without_a_variant_is_reported_not_a_crash(self):
         self.sql("INSERT INTO listings (id, vehicle_id, source_id, platform, listing_status, is_reference, owner_id) VALUES (9, NULL, ?, 'Test', 'UNDER REVIEW', 0, 1)", fixture.SRC_LISTING)
         out = self.run_script()

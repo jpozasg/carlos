@@ -47,11 +47,12 @@ def words(text):
 
 
 def in_window(r, reg):
-    """carlos.costs.in_window: a row with a first-registration window (applies_from/to, 'YYYY' or 'YYYY-MM') applies to a car
-    registered inside it; an unknown registration keeps the row."""
+    """carlos.costs.in_window: a row with a first-registration window (applies_from/to on faults and the like, registered_from/to
+    on tax_data, 'YYYY' or 'YYYY-MM') applies to a car registered inside it; an unknown registration keeps the row."""
     if not reg:
         return True
-    lo, hi = r.get('applies_from'), r.get('applies_to')
+    lo = r.get('applies_from') or r.get('registered_from')
+    hi = r.get('applies_to') or r.get('registered_to')
     n = lambda w: min(len(w), len(reg))
     return (not lo or lo[:n(lo)] <= reg[:n(lo)]) and (not hi or reg[:n(hi)] <= hi[:n(hi)])
 
@@ -165,7 +166,7 @@ def metrics(car, today):
                     d.append(('STALE_QUOTE', t, r['id'], 'quote is %d days old (limit %d)' % (age, QUOTE_MAX_AGE_DAYS)))
     # checks: NONE FOUND and "source does not list / cover it" N/A need the URL or the search in notes; an N/A that says an item
     # does not apply (gen.facelift) needs a reason; a NONE FOUND on a *.risks item must not contradict rows on that level
-    risk_tasks = {'eng.risks': 'engine', 'fam.risks': 'engine', 'gen.risks': 'generation', 'gbx.risks': 'gearbox', 'bdy.risks': 'body'}
+    risk_tasks = {'eng.risks': 'engine', 'fam.risks': 'engine_family', 'gen.risks': 'generation', 'gbx.risks': 'gearbox', 'bdy.risks': 'body_style'}
     for k in checks:
         notes = k['notes'] or ''
         source_claim = k['result'] == 'NONE FOUND' or k['task'].startswith('rel.') or k['task'] in ('gen.recalls', 'gen.safety')
@@ -173,7 +174,7 @@ def metrics(car, today):
             d.append(('CHECK_NO_EVIDENCE', 'research_checks', k['id'], '%s %s: notes hold neither a URL nor the search' % (k['task'], k['result'])))
         elif k['result'] == 'N/A' and not source_claim and len(notes.strip()) < 10:
             d.append(('CHECK_NO_EVIDENCE', 'research_checks', k['id'], '%s N/A: no reason in notes' % k['task']))
-        if k['result'] == 'NONE FOUND' and k['task'] in risk_tasks and any(f['_level'].startswith(risk_tasks[k['task']][:3]) for f in faults):
+        if k['result'] == 'NONE FOUND' and k['task'] in risk_tasks and any(f['_level'] == risk_tasks[k['task']] for f in faults):
             d.append(('NONE_FOUND_CONTRADICTED', 'research_checks', k['id'], '%s NONE FOUND but faults exist on that level' % k['task']))
     # duplicates across levels
     seen = defaultdict(list)

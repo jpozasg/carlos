@@ -58,6 +58,12 @@ class I18nCheck(unittest.TestCase):
         errors, warnings = chk.run(SCRIPT.parents[4])
         self.assertEqual(errors, [])
 
+    def test_repository_english_and_german_keys_match(self):  # explicit, so a missing German key fails even if the error list changes
+        i18n = SCRIPT.parents[4] / 'static' / 'i18n'
+        en, de = (chk.flatten(json.loads((i18n / f'{lang}.json').read_text(encoding='utf8'))) for lang in ('en', 'de'))
+        self.assertEqual(sorted(set(en) - set(de)), [])
+        self.assertEqual(sorted(set(de) - set(en)), [])
+
 
 if __name__ == '__main__':
     unittest.main()
