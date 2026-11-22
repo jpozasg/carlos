@@ -177,6 +177,10 @@ def rating_checks(c, table, out, row_id):
     missing = [k for k in rule['required'] if row.get(k) is None]
     if missing:
         raise ValueError(f"{row['source_key']} ratings need {', '.join(missing)}")
+    if row['source_key'] == 'TUEV_REPORT' and not row['class_average'] > 0:  # the defect share is measured against it
+        raise ValueError('TUEV_REPORT class_average must be above 0')
+    if row['source_key'] == 'ADAC_PANNENSTATISTIK' and row['band'] not in (1, 2, 3, 4, 5):
+        raise ValueError('ADAC_PANNENSTATISTIK band must be 1-5')
     lo, hi = rule.get('scale', (0, None))
     if row.get('value_num') is not None and (row['value_num'] < lo or hi is not None and row['value_num'] > hi):
         raise ValueError(f"value_num must be within {lo}-{hi} for {row['source_key']}")
@@ -304,8 +308,8 @@ def resolve_level(c, table, data):
         return None
     if table == 'generations' and data.get('make') and data.get('model'):
         r = c.execute('SELECT min(id) FROM main.generations WHERE owner_id IS NULL AND upper(trim(make))=upper(trim(?)) AND upper(trim(model))=upper(trim(?)) '
-                      'AND (start_year IS NOT NULL AND start_year=? OR upper(trim(name))=upper(trim(?)))',
-                      (data['make'], data['model'], data.get('start_year'), data.get('name') or '')).fetchone()
+                      "AND (start_year IS NOT NULL AND start_year=? OR ? <> '' AND upper(trim(name))=upper(trim(?)))",
+                      (data['make'], data['model'], data.get('start_year'), data.get('name') or '', data.get('name') or '')).fetchone()
         return r[0]
     if table == 'engines' and data.get('code') and data.get('fuel_type') and data.get('displacement_cc') and (data.get('power_kw') or data.get('power_ps')):
         r = c.execute("SELECT min(id) FROM main.engines WHERE owner_id IS NULL AND fuel_type=? AND displacement_cc=? "

@@ -13,6 +13,11 @@ TOKEN, PASSWORD = fx.TOKEN, fx.PASSWORD
 REAL_DB = config.ROOT / 'data' / 'cars.sqlite'
 
 
+def dossier_path(name):
+    """A dossier file of account 1: <make>-<model>-<platform>-<listing id>-<row id>.md (the row id makes every name unique)."""
+    return next((config.MD_DIR / '1').glob(name + '-*.md'), config.MD_DIR / '1' / (name + '.md'))
+
+
 class AppTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1918,16 +1923,16 @@ class AppTest(unittest.TestCase):
         old, new = self.sql("SELECT old_json, new_json FROM change_log WHERE table_name='listings' ORDER BY id DESC LIMIT 1")[0]
         self.assertEqual(json.loads(new), {'verdict': 'Strong candidate, inspection pending'})
         self.assertIsNone(json.loads(old)['verdict'])
-        md = (config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').read_text()
+        md = dossier_path('Alpha-Hatch-Test-A1').read_text()
         self.assertIn('Strong candidate, inspection pending', md)
-        self.assertIn('BC12T', (config.MD_DIR / '1' / 'Beta-City-Test-B1.md').read_text())
-        self.assertTrue((config.MD_DIR / '1' / 'Alpha-Hatch-OWNED-u1.md').exists())
+        self.assertIn('BC12T', dossier_path('Beta-City-Test-B1').read_text())
+        self.assertTrue(dossier_path('Alpha-Hatch-OWNED-u').exists())
         self.agent('PATCH', f'listings/{CAR_A}', {'verdict': 'x'})
-        self.assertNotIn('inspection pending', (config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').read_text())
+        self.assertNotIn('inspection pending', dossier_path('Alpha-Hatch-Test-A1').read_text())
         self.assertEqual(self.agent('POST', 'export-md')[0], 200)
 
     def test_dossiers_follow_saved_parameters(self):
-        md = lambda: (config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').read_text()
+        md = lambda: dossier_path('Alpha-Hatch-Test-A1').read_text()
         self.agent('POST', 'export-md')
         self.assertIn('4 years, 60,000 km', md())
         self.req('GET', '/api/tco?ownership_years=2')
@@ -1970,7 +1975,7 @@ class AppTest(unittest.TestCase):
             urllib.request.urlopen(f"{self.base}/media/{d['media'][0]['file_path']}")   # login required
         timer.assert_called()  # the dossier follows the photo once the deferred export runs
         server.export_deferred(1)
-        md = (config.MD_DIR / '1' / 'Beta-City-Test-T1.md').read_text()
+        md = dossier_path('Beta-City-Test-T1').read_text()
         self.assertIn('> Line 2', md)
         self.assertIn('| Getriebe | Automatik |', md)
         self.assertIn(f'../../media/{L}/', md)
@@ -2523,7 +2528,7 @@ class AppTest(unittest.TestCase):
         self.assertIn('BC12X', ''.join(f.read_text() for f in (config.MD_DIR / '2').glob('*.md')))
         self.assertEqual(self.req('POST', '/api/parameters', {'annual_km': 9000}, token=None, cookie=t2)[1]['annual_km'], 9000)
         self.assertEqual(self.req('GET', '/api/parameters')[1]['annual_km'], 15000)
-        self.assertTrue((config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').exists())
+        self.assertTrue(dossier_path('Alpha-Hatch-Test-A1').exists())
         # deactivation ends the sessions and the token
         self.assertEqual(self.req('PATCH', '/api/admin/users/2', {'is_active': 0}, token=None, cookie=cookie)[1]['is_active'], 0)
         self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=c2)[0], 401)
@@ -2648,6 +2653,44 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'source_ratings', R)[0], 201)
         self.assertEqual(self.agent('POST', 'source_keys', K, token='bad')[0], 401)
 
+
+    def test_review_fixes_on_write_and_read(self):
+        """Code review round 1: a rating's values are checked on write, a saved filter is checked on save, a decision keeps an owned
+        car's status, a negative limit is clamped, a refused duplicate request leaves no transaction open, reliability_items are not read."""
+        url = 'https://www.tuev-verband.de/x'
+        self.assertEqual(self.agent('POST', 'source_keys', {'source_key': 'TUEV_REPORT', 'external_key': 'Polo', 'generation_id': G1, 'url': url,
+                                                            'source_id': fx.SRC_HU, 'checked_date': '2026-11-10'})[0], 201)
+        R = {'source_key': 'TUEV_REPORT', 'external_key': 'polo', 'edition': '2026', 'age_from': 6, 'age_to': 7, 'value_num': 5,
+             'class_average': 10, 'url': url, 'source_id': fx.SRC_HU, 'checked_date': '2026-11-10'}
+        self.assertEqual(self.agent('POST', 'source_ratings', {**R, 'class_average': 0})[0], 400)     # no average to measure against
+        self.assertEqual(self.agent('POST', 'source_ratings', R)[0], 201)
+        A = {'source_key': 'ADAC_PANNENSTATISTIK', 'external_key': 'Polo', 'generation_id': G1, 'url': url, 'source_id': fx.SRC_HU,
+             'checked_date': '2026-11-10'}
+        self.assertEqual(self.agent('POST', 'source_keys', A)[0], 201)
+        B = {'source_key': 'ADAC_PANNENSTATISTIK', 'external_key': 'polo', 'edition': '2026', 'reg_year': 2015, 'url': url,
+             'source_id': fx.SRC_HU, 'checked_date': '2026-11-10'}
+        self.assertEqual(self.agent('POST', 'source_ratings', {**B, 'band': 6})[0], 400)              # the bands are 1-5
+        self.assertEqual(self.agent('POST', 'source_ratings', {**B, 'band': 2})[0], 201)
+        # saved filters the ranking can read
+        self.assertEqual(self.req('POST', '/api/preferences', {'filter_hu_months': 'soon'})[0], 400)
+        self.assertEqual(self.req('POST', '/api/preferences', {'filter_seller': 'BOTH'})[0], 400)
+        self.assertEqual(self.req('POST', '/api/preferences', {'filter_hu_months': 12, 'filter_seller': 'DEALER'})[0], 200)
+        self.assertTrue(self.units())
+        # a decision on a bought car leaves its status alone
+        self.sql_write("UPDATE listings SET listing_status='OWNED' WHERE id=?", (CAR_B,))
+        self.assertEqual(self.ui('POST', f'decision/{CAR_B}', {'decision': 'reject', 'reason': 'too far'})[0], 201)
+        self.assertEqual(self.sql('SELECT listing_status, verdict FROM listings WHERE id=?', (CAR_B,))[0][0], 'OWNED')
+        # a negative limit returns one row, not every row
+        st, admin = self.login()
+        self.assertGreater(len(self.req('GET', '/api/admin/changes?limit=1000', token=None, cookie=admin)[1]), 1)
+        self.assertEqual(len(self.req('GET', '/api/admin/changes?limit=-5', token=None, cookie=admin)[1]), 1)
+        # a refused duplicate leaves no transaction open: the next request still gets in
+        uid2, t2 = self.second_account()
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1'}, token=None, cookie=t2)[0], 201)
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1'}, token=None, cookie=t2)[0], 400)
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/2'}, token=None, cookie=t2)[0], 201)
+        # reliability_items (retired) are not read: the listing's reliability is empty
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['reliability'], [])
 
 if __name__ == '__main__':
     unittest.main()

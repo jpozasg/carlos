@@ -4,7 +4,7 @@ when one car was added); cost per month and power are scored in percent against 
 candidates' median), which may shift every shown score by the same amount but never changes the order. A car is scored
 only when every weighted criterion has a value and its research is complete; the reference car is scored the same way.
 The maximum budget excludes cars (switchable). Weights 0–5 come from the questionnaire or are set by hand."""
-import json, math
+import json, math, re
 
 # key: better direction, unit, how the value is obtained (for the explanation). Values live in row['metrics'].
 CRITERIA = {
@@ -188,6 +188,16 @@ def months_left(yyyy_mm, today=None):
     t = today or datetime.date.today()
     y, m = map(int, yyyy_mm.split('-'))
     return (y - t.year) * 12 + m - t.month
+
+
+def check_filter(k, v):
+    """A saved filter_* value the filter can read (POST /api/preferences): one of its codes, or whole months for hu_months."""
+    allowed = FILTERS[k][0]
+    if allowed is None:
+        if not re.fullmatch(r'[0-9]{1,3}', v):
+            raise ValueError(f'{k} must be a whole number of months')
+    elif v not in allowed:
+        raise ValueError(f"{k} must be one of {', '.join(allowed)}")
 
 
 def failed_filter(r, p):

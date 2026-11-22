@@ -115,12 +115,12 @@ def fault_severity(f):
     """Derived, never chosen (owner, 2026-11-06, #168): HIGH when it can destroy the engine or gearbox or costs ≥ SEVERITY_HIGH_EUR, or
     strands the car / is a safety risk and costs ≥ SEVERITY_MEDIUM_EUR (cheaper: LOW-MEDIUM, #285); MEDIUM from SEVERITY_MEDIUM_EUR
     or when the car is unusable until fixed; LOW below that while the car still drives."""
-    price = amount(f) or 0
-    if f['consequence'] == 'ENGINE_DAMAGE' or price >= config.SEVERITY_HIGH_EUR:
+    price = amount(f)  # unknown = NULL, never 0: an unpriced fault is not compared with the price thresholds
+    if f['consequence'] == 'ENGINE_DAMAGE' or price is not None and price >= config.SEVERITY_HIGH_EUR:
         return 'HIGH'
     if f['consequence'] in ('STRANDS', 'SAFETY'):  # #285: a cheap stranding or safety fault (a coil, bulbs, tie-rod ends) must not empty a part
-        return 'HIGH' if price >= config.SEVERITY_MEDIUM_EUR else 'LOW-MEDIUM'
-    return 'MEDIUM' if f['consequence'] == 'UNUSABLE' or price >= config.SEVERITY_MEDIUM_EUR else 'LOW'
+        return 'MEDIUM' if price is None else 'HIGH' if price >= config.SEVERITY_MEDIUM_EUR else 'LOW-MEDIUM'
+    return 'MEDIUM' if f['consequence'] == 'UNUSABLE' or price is not None and price >= config.SEVERITY_MEDIUM_EUR else 'LOW'
 
 
 def fault_weight(f):
@@ -441,8 +441,8 @@ class Knowledge:
         """The tax row behind the cost: among the rows whose registration window covers the car's first registration (no
         window = any car), verified or official rows before estimates, then the newest (#107)."""
         fr = (first_registration or '')[:7]
-        covers = lambda r: (r.get('registered_from') is None or fr and fr >= r['registered_from'][:7]) and \
-            (r.get('registered_to') is None or fr and fr <= r['registered_to'][:7])
+        covers = lambda r: not fr or (r.get('registered_from') is None or fr >= r['registered_from'][:7]) and \
+            (r.get('registered_to') is None or fr <= r['registered_to'][:7])  # an unknown registration keeps the row (as in_window)
         rows_ = [r for r in self.of('tax_data', v) if r['annual_tax_eur'] is not None and covers(r)]
         return max(rows_, key=lambda r: (STATUS_POINTS.get(r['status'], 0) == 1, r['id']), default=None)
 
@@ -470,10 +470,11 @@ def reliability_sources(keys, ratings, age, reg_year, perm=None):
             continue
         rs = [r for r in ratings if r['source_key'] == src and r['external_key'].upper() == key['external_key'].upper() and r['value_num'] is not None]
         if src == 'TUEV_REPORT':  # the age class holding the car; older than the oldest class: the nearest (oldest) one; under 2: none
+            rs = [r for r in rs if (r['class_average'] or 0) > 0]  # a stored 0 is no average to divide by
             oldest = max((r['age_to'] for r in rs), default=0)
             rs = [r for r in rs if age is not None and age >= 2 and r['age_from'] <= age and (int(age) <= r['age_to'] or r['age_to'] == oldest)]
         elif src == 'ADAC_PANNENSTATISTIK':
-            rs = [r for r in rs if reg_year and r['reg_year'] == reg_year]
+            rs = [r for r in rs if reg_year and r['reg_year'] == reg_year and r['band'] in (1, 2, 3, 4, 5)]
         r = max(rs, key=lambda r: (r['edition'], r['id']), default=None)
         if r is None:
             continue
@@ -536,16 +537,15 @@ def tco_rows(c, p, know=None):
         insp.setdefault(r['listing_id'], {})[r['status']] = r['n']
     # checklist items linked to a weak point: a recall's check decides whether it counts in reliability, and recall
     # checks stay out of the inspection criterion so an open recall is not counted twice
-    recall_ids = {r['id'] for r in know.t['reliability_items'] if r.get('is_recall')}
-    checks, recall_checks = {}, {}
+    checks, recall_checks = {}, {}  # the weak points are faults and recalls only (reliability_items is retired, AGENTS.md)
     check_texts = {}  # listing -> check texts on its list (a fault with the same action text is covered by it, #223)
-    for r in c.execute('SELECT listing_id, reliability_item_id, fault_id, recall_id, item, status FROM inspection_items'):
+    for r in c.execute('SELECT listing_id, fault_id, recall_id, item, status FROM inspection_items'):
         check_texts.setdefault(r['listing_id'], set()).add(r['item'].strip())
-        key = r['reliability_item_id'] or (f"F{r['fault_id']}" if r['fault_id'] else f"R{r['recall_id']}" if r['recall_id'] else None)
+        key = f"F{r['fault_id']}" if r['fault_id'] else f"R{r['recall_id']}" if r['recall_id'] else None
         if key is None:
             continue
         checks.setdefault(r['listing_id'], {})[key] = r['status']
-        if r['recall_id'] or r['reliability_item_id'] in recall_ids:
+        if r['recall_id']:
             recall_checks.setdefault(r['listing_id'], {}).setdefault(r['status'], 0)
             recall_checks[r['listing_id']][r['status']] += 1
     for m in c.execute('SELECT listing_id, file_path FROM listing_media ORDER BY id'):  # the first upload is the cover
@@ -684,9 +684,8 @@ def tco_rows(c, p, know=None):
         age = age_now
         counts = u['inspection_counts']
         items = contract.resolved(v['id'])
-        rel_rows = know.of('reliability_items', v, win)
         rel_checks = dict(checks.get(u['id'], {}))
-        rel_rows = rel_rows + [{'id': f"F{f['id']}", 'component': f['component'], 'severity': fault_severity(f), 'part': f['part'], 'weight': fault_weight(f),
+        rel_rows = [{'id': f"F{f['id']}", 'component': f['component'], 'severity': fault_severity(f), 'part': f['part'], 'weight': fault_weight(f),
                                 'is_recall': False, 'inspection_action': (f.get('inspection_action') or '').strip(), 'level': f['level'], 'source_id': f['source_id']} for f in f_rows] + \
             [{'id': f"R{r['id']}", 'component': r['code'] + ': ' + r['defect'], 'severity': 'HIGH IF APPLICABLE',
               'part': r['part'], 'is_recall': True, 'level': r['level'], 'source_id': r['source_id']} for r in rc_rows]
@@ -811,7 +810,8 @@ def listing_detail(c, listing_id, p, ranked, know=None):
              snapshots=q('SELECT * FROM listing_snapshots WHERE listing_id=? ORDER BY captured_at, id'),
              media=q('SELECT * FROM listing_media WHERE listing_id=? ORDER BY id'),
              removed_media=q('SELECT id, captured_at FROM listing_media_all WHERE listing_id=? AND archived=1 ORDER BY id'),
-             reliability=know.of('reliability_items', v, reg), maintenance=know.of('maintenance_items', v, reg),
+             reliability=[],  # retired table (AGENTS.md): faults and recalls are the weak points; the key stays for the dossier
+             maintenance=know.of('maintenance_items', v, reg),
              insurance=know.of('insurance_data', v), tax=know.of('tax_data', v), observations=know.of('observations', v),
              tyres=know.of('tyre_data', v),
              # a listing awaiting research has no variant, engine or generation yet (#194)
