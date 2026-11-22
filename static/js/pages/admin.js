@@ -26,9 +26,10 @@ function workersHtml() {
     <td class="small">${esc(w.last_seen ?? '—')}</td>
     <td class="small">${w.url ? `<a href="${safeUrl(w.url)}" target="_blank" rel="noopener">${esc(w.url)}</a><div class="muted">${esc(w.username ?? '')}${w.listing_id ? ` · #${w.listing_id}` : ''}${w.unit ? ` · ${t('wk_on', { u: esc(t('rp_' + w.unit)) })}` : ''}${w.parent_id ? ` · request #${w.parent_id}` : ''}</div>` : '—'}</td>
     <td class="small">${w.last_error ? `${esc(w.last_error)}<div class="muted">${esc(w.last_error_at ?? '')}</div>` : '—'}</td>
-    <td class="row"><button class="btn ghost sm" type="button" data-wtoken="${w.id}">${t('worker_regen')}</button>${gate('wact:' + w.id, `<button class="btn ghost sm" type="button" data-k="wact:${w.id}" data-wactive="${w.id}" data-to="${w.is_active ? 0 : 1}">${w.is_active ? t('deactivate') : t('activate')}</button>`)}</td></tr>`).join('');
+    <td class="row">${gate('wtok:' + w.id, `<button class="btn ghost sm" type="button" data-k="wtok:${w.id}" data-wtoken="${w.id}">${t('worker_regen')}</button>`)}${gate('wact:' + w.id, `<button class="btn ghost sm" type="button" data-k="wact:${w.id}" data-wactive="${w.id}" data-to="${w.is_active ? 0 : 1}">${w.is_active ? t('deactivate') : t('activate')}</button>`)}</td></tr>`).join('');
   return `<h3>${t('workers')}</h3><p class="small muted">${t('workers_lead')}</p>
-    <form id="newWorker" class="row mb12"><div class="field"><label for="nw_name">${t('worker_name')}</label><input id="nw_name" pattern="[\\w.-]{2,40}" required></div><button class="btn as-e" type="submit">${t('worker_create')}</button></form>
+    <form id="newWorker" class="row mb12"><div class="field"><label for="nw_name">${t('worker_name')}</label><input id="nw_name" pattern="[\\w.-]{2,40}" required autocomplete="off" spellcheck="false" aria-describedby="nw_err"></div><button class="btn as-e" type="submit">${t('worker_create')}</button></form>
+    <p class="hint err" id="nw_err" role="alert"></p>
     ${lastToken ? `<p class="small ut-margin-0-0-4">${t('worker_token_hint', { n: esc(lastToken.name) })}</p><div class="token-box" id="wk_tok">${esc(lastToken.token)}</div><button class="btn ghost sm ut-margin-8-0-12" type="button" data-copy="wk_tok">${t('copy')}</button>` : ''}
     <div class="tablewrap"><table><thead><tr><th>${t('worker_name')}</th><th>${t('status')}</th><th>${t('worker_last_seen')}</th><th>${t('worker_job')}</th><th>${t('worker_error')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="6">${empty('')}</td></tr>`}</tbody></table></div>`;
 }
@@ -39,8 +40,9 @@ function changesHtml() {
 }
 // the erasure form under the account: the button stays disabled until the username is typed exactly (the server checks it too)
 function eraseCard(u) {  // a card under the table: a table cell cannot hold the form at phone width
-  return `<div class="card mt12"><form class="row ut-flex-wrap-wrap ut-align-items-flex-end" data-erase-form="${u.id}"><div class="field"><label for="er_name">${t('erase_type', { u: esc(u.username) })}</label><input id="er_name" data-name="${esc(u.username)}" autocomplete="off" spellcheck="false" required></div>
+  return `<div class="card mt12"><form class="row ut-flex-wrap-wrap ut-align-items-flex-end" data-erase-form="${u.id}"><div class="field"><label for="er_name">${t('erase_type', { u: esc(u.username) })}</label><input id="er_name" data-name="${esc(u.username)}" autocomplete="off" spellcheck="false" required aria-describedby="er_err"></div>
     <button class="btn danger" type="submit" id="er_go" disabled>${t('erase_confirm')}</button><button class="btn ghost" type="button" data-erase-cancel>${t('cancel')}</button></form>
+    <p class="hint err" id="er_err" role="alert"></p>
     <p class="small muted ut-max-width-60ch ut-margin-8-0-0">${t('erase_lead')}</p></div>`;
 }
 function draw() {
@@ -52,8 +54,9 @@ function draw() {
         + `<button class="btn ghost sm" type="button" data-erase="${u.id}">${t('erase_account')}</button>` : ''}</td></tr>`).join('');
   root.innerHTML = `<div class="section"><h2>${t('tab_admin')}</h2><p class="lead">${t('admin_lead')}</p>
     <div class="card mb16">${workersHtml()}</div>
-    <div class="card mb16"><h3>${t('new_user')}</h3><form id="newUser" class="row"><div class="field"><label for="nu_name">${t('username')}</label><input id="nu_name" pattern="[\\w.-]{2,40}" required></div>
+    <div class="card mb16"><h3>${t('new_user')}</h3><form id="newUser" class="row"><div class="field"><label for="nu_name">${t('username')}</label><input id="nu_name" pattern="[\\w.-]{2,40}" required autocomplete="off" spellcheck="false" aria-describedby="nu_err"></div>
       <div class="field"><label for="nu_role">${t('role')}</label><select id="nu_role" class="inline"><option value="user">${t('role_user')}</option><option value="admin">${t('role_admin')}</option></select></div><button class="btn as-e" type="submit">${t('create_invite')}</button></form>
+      <p class="hint err" id="nu_err" role="alert"></p>
       ${lastInvite ? `<p class="small ut-margin-12-0-4">${t('invite_created', { u: esc(lastInvite.username) })}</p><div class="token-box" id="inv_tok">${esc(lastInvite.invite)}</div><button class="btn ghost sm mt8" type="button" data-copy="inv_tok">${t('copy')}</button>` : ''}</div>
     <div class="tablewrap"><table><thead><tr><th>${t('username')}</th><th>${t('role')}</th><th>${t('status')}</th><th>${t('created')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>
     ${eraseId != null && users.find(x => x.id === eraseId) ? eraseCard(users.find(x => x.id === eraseId)) : ''}
@@ -67,22 +70,26 @@ function bind() {
   root.addEventListener('input', e => { if (e.target.id === 'er_name') $('er_go').disabled = e.target.value !== e.target.dataset.name; });
   root.addEventListener('submit', async e => { e.preventDefault();
     if (e.target.dataset.eraseForm) {  // erasure: the server writes the export first and refuses a wrong username
-      const u = users.find(x => x.id === +e.target.dataset.eraseForm);
-      try { const r = await busy($('er_go'), () => del(`/api/admin/users/${u.id}`, { username: $('er_name').value })); eraseId = null; toast(t('erase_done', { u: r.username, f: r.export })); await reload(); } catch (err) { toast(err.message, true); }
+      const u = users.find(x => x.id === +e.target.dataset.eraseForm); $('er_err').textContent = '';
+      try { const r = await busy($('er_go'), () => del(`/api/admin/users/${u.id}`, { username: $('er_name').value })); eraseId = null; toast(t('erase_done', { u: r.username, f: r.export })); await reload(); } catch (err) { $('er_err').textContent = err.message; toast(err.message, true); }
       return;
     }
-    if (e.target.id === 'newWorker') { try { const name = $('nw_name').value.trim(); const r = await post('/api/admin/workers', { name }); lastToken = { name, token: r.token }; await reload(); } catch (err) { toast(err.message, true); } return; }
-    try { const r = await post('/api/admin/users', { username: $('nu_name').value.trim(), role: $('nu_role').value }); lastInvite = r; await reload(); } catch (err) { toast(err.message, true); } });
+    const btn = e.target.querySelector('button[type="submit"]');  // the create forms: busy while the request runs
+    if (e.target.id === 'newWorker') { $('nw_err').textContent = '';
+      try { const name = $('nw_name').value.trim(); const r = await busy(btn, () => post('/api/admin/workers', { name })); lastToken = { name, token: r.token }; await reload(); } catch (err) { $('nw_err').textContent = err.message; toast(err.message, true); } return; }
+    $('nu_err').textContent = '';
+    try { const r = await busy(btn, () => post('/api/admin/users', { username: $('nu_name').value.trim(), role: $('nu_role').value })); lastInvite = r; await reload(); } catch (err) { $('nu_err').textContent = err.message; toast(err.message, true); } });
   root.addEventListener('click', async e => {
-    const yes = e.target.closest('[data-yes]'); if (yes) { const a = ask; ask = null; await busy(yes, a.go); return; }
+    const yes = e.target.closest('[data-yes]'); if (yes) { const a = ask; if (!a) return; ask = null; await busy(yes, a.go); draw(); return; }  // draw drops the confirm row after a failure too
     if (e.target.closest('[data-no]')) { const k = ask?.key; ask = null; draw(); if (k) root.querySelector(`[data-k="${k}"]`)?.focus(); return; }
     const cp = e.target.closest('[data-copy]'); if (cp) { await copy(cp.dataset.copy); return; }
-    const wt = e.target.closest('[data-wtoken]'); if (wt) { try { const r = await post(`/api/admin/workers/${wt.dataset.wtoken}/token`, {}); lastToken = { name: workers.find(w => w.id === +wt.dataset.wtoken)?.name, token: r.token }; draw(); } catch (err) { toast(err.message, true); } return; }
+    const wt = e.target.closest('[data-wtoken]'); if (wt) { const id = +wt.dataset.wtoken, name = workers.find(w => w.id === id)?.name;  // a new token stops the running worker: confirm first
+      setAsk(`wtok:${id}`, t('confirm_worker_token', { u: esc(name) }), async () => { try { const r = await post(`/api/admin/workers/${id}/token`, {}); lastToken = { name, token: r.token }; } catch (err) { toast(err.message, true); } }); return; }
     const wa = e.target.closest('[data-wactive]'); if (wa) { const id = wa.dataset.wactive, to = +wa.dataset.to;
       const go = async () => { try { await patch(`/api/admin/workers/${id}`, { is_active: to }); await reload(); } catch (err) { toast(err.message, true); } };
       if (to) return go();
       setAsk(`wact:${id}`, t('confirm_deactivate_worker', { u: esc(workers.find(w => w.id === +id)?.name) }), go); return; }
-    if (e.target.closest('[data-older]')) { try { changes = changes.concat(await get(`/api/admin/changes?limit=50&before=${changes[changes.length - 1].id}`)); draw(); } catch (err) { toast(err.message, true); } return; }
+    const older = e.target.closest('[data-older]'); if (older) { try { await busy(older, async () => { changes = changes.concat(await get(`/api/admin/changes?limit=50&before=${changes[changes.length - 1].id}`)); }); draw(); } catch (err) { toast(err.message, true); } return; }
     const er = e.target.closest('[data-erase]'); if (er) { eraseId = +er.dataset.erase; draw(); $('er_name')?.focus(); return; }
     if (e.target.closest('[data-erase-cancel]')) { eraseId = null; draw(); return; }
     const inv = e.target.closest('[data-invite]'); if (inv) { const id = +inv.dataset.invite, u = users.find(x => x.id === id);

@@ -2,9 +2,9 @@
 // Shown at the top of Compare; the admins' whole queue is on the Accounts page (pages/admin.js).
 import { get, post, patch } from './api.js';
 import { t, tv } from './i18n.js';
-import { esc, safeUrl, store, toast } from './ui.js';
+import { esc, safeUrl, store, toast, busy } from './ui.js';
 
-let REQS = [];
+let REQS = [], ASK = null;  // ASK: the queued request whose cancel waits for an inline confirm (as admin.js gate())
 const TAG = { QUEUED: 'warn', RUNNING: 'warn', WAITING: 'warn', DONE: 'good', SKIPPED: 'good', FAILED: 'bad', CANCELLED: '' };
 export const statusTag = s => `<span class="tag ${TAG[s] ?? ''}">${esc(tv(s))}</span>`;
 
@@ -49,11 +49,14 @@ export async function loadRequests() { try { REQS = await get('/api/requests'); 
 export function requestsPanel() {
   const open = store.get('reqsOpen', false);  // collapsed by default, remembered per browser (issue #180)
   const list = REQS.slice(0, 10).map(r => `<li><a href="${safeUrl(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a> ${statusTag(r.status)}
-    <span class="small muted">${esc(r.requested_at)}</span>${r.status === 'QUEUED' ? ` <button class="btn ghost sm" type="button" data-reqcancel="${r.id}">${t('req_cancel')}</button>` : ''}
+    <span class="small muted">${esc(r.requested_at)}</span>${r.status === 'QUEUED' ? ` ${ASK === r.id
+      ? `<span class="confirm" role="alert"><span class="small">${t('confirm_cancel_request')}</span> <button class="btn sm" type="button" data-reqyes="${r.id}">${t('confirm_yes')}</button> <button class="btn ghost sm" type="button" data-reqno>${t('keep_request')}</button></span>`
+      : `<button class="btn ghost sm" type="button" data-reqcancel="${r.id}">${t('req_cancel')}</button>`}` : ''}
     ${r.listing_id ? ` <a class="btn ghost sm" href="#/listing/${r.listing_id}">${t('req_open_car')}</a>` : ''}${partsHtml(r, r.parts)}${r.status === 'FAILED' && r.result ? `<div class="small muted">${esc(r.result.split('\n')[0])}</div>` : ''}</li>`).join('');
   return `<details class="card reqs"${open ? ' open' : ''}><summary><b>${t('req_title')}</b></summary><p class="small muted">${t('req_lead')}</p>
-    <form class="row" data-reqform><div class="field"><label for="req_url">${t('req_url')}</label><input id="req_url" type="url" required maxlength="500" placeholder="https://"></div>
+    <form class="row" data-reqform><div class="field"><label for="req_url">${t('req_url')}</label><input id="req_url" type="url" required maxlength="500" placeholder="https://" autocomplete="off" spellcheck="false" aria-describedby="req_err"></div>
       <div class="field"><label for="req_note">${t('req_note')}</label><input id="req_note" maxlength="1000"></div><button class="btn as-end" type="submit">${t('req_send')}</button></form>
+    <p class="hint err" id="req_err" role="alert"></p>
     ${list ? `<ul class="reqlist">${list}</ul>` : ''}</details>`;
 }
 
@@ -61,8 +64,12 @@ export function requestsPanel() {
 export function bindRequests(root, redraw) {
   root.addEventListener('toggle', e => { if (e.target.matches?.('details.reqs')) store.set('reqsOpen', e.target.open); }, true);  // toggle doesn't bubble
   root.addEventListener('submit', async e => { const f = e.target.closest('[data-reqform]'); if (!f) return; e.preventDefault();
-    try { await post('/api/requests', { url: f.querySelector('#req_url').value.trim(), note: f.querySelector('#req_note').value.trim() }); toast(t('req_sent')); await loadRequests(); redraw(); }
-    catch (err) { toast(err.message, true); } });
-  root.addEventListener('click', async e => { const b = e.target.closest('[data-reqcancel]'); if (!b) return;
-    try { await patch(`/api/requests/${b.dataset.reqcancel}`, { status: 'CANCELLED' }); await loadRequests(); redraw(); } catch (err) { toast(err.message, true); } });
+    const box = f.querySelector('#req_err'); box.textContent = '';
+    try { await busy(f.querySelector('button[type="submit"]'), () => post('/api/requests', { url: f.querySelector('#req_url').value.trim(), note: f.querySelector('#req_note').value.trim() })); toast(t('req_sent')); await loadRequests(); redraw(); }
+    catch (err) { box.textContent = err.message; toast(err.message, true); } });
+  root.addEventListener('click', async e => {
+    const c = e.target.closest('[data-reqcancel]'); if (c) { ASK = +c.dataset.reqcancel; redraw(); root.querySelector('[data-reqno]')?.focus(); return; }  // focus starts on Keep
+    const no = e.target.closest('[data-reqno]'); if (no) { const id = ASK; ASK = null; redraw(); root.querySelector(`[data-reqcancel="${id}"]`)?.focus(); return; }
+    const y = e.target.closest('[data-reqyes]'); if (!y) return;
+    try { await busy(y, () => patch(`/api/requests/${y.dataset.reqyes}`, { status: 'CANCELLED' })); ASK = null; await loadRequests(); redraw(); } catch (err) { toast(err.message, true); } });
 }
