@@ -497,6 +497,7 @@ class AppTest(unittest.TestCase):
                                              done={1: None}, by_id={2: g})[0]
         self.assertEqual(run(None)['expected_eur'], 0)
         self.assertIsNone(run(2)['expected_eur'])                                       # was: the fix taken at km 0
+        self.assertEqual((run(2)['fixed'], run(2)['repaired_at_km']), (True, None))     # the fix is registered, its km is not
         self.assertIsNotNone(costs.fault_plan([{**f, 'warranty_share': None, 'fixed_fault_id': 2}], 90000, 60000, 5.0, 48,
                                               done={1: 80000}, by_id={2: g})[0]['expected_eur'])
 

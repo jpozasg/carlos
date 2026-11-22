@@ -239,7 +239,7 @@ def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=Non
         out.append({**{k: f.get(k) for k in ('id', 'component', 'part', 'issue', 'consequence', 'existence', 'probability_basis',
                                               'frequency_band', 'shape', 'inspection_action', 'applies_from', 'applies_to',
                                               'window_uncertain', 'source_id', 'notes')},
-                    'level': f.get('level'), 'severity': fault_severity(f), 'price_eur': price, 'repaired_at_km': d,
+                    'level': f.get('level'), 'severity': fault_severity(f), 'price_eur': price, 'repaired_at_km': d, 'fixed': fixed,
                     'probability': None if p is None else round(p, 4), 'warranty_cover': round(cover, 4),
                     'expected_eur': None if p is None or (p and price is None) else round(max(0.0, p - cover) * (price or 0), 2)})
     return out
