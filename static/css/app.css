@@ -484,6 +484,11 @@ main:focus{outline:none}
   .plate-more>summary{display:block;cursor:pointer;color:var(--accent-ink);font-weight:600;font-size:13px;padding:4px 0}
   .dtabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;position:sticky;top:0;z-index:15;background:var(--bg);-webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);mask-image:linear-gradient(90deg,#000 90%,transparent)}
   .dtabs button{white-space:nowrap;flex:none}
+  /* compact top (viewing mode or the viewing tab, dossier.js compactTop): photo a thin strip, no score or plate, so the checklist starts high */
+  .dossier-top.compact .viewer .main{aspect-ratio:16/6;max-height:110px}
+  .dossier-top.compact .strip{max-height:58px}
+  .dossier-top.compact .strip img{width:56px;height:42px}
+  .dossier-top.compact .scorecard,.dossier-top.compact .plate-more{display:none}
 }
 @media (max-width:640px){.co-sum td:first-child{min-width:0}.co-sum th:last-child,.co-sum td:last-child{display:none}}
 tr.hl td{background:var(--surface-2);font-weight:600}
@@ -495,4 +500,7 @@ details.quote-entry{margin-top:14px;padding-top:10px;border-top:1px solid var(--
 details.quote-entry>summary{cursor:pointer;font-weight:600;font-size:14px;padding:4px 0}
 details.quote-entry .howto{margin:8px 0 12px;padding:10px 12px;border-radius:var(--radius-s);background:var(--surface-2)}
 details.quote-entry .howto a{overflow-wrap:anywhere}
-@media (pointer:coarse){details.quote-entry>summary{min-height:44px;display:flex;align-items:center}}
+/* touch targets (44px) for the dossier's checklist, decision and tab controls; the row-note icon gets a padded hit area without moving the layout */
+@media (pointer:coarse){details.quote-entry>summary{min-height:44px;display:flex;align-items:center}
+  .vbtns button,.vnote,.dtabs button,.viewing-on .btn,.viewing-on .linkbtn,.decide .btn,.decide .linkbtn,.btn.sm{min-height:44px;touch-action:manipulation}
+  details.rownote>summary{padding:15px;margin:-15px}}

@@ -11,6 +11,13 @@ const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, budget:
   power: v => num(v, 0) + ' PS', confidence: v => num(v, 0) + ' %' };
 const PARTS = ['ENGINE', 'GEARBOX', 'CHASSIS', 'ELECTRICS'];  // parts a fault belongs to (config.RELIABILITY_PARTS)
 const SLOTS = ['ENGINE', 'HU', 'BREAKDOWNS'];  // reliability score slots (config.RATING_SLOTS)
+// inline save errors by key (item `i<id>`, forms `vnote`, `newcheck`, `photos`, `decide`): shown until the next successful save
+// of the same key, and kept across quiet redraws, so a failed tick is never silently shown as saved
+const ERR = new Map(), BUSY_ITEMS = new Set();
+const setErr = (k, msg = null) => { if (msg) ERR.set(k, msg); else ERR.delete(k); const el = document.getElementById('err-' + k); if (el) { el.textContent = msg || ''; el.hidden = !msg; } };
+const errP = k => `<p class="hint err" id="err-${k}" role="alert"${ERR.has(k) ? '' : ' hidden'}>${esc(ERR.get(k) || '')}</p>`;
+// a seller claim as the platform states it: claimed, never checked by Carlos (a null claim is not asked about)
+const claim = x => x == null ? PEND() : `${esc(x)} <span class="tag">${t('claimed')}</span>`;
 
 function viewer(d) {
   PHOTOS = d.media.map(m => m.file_path); cur = 0;
@@ -243,19 +250,32 @@ function inspectionCard(d) {
   if (!VIEWING) return `<div class="card"><h3>${t('inspection')} ${tot ? `<span class="muted small">${ok}/${tot} OK</span>` : ''}</h3>
       ${tot ? `<div class="meter good" style="margin-bottom:10px" aria-hidden="true"><i style="width:${ok / tot * 100}%"></i></div><ul class="check">${d.inspection.map(i => { const [cls, ch] = ICON[i.status] || ICON.PENDING;
         return `<li><span class="ico ${cls}" aria-hidden="true">${ch}</span><div>${esc(i.item)}<div class="small muted">${esc(tv(i.status))}${i.checked_date ? ' · ' + esc(i.checked_date) : ''}${i.notes ? ' · ' + esc(i.notes) : ''}</div></div></li>`; }).join('')}</ul>` : empty(t('no_checklist_short'))}</div>`;
-  return `<div class="card span2 viewing-on"><h3>${t('inspection')} <span class="muted small">${ok}/${tot} OK</span></h3>
+  return `<div class="card span2 viewing-on"><h3>${t('inspection')} <span class="muted small" id="insp-count">${ok}/${tot} OK</span></h3>
     <ul class="check">${d.inspection.map(i => { const [cls, ch] = ICON[i.status] || ICON.PENDING;
-      return `<li><span class="ico ${cls}" aria-hidden="true">${ch}</span><div><div>${esc(i.item)}</div>
+      return `<li data-item="${i.id}"><span class="ico ${cls}" aria-hidden="true">${ch}</span><div><div>${esc(i.item)}</div>
         <div class="vbtns" role="group" aria-label="${esc(i.item)}">${['OK', 'PROBLEM', 'N/A', 'PENDING'].map(st => `<button type="button" data-insp="${i.id}" data-st="${st}" aria-pressed="${i.status === st}" title="${esc(tv(st))}">${t('vb_' + st.replace('/', ''))}</button>`).join('')}</div>
-        <input class="vnote" data-inote="${i.id}" value="${esc(i.notes ?? '')}" placeholder="${t('note_ph')}" aria-label="${t('note_ph')}"></div></li>`; }).join('')}</ul>
-    <div style="margin-top:12px"><input class="vnote" id="newcheck" placeholder="${t('add_check_ph')}" aria-label="${t('add_check_ph')}"><button class="btn ghost sm" type="button" data-addcheck style="margin-top:6px">${t('add_check')}</button></div></div>`;
+        <input class="vnote" data-inote="${i.id}" value="${esc(i.notes ?? '')}" placeholder="${t('note_ph')}" aria-label="${esc(t('note_ph') + ' (' + i.item + ')')}" aria-describedby="err-i${i.id}"${ERR.has('i' + i.id) ? ' aria-invalid="true"' : ''}></div>${errP('i' + i.id)}</li>`; }).join('')}</ul>
+    <div style="margin-top:12px"><input class="vnote" id="newcheck" placeholder="${t('add_check_ph')}" aria-label="${t('add_check_ph')}" aria-describedby="err-newcheck"><button class="btn ghost sm" type="button" id="addCheck" data-addcheck style="margin-top:6px">${t('add_check')}</button>${errP('newcheck')}</div></div>`;
+}
+// the seller's claims and the jobs the seller says are done, to ask at the viewing (only what the listing already has; none = no card)
+function askSellerCard(d) {
+  const q = [];
+  if (d.accident_free_claim != null) q.push([t('accident_free'), claim(d.accident_free_claim ? t('yes') : t('no'))]);
+  if (d.owners_claim != null) q.push([t('owners'), claim(d.owners_claim)]);
+  if (d.hu_claim != null) q.push([t('hu'), claim(d.hu_claim)]);
+  if (d.service_history_claim != null) q.push([t('history'), claim(d.service_history_claim)]);
+  const names = Object.fromEntries((d.maintenance_plan || []).map(r => [r.id, r.item]));
+  (d.maintenance_resets || []).filter(r => r.basis === 'SELLER CLAIM').forEach(r => q.push([esc(names[r.maintenance_item_id] ?? ''), `${t('rs_claim')}${r.notes ? ` <span class="muted">${esc(r.notes)}</span>` : ''}`]));
+  if (!q.length) return '';
+  return `<div class="card span2 ask-seller"><h3>${t('ask_seller')}</h3><p class="small muted" style="margin-top:0">${t('ask_seller_lead')}</p>${facts(q)}</div>`;
 }
 function viewingPanel() {
   if (!VIEWING) return '';
   return `<div class="card span2 viewing-on"><h3>📋 ${t('viewing_title')}</h3><p class="small muted" style="margin-top:0">${t('viewing_hint')}</p>
-    <div class="row"><label class="btn">📷 ${t('add_photos')}<input type="file" accept="image/*" capture="environment" multiple data-photos hidden></label></div>
-    <textarea class="vnote" id="vnote" placeholder="${t('log_ph')}" aria-label="${t('log_ph')}" lang="en"></textarea>
-    <button class="btn" type="button" data-addnote style="margin-top:6px">${t('add_note')}</button></div>`;
+    <div class="row"><button class="btn" type="button" id="addPhotos" data-pick-photos aria-describedby="err-photos">${t('add_photos')}</button>
+      <input type="file" accept="image/*" multiple data-photos id="photoFile" class="sr-only" tabindex="-1" aria-hidden="true"></div>${errP('photos')}
+    <textarea class="vnote" id="vnote" placeholder="${t('log_ph')}" aria-label="${t('log_ph')}" aria-describedby="err-vnote"></textarea>${errP('vnote')}
+    <button class="btn" type="button" id="addNote" data-addnote style="margin-top:6px">${t('add_note')}</button></div>`;
 }
 async function shrink(file) {  // phone photos are 3–5 MB: resize to 1280 px JPEG in the browser (also drops EXIF, including GPS)
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null); if (!bmp) return file;
@@ -266,7 +286,23 @@ async function shrink(file) {  // phone photos are 3–5 MB: resize to 1280 px J
 const ui = (method, path, body, ctype) => send(method, '/api/ui/' + path, body, ctype);
 // a refresh of the same car keeps the page (no loading skeleton) and the scroll position, so marking a checklist
 // item in viewing mode does not jump back to the top
-async function refresh() { const y = window.scrollY; await draw(D.id, true); window.scrollTo(0, y); refreshTco().catch(() => {}); }
+// keepUi: a quiet redraw keeps open details, the drafts and the focused control; false after a decision (the reject field closes)
+async function refresh(keepUi = true) { const y = window.scrollY; await draw(D.id, true, keepUi); window.scrollTo(0, y); refreshTco().catch(() => {}); }
+// the phone top folds to a thin strip while the reader works the checklist (the viewing tab or viewing mode): the checklist starts high on the screen
+const compactTop = () => VIEWING || TAB === 'viewing';
+const DRAFTS = ['vnote', 'newcheck', 'rejectWhy'];
+function keep() {
+  const a = document.activeElement, dd = a && root.contains(a) ? Object.entries(a.dataset) : [];
+  const focus = a && root.contains(a) ? (a.id ? '#' + a.id : dd.length ? dd.map(([k, v]) => `[data-${k.replace(/[A-Z]/g, c => '-' + c.toLowerCase())}="${v}"]`).join('') : '') : '';
+  const why = root.querySelector('.decide-why');
+  return { open: [...root.querySelectorAll('details')].map(x => x.open), drafts: DRAFTS.map(id => $(id)?.value ?? null), why: why ? !why.hidden : null, focus };
+}
+function restore(s) {
+  root.querySelectorAll('details').forEach((x, i) => { if (s.open[i] != null) x.open = s.open[i]; });
+  DRAFTS.forEach((id, i) => { const el = $(id); if (el && s.drafts[i] != null) el.value = s.drafts[i]; });
+  const why = root.querySelector('.decide-why'); if (why && s.why != null) why.hidden = !s.why;
+  if (s.focus) root.querySelector(s.focus)?.focus();
+}
 
 // Costs tab (#340): the eight components with total, per month, state; then one block per component with its inputs and sources
 const COMP_KEYS = ['fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres', 'purchase_sale', 'depreciation'];
@@ -368,18 +404,19 @@ function pickTab(k) {  // switches without redrawing or moving the top; replaceS
   TAB = k;
   root.querySelectorAll('.dtab').forEach(g => { g.hidden = g.dataset.tab !== k; });
   root.querySelectorAll('[data-tab-pick]').forEach(b => b.setAttribute('aria-selected', b.dataset.tabPick === k));
+  root.querySelector('.dossier-top')?.classList.toggle('compact', compactTop());
   const [path, q] = location.hash.split('?'), sp = new URLSearchParams(q || ''); sp.set('tab', k);
   history.replaceState(null, '', `${path}?${sp}`);
 }
-async function draw(id, quiet = false) {
+async function draw(id, quiet = false, keepUi = true) {
   SWEEP = !quiet;
   const label = u => `${unitName(u)} ${u.is_reference ? '(' + t('reference').toLowerCase() + ')' : esc(u.listing_id ?? '')}`;
   const picker = `<div class="field unit-select"><label for="unitsel">${t('units_group')}</label><select id="unitsel" data-unitsel>${S.units.map(u => `<option value="${u.id}" ${u.id === id ? 'selected' : ''}>${label(u)}</option>`).join('')}</select></div>`;
   if (!quiet) root.innerHTML = picker + '<div class="grid"><div class="skel"></div><div class="skel"></div></div>';
   let d; try { d = await get('/api/listings/' + id); } catch (e) { root.innerHTML = picker + `<div class="card err">${t('dossier_failed', { m: esc(e.message) })}</div>`; return; }
   D = d;
-  const claim = x => x == null ? PEND() : `${esc(x)} <span class="tag">${t('claimed')}</span>`;
-  root.innerHTML = picker + `<div class="dossier-top">${viewer(d)}<div class="dossier-side">${scoreBox(d)}${plate(d)}</div></div>${tabBar()}<div class="grid dtab" data-tab="overview"${hid('overview')}>
+  const kept = quiet && keepUi ? keep() : null;  // taken right before the swap: what the reader typed or opened since the request
+  root.innerHTML = picker + `<div class="dossier-top${compactTop() ? ' compact' : ''}">${viewer(d)}<div class="dossier-side">${scoreBox(d)}${plate(d)}</div></div>${tabBar()}<div class="grid dtab" data-tab="overview"${hid('overview')}>
     <div class="card span2"><div class="unit-head"><div><div class="unit-name"><a class="carlink" href="#/models/${d.vehicle_id}">${unitName(d)} ${esc(d.trim ?? '')}</a></div><div class="unit-sub">${unitSub(d)} · ${esc(tv(d.listing_status) ?? '')} <a href="#/models/${d.vehicle_id}" style="margin-left:8px">${t('open_model')}</a></div></div>
       <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')}</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
       ${d.is_reference ? '' : decisionBar(d)}
@@ -390,21 +427,40 @@ async function draw(id, quiet = false) {
         [t('hu'), claim(d.hu_claim)], [t('history'), claim(d.service_history_claim)], [t('equipment'), d.equipment ? esc(d.equipment) : PEND()], [t('verdict'), d.verdict ? `<b>${esc(d.verdict)}</b>` : PEND()]]), [t('notes'), d.notes ? esc(d.notes) : PEND()]])}</div></div>
     ${flagsCard(d.review_flags)}${rankCard(d)}</div>
     <div class="grid dtab" data-tab="maintenance"${hid('maintenance')}>${maintenanceCard(d)}${risksCard(d)}</div>
-    <div class="grid dtab" data-tab="viewing"${hid('viewing')}>${viewingPanel()}${inspectionCard(d)}</div>
+    <div class="grid dtab" data-tab="viewing"${hid('viewing')}>${askSellerCard(d)}${inspectionCard(d)}${viewingPanel()}</div>
     <div class="grid dtab" data-tab="costs"${hid('costs')}>${costsTab(d)}</div>
     <div class="grid dtab" data-tab="reliability"${hid('reliability')}>${reliabilityTab(d)}</div>
     <div class="grid dtab" data-tab="log"${hid('log')}>
     <div class="card"><h3>${t('archive')}</h3>${archive(d)}</div>
     <div class="card"><h3>${t('log')}</h3>${d.events.length ? `<ol class="timeline">${d.events.slice().reverse().map(ev => `<li><time>${esc(ev.event_date)}</time> <span class="tag">${esc(tv(ev.kind))}</span><div>${esc(ev.text)}</div></li>`).join('')}</ol>` : empty(t('no_events'))}</div>
     <div class="card span2"><h3>${t('tab_sources')} <span class="muted small">${d.sources.length}</span></h3><div class="small">${d.sources.map(s => `<div class="src"><div class="src-title">${qTag(s.quality)} <span>${esc(s.title)}</span> ${lvlTag(s.vehicle_id ? 'variant' : s.engine_id ? 'engine' : s.generation_id ? 'generation' : 'shared')}</div>${s.url ? `<a href="${safeUrl(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>` : ''}</div>`).join('')}</div></div></div>`;
+  if (kept) restore(kept);
+}
+// a checklist tap: one request per item at a time (busy button, guard against the same item), then only that row changes:
+// no redraw, so focus, open details and drafts stay; the failure stays on the item until its next successful save
+async function tapItem(b) {
+  const id = +b.dataset.insp, st = b.dataset.st; if (BUSY_ITEMS.has(id)) return; BUSY_ITEMS.add(id);
+  try { await busy(b, () => ui('PATCH', 'inspection_items/' + id, { status: st }));
+    setErr('i' + id); const it = D.inspection.find(x => x.id === id); if (it) it.status = st; paintItem(id, st); refreshTco().catch(() => {}); }
+  catch (err) { setErr('i' + id, t('not_saved', { m: err.message })); toast(err.message, true); }
+  finally { BUSY_ITEMS.delete(id); }
+}
+function paintItem(id, st) {
+  const li = root.querySelector(`[data-item="${id}"]`); if (!li) return;
+  li.querySelectorAll('[data-insp]').forEach(x => x.setAttribute('aria-pressed', x.dataset.st === st));
+  const [cls, ch] = ICON[st] || ICON.PENDING, ico = li.querySelector('.ico'); ico.className = `ico ${cls}`; ico.textContent = ch;
+  const c = $('insp-count'); if (c) c.textContent = `${D.inspection.filter(x => x.status === 'OK').length}/${D.inspection.length} OK`;
 }
 function bind() {
   root.addEventListener('change', async e => {
     if (e.target.matches('[data-unitsel]')) { go('listing/' + e.target.value); return; }
-    const n = e.target.closest('[data-inote]'); if (n) { try { await ui('PATCH', 'inspection_items/' + n.dataset.inote, { notes: n.value }); toast(t('saved_short')); } catch (err) { toast(err.message, true); } return; }
-    const ph = e.target.closest('[data-photos]'); if (ph && ph.files.length) { let ok = 0;
-      for (const [i, f] of [...ph.files].entries()) { toast(t('uploading', { i: i + 1, n: ph.files.length })); try { await ui('POST', 'media/' + D.id, await shrink(f), 'image/jpeg'); ok++; } catch (err) { toast(err.message, true); } }
-      if (ok) toast(t('photos_added', { n: ok })); await refresh(); } });
+    const n = e.target.closest('[data-inote]');
+    if (n) { const k = 'i' + n.dataset.inote; try { await ui('PATCH', 'inspection_items/' + n.dataset.inote, { notes: n.value }); n.removeAttribute('aria-invalid'); setErr(k); toast(t('saved_short')); } catch (err) { n.setAttribute('aria-invalid', 'true'); setErr(k, t('not_saved', { m: err.message })); toast(err.message, true); } return; }
+    const ph = e.target.closest('[data-photos]'); if (ph && ph.files.length) { const files = [...ph.files], photos = $('addPhotos'); let ok = 0; ph.value = '';
+      await busy(photos, async () => {
+        setErr('photos');
+        for (const [i, f] of files.entries()) { toast(t('uploading', { i: i + 1, n: files.length })); try { await ui('POST', 'media/' + D.id, await shrink(f), 'image/jpeg'); ok++; } catch (err) { setErr('photos', t('not_saved', { m: err.message })); toast(err.message, true); } }
+        if (ok) { toast(t('photos_added', { n: ok })); await refresh(); } }); } });
   root.addEventListener('submit', e => { if (e.target.id === 'quoteForm') { e.preventDefault(); saveQuote(e.target); } });
   root.addEventListener('click', async e => {
     const tp = e.target.closest('[data-tab-pick]'); if (tp) { e.preventDefault(); pickTab(tp.dataset.tabPick); return; }
@@ -412,11 +468,14 @@ function bind() {
     if (e.target.closest('[data-viewing]')) { VIEWING = !VIEWING; if (VIEWING) TAB = 'viewing'; await draw(D.id); return; }
     const dc = e.target.closest('[data-decide]'); if (dc) { const k = dc.dataset.decide;
       if (k === 'reject') { const w = root.querySelector('.decide-why'); w.hidden = false; $('rejectWhy').focus(); return; }
-      try { await send('POST', '/api/ui/decision/' + D.id, { decision: k === 'reject-confirm' ? 'reject' : k, reason: k === 'reject-confirm' ? $('rejectWhy').value : '' });
-        toast(t('decision_saved')); await refresh(); } catch (err) { toast(err.message, true); } return; }
-    const b = e.target.closest('[data-insp]'); if (b) { try { await ui('PATCH', 'inspection_items/' + b.dataset.insp, { status: b.dataset.st }); await refresh(); } catch (err) { toast(err.message, true); } return; }
-    if (e.target.closest('[data-addnote]')) { const v = $('vnote').value.trim(); if (!v) return; try { await ui('POST', 'listing_events', { listing_id: D.id, text: v }); toast(t('note_added')); await refresh(); } catch (err) { toast(err.message, true); } return; }
-    if (e.target.closest('[data-addcheck]')) { const v = $('newcheck').value.trim(); if (!v) return; try { await ui('POST', 'inspection_items', { listing_id: D.id, item: v }); await refresh(); } catch (err) { toast(err.message, true); } return; }
+      try { await busy(dc, async () => { await send('POST', '/api/ui/decision/' + D.id, { decision: k === 'reject-confirm' ? 'reject' : k, reason: k === 'reject-confirm' ? $('rejectWhy').value : '' });
+        setErr('decide'); toast(t('decision_saved')); await refresh(false); }); } catch (err) { setErr('decide', t('not_saved', { m: err.message })); } return; }
+    const b = e.target.closest('[data-insp]'); if (b) { await tapItem(b); return; }
+    if (e.target.closest('[data-pick-photos]')) { $('photoFile').click(); return; }
+    const an = e.target.closest('[data-addnote]'); if (an) { const v = $('vnote').value.trim(); if (!v) return;
+      try { await busy(an, async () => { await ui('POST', 'listing_events', { listing_id: D.id, text: v }); $('vnote').value = ''; setErr('vnote'); toast(t('note_added')); await refresh(); }); } catch (err) { setErr('vnote', t('not_saved', { m: err.message })); } return; }
+    const ac = e.target.closest('[data-addcheck]'); if (ac) { const v = $('newcheck').value.trim(); if (!v) return;
+      try { await busy(ac, async () => { await ui('POST', 'inspection_items', { listing_id: D.id, item: v }); $('newcheck').value = ''; setErr('newcheck'); await refresh(); }); } catch (err) { setErr('newcheck', t('not_saved', { m: err.message })); } return; }
     const ph = e.target.closest('[data-photo]'); if (ph) { showPhoto(+ph.dataset.photo); return; }
     const st = e.target.closest('[data-step]'); if (st) { showPhoto(cur + +st.dataset.step); return; }
     if (e.target.closest('[data-zoom]')) { lb.showModal(); showPhoto(cur); return; }
@@ -428,7 +487,7 @@ function decisionBar(d) {
   return `<div class="decide" role="group" aria-label="${esc(t('decision_label'))}"><span class="small muted">${t('decision_label')}</span>
     ${['shortlist', 'viewing', 'reject'].map(k => `<button type="button" class="btn sm ${cur === k ? '' : 'ghost'}" data-decide="${k}" aria-pressed="${cur === k}">${t('decide_' + k)}</button>`).join('')}
     ${cur ? `<button type="button" class="linkbtn small" data-decide="reset">${t('decide_reset')}</button>` : ''}
-    <span class="decide-why" hidden><input id="rejectWhy" type="text" maxlength="300" placeholder="${esc(t('decide_reason_ph'))}" aria-label="${esc(t('decide_reason_ph'))}"><button type="button" class="btn sm danger" data-decide="reject-confirm">${t('decide_reject_confirm')}</button></span></div>`;
+    <span class="decide-why" hidden><input id="rejectWhy" type="text" maxlength="300" placeholder="${esc(t('decide_reason_ph'))}" aria-label="${esc(t('decide_reason_ph'))}"><button type="button" class="btn sm danger" data-decide="reject-confirm">${t('decide_reject_confirm')}</button></span></div>${errP('decide')}`;
 }
 export async function render(main, r) {
   const id = r.id ?? S.units[0]?.id;
