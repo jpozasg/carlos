@@ -52,14 +52,20 @@ def load_fixed_codes(root, fixed_file):
         return json.loads(Path(fixed_file).read_text(encoding='utf8')), None
     if not (root / 'carlos' / 'agent.py').exists():
         return {}, 'no carlos/agent.py under the root: fixed_codes check skipped'
+    saved = (os.environ.get('CARLOS_DATA'), list(sys.path), sys.dont_write_bytecode)  # restored below: the tests share this process
     os.environ['CARLOS_DATA'] = str(Path(tempfile.gettempdir()) / 'carlos-i18n-check-unused')  # never the real data dir
     sys.path.insert(0, str(root))
     sys.dont_write_bytecode = True  # leave no __pycache__ in the checkout
     try:
         from carlos import agent  # reads constants only; opens no database
+        codes = agent.FIXED_CODES
     except Exception as e:  # pragma: no cover
         return {}, f'could not import carlos.agent ({e}): fixed_codes check skipped'
-    return agent.FIXED_CODES, None
+    finally:
+        if saved[0] is None: os.environ.pop('CARLOS_DATA', None)
+        else: os.environ['CARLOS_DATA'] = saved[0]
+        sys.path[:] = saved[1]; sys.dont_write_bytecode = saved[2]
+    return codes, None
 
 
 def expected_langs(js):

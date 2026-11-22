@@ -25,7 +25,7 @@ Not installed from the Trail of Bits repo: `insecure-defaults`. It is a command 
 
 ## Reinstall on another machine
 
-Pinned to the reviewed commits. Clone into an empty directory, copy only the skill folder, then delete the clone.
+Pinned to the reviewed commits. Save the block as a file and run it with `bash` (its `set -e` would close an interactive shell). Clone into an empty directory, copy only the skill folder, then delete the clone. **The last step re-applies the local trim of `differential-review`'s `allowed-tools`.**
 
 ```bash
 set -euo pipefail
@@ -44,10 +44,14 @@ cp -r $T/legal/skills/bfsg $S/bfsg-check && cp $T/legal/LICENSE $S/bfsg-check/
 # webapp-testing
 git clone https://github.com/anthropics/skills $T/anth && git -C $T/anth checkout e4bb5d960d87126ff3b3a8af1a104b7db67560ba
 cp -r $T/anth/skills/webapp-testing $S/webapp-testing
+sed -i 's/^allowed-tools: .*/allowed-tools: Read Grep Glob Bash(git log:*) Bash(git diff:*) Bash(git show:*) Bash(git blame:*) Bash(git grep:*)/' $S/differential-review/SKILL.md
 rm -rf $T
 ```
 
 Check afterwards that each `SKILL.md` still has `name` and `description` frontmatter and that no skill directory was overwritten. To update, review the new diff first, then change the SHA here.
+
+## Built in or from plugins (not in this repository, not installable from here)
+`dataviz`, `code-review`, `simplify`, `security-review` and `ponytail:*` come with Claude Code or its plugins (`/plugin`); `ponytail` and `frontend-design` are plugins. On a new machine check `/skills` lists them. `impeccable` and `web-design-guidelines` are vendored locally with changes and have no pinned reinstall: copy `~/.claude/skills/impeccable` and `~/.claude/skills/web-design-guidelines` from the old machine (a follow-up may commit them if their licences allow).
 
 ## Reviewed, rejected
 
