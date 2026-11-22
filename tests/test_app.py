@@ -701,7 +701,8 @@ class AppTest(unittest.TestCase):
         uid2, t2 = self.second_account()
         st, r = self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1', 'note': 'blue one'}, token=None, cookie=t2)
         self.assertEqual((st, r['status'], r['owner_id']), (201, 'QUEUED', uid2))
-        for bad in ('ftp://example.com/x', 'not a link', 'https://' + 'a' * 500 + '.com', 'javascript:alert(1)'):
+        for bad in ('ftp://example.com/x', 'not a link', 'https://' + 'a' * 500 + '.com', 'javascript:alert(1)',
+                    'http://127.0.0.1:8000/api/health', 'http://192.168.1.1/ad.html', 'https://user:pw@www.example.com/car', 'https://www.example.com:8443/car'):  # #386
             self.assertEqual(self.req('POST', '/api/requests', {'url': bad}, token=None, cookie=t2)[0], 400, bad)
         self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1'}, token=None, cookie=t2)[0], 400)  # already open
         for i in range(2, 6):
@@ -1037,9 +1038,11 @@ class AppTest(unittest.TestCase):
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/42'}, token=None, cookie=c2)
         api, logs = Api(self.base, new), Path(self.tmp.name) / 'wlogs'
         api.worker = True
-        worker.work_one(api, 'desk', "sh -c 'echo tok=$AGENT_TOKEN acct=${CARLOS_ACCOUNT:-none}; echo CARLOS_RESULT failed: test'", logs, 30)
+        with mock.patch.dict(os.environ, {'WORKER_TOKEN': new, 'CARLOS_ACCOUNT': '9'}):  # the worker's own environment, not the run's
+            worker.work_one(api, 'desk', "sh -c 'echo tok=$AGENT_TOKEN acct=${CARLOS_ACCOUNT:-none} worker=${WORKER_TOKEN:-none}; echo CARLOS_RESULT failed: test'", logs, 30)
         log = next(logs.glob('request-*.log')).read_text()
         self.assertIn('acct=none', log)
+        self.assertIn('worker=none', log)                    # the run's environment is an allow-list (#386)
         self.assertNotIn(new, log)
         self.assertNotIn('tok= ', log)
 
@@ -1082,6 +1085,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', '/api/admin/data/sessions')[0], 404)
         self.assertEqual(self.req('GET', '/api/admin/data/listings', token=None, cookie=c2)[0], 401)
 
+    @mock.patch.dict(os.environ, {'WORKER_ALLOW_ADMIN': '1'})  # the admin fallback is opt-in (#386)
     def test_worker_once_with_fake_claude_113(self):
         import worker
         from capture_listing import Api
@@ -1106,6 +1110,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(worker.command('claude --model opus -p', 'haiku'), ['claude', '--model', 'opus', '-p'])
         self.assertEqual(worker.command("sh -c 'x'", 'haiku'), ['sh', '-c', 'x'])
 
+    @mock.patch.dict(os.environ, {'WORKER_ALLOW_ADMIN': '1'})  # the admin fallback is opt-in (#386)
     def test_worker_usage_limit_206(self):
         import datetime, worker
         from capture_listing import Api

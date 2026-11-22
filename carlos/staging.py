@@ -167,8 +167,8 @@ def write(c, req, table, row_id, data):
     return {'table': table, 'id': -fid, 'staged': True}
 
 
-# Tables each non-staged unit may write with its request token (#386, N2); the units of the legacy flow and a request without a
-# unit stay unrestricted until that prompt is retired. The staged runs are limited by `write` (scope) above.
+# Tables each non-staged unit may write with its request token (#386, N2). The legacy units and a request without a unit stay
+# unrestricted until that prompt is retired; any other unit is refused. The staged runs are limited by `write` (scope) above.
 UNIT_TABLES = {
     'CAPTURE': {'generations', 'engines', 'vehicles', 'sources', 'listings', 'listing_snapshots', 'inspection_items', 'listing_events'},
     'TAX': {'tax_data', 'sources', 'research_checks', 'listing_events'},
@@ -197,7 +197,9 @@ def check_unit_write(c, req, table, row_id, data):
     only on that chain too (CAPTURE never patches one: the research run does). Raises NotAllowed (403)."""
     unit, allowed = req['unit'], UNIT_TABLES.get(req['unit'])
     if allowed is None:
-        return
+        if unit is None or unit in ru.LEGACY_UNITS:  # the legacy single run and its units: unrestricted until that prompt is retired
+            return
+        raise NotAllowed(f'{unit} writes nothing through /api/agent')  # MERGE, and a unit added later stays closed until it is listed above
     if table not in allowed:
         raise NotAllowed(f'{unit} writes only {", ".join(sorted(allowed))}, not {table}')
     data = data if isinstance(data, dict) else {}  # agent_write answers 400 for anything else
@@ -207,7 +209,9 @@ def check_unit_write(c, req, table, row_id, data):
             levels = [_level(data)]
     else:
         base = c.execute(f'SELECT * FROM main.{table} WHERE id=?', (row_id,)).fetchone()  # table is one of the fixed names above
-        if base is not None and 'owner_id' in base.keys() and base['owner_id'] is None:  # a shared catalogue row (an account's rows are scoped already)
+        if base is not None and 'owner_id' in base.keys() and base['owner_id'] not in (None, req['owner_id']):
+            raise NotAllowed(f'{table} id={row_id} belongs to another account')
+        if base is not None and 'owner_id' in base.keys() and base['owner_id'] is None:  # a shared catalogue row
             if unit == 'CAPTURE':
                 raise NotAllowed(f'CAPTURE does not change shared catalogue rows ({table} id={row_id}); the research run does')
             levels = [_level(dict(base)), _level({**dict(base), **data})]
