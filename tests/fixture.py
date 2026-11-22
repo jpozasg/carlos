@@ -107,7 +107,7 @@ ROWS = {
         dict(vehicle_id=V_REF, category='consumption', metric='Owner measured average', value_num=8.6, unit='l/100 km', status='USER DATA', observed_date=TODAY, source_id=SRC_USER, owner_id=ADMIN),
     ],
     'insurance_data': [
-        dict(vehicle_id=V_A, hsn='1111', tsn='AAA', annual_premium_eur=800, premium_min_eur=700, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE, owner_id=ADMIN,
+        dict(vehicle_id=V_A, hsn='1111', tsn='AAA', annual_premium_eur=800, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE, owner_id=ADMIN,
              quote_profile=json.dumps({'cover': 'Teilkasko', 'deductible_eur': 150})),
         dict(vehicle_id=V_B, hsn='2222', tsn='BBB', annual_premium_eur=700, premium_status='QUOTE', quote_date=TODAY, source_id=SRC_QUOTE, owner_id=ADMIN),
         dict(vehicle_id=V_REF, annual_premium_eur=900, premium_status='USER DATA', source_id=SRC_USER, owner_id=ADMIN),

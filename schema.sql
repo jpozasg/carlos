@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=44). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=45). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -76,10 +76,8 @@ CREATE TABLE "insurance_data" (
  vehicle_id INTEGER REFERENCES vehicles(id),
  engine_id INTEGER REFERENCES engines(id),
  generation_id INTEGER REFERENCES generations(id),
- hsn TEXT, tsn TEXT, year INTEGER, liability_typklasse INTEGER,
- partial_typklasse INTEGER, comprehensive_typklasse INTEGER,
- annual_premium_eur REAL, premium_status TEXT, source_id INTEGER, notes TEXT,
- premium_min_eur REAL CHECK (premium_min_eur IS NULL OR premium_min_eur > 0), insurer TEXT, tariff TEXT,
+ hsn TEXT, tsn TEXT, year INTEGER, annual_premium_eur REAL, premium_status TEXT, source_id INTEGER, notes TEXT,
+ insurer TEXT, tariff TEXT,
  quote_date TEXT CHECK (quote_date IS NULL OR quote_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
  quote_profile TEXT CHECK (quote_profile IS NULL OR json_type(quote_profile) = 'object'), archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id),
  CHECK ((vehicle_id IS NOT NULL) + (engine_id IS NOT NULL) + (generation_id IS NOT NULL) = 1)
