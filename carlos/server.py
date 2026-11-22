@@ -7,7 +7,7 @@ import markdown_export
 from . import account, auth, config, pages, research, research_requests as rq, research_units, staging
 from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RETIRED_TABLES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_level, resolve_variant, row_owner, save_media,
-                    photo_write, storage_usage, table_columns)
+                    photo_write, storage_usage, table_columns, log_change)
 from .costs import Knowledge, budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
 from .models import model_tree, variant_detail
@@ -755,6 +755,9 @@ class Handler(BaseHTTPRequestHandler):
             existing = resolve_variant(c, data, uid) if agent[1] == 'vehicles' and method == 'POST' else \
                 resolve_level(c, agent[1], data) if agent[1] in ('generations', 'engines') and method == 'POST' else None
             if existing:  # the shared catalogue already has this HSN/TSN, generation or engine: reuse it (issues #109, #293)
+                if self.request is not None and agent[1] == 'vehicles':  # a request reusing a known variant owns the link (SEC-2)
+                    with c:
+                        log_change(c, 'vehicles', existing, 'reuse', None, json.dumps({'note': 'variant reused by HSN/TSN'}), uid, self.request_id())
                 self.export_all(c, uid)
                 self.send_json({'table': agent[1], 'id': existing, 'existing': True}); return
             row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.curator, user['id'], self.request_id())

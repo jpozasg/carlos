@@ -151,6 +151,21 @@ class UnitScopeTest(unittest.TestCase):
                                                               'hsn': '9999', 'tsn': 'EEE', 'technical_status': 'VERIFIED'})[1]['id']
         self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'vehicle_id': made})[0], 201)   # the variant this run created
 
+    def test_a_capture_reusing_a_known_variant_is_logged_and_may_list_on_it(self):  # SEC-2: a reuse by HSN/TSN is the run's own link
+        self.tokens['ADMIN'] = TOKEN
+        known = self.api('ADMIN', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Known 1.4', 'transmission': 'Manual',
+                                                             'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                             'hsn': '6161', 'tsn': 'KKK', 'technical_status': 'VERIFIED'})[1]['id']
+        st, e = self.api('CAPTURE', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Known 1.4', 'transmission': 'Manual',
+                                                                  'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                                  'hsn': '6161', 'tsn': 'KKK', 'technical_status': 'VERIFIED'})
+        self.assertEqual((st, e.get('id'), e.get('existing')), (200, known, True))
+        self.assertEqual(self.sql("SELECT row_id, action FROM change_log WHERE request_id=101 AND table_name='vehicles'"), [(known, 'reuse')])
+        new = {'listing_id': 'R1', 'url': 'https://example.test/r1', 'platform': 'Test', 'source_id': SRC_LISTING, 'listing_status': 'UNDER REVIEW',
+               'is_reference': 0, 'last_checked': fx.TODAY, 'price_eur': 100, 'vehicle_id': known}
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', new)[0], 201)   # the reused variant
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'listing_id': 'R2', 'vehicle_id': V_B})[0], 403)   # a foreign one still
+
     def test_retired_units_and_an_unlisted_unit_are_closed(self):  # owner decision 2026-11-22: the single-run units are refused
         st, e = self.api('VARIANT', 'PATCH', f'agent/engines/{E_B}', {'notes': 'retired unit'})
         self.assertEqual(st, 403, e); self.assertIn('retired', e['error'])

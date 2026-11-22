@@ -211,9 +211,9 @@ def check_media(c, req, listing_id):
 
 
 def _capture_variant(c, req, listing_id, vid):
-    """A CAPTURE re-attaches its own listing (`listing_id`) to the variant it found or created (#194): one this run created, or one
-    of the listing's own generation. Any other variant is foreign to the car."""
-    if c.execute("SELECT 1 FROM main.change_log WHERE request_id=? AND table_name='vehicles' AND row_id=? AND action='insert'",
+    """A CAPTURE re-attaches its own listing (`listing_id`) to the variant it found or created (#194): one this run created or reused
+    by HSN/TSN ('insert' or 'reuse' in change_log), or one of the listing's own generation. Any other variant is foreign to the car."""
+    if c.execute("SELECT 1 FROM main.change_log WHERE request_id=? AND table_name='vehicles' AND row_id=? AND action IN ('insert','reuse')",
                  (req['id'], vid)).fetchone():
         return True
     gen = next((i for k, i in variant_chain(c, listing_id) if k == 'generation_id'), None)
