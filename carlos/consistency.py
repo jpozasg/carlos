@@ -111,10 +111,6 @@ def conflicts(c, table, n, row_id=None):
     return out
 
 
-def fault_conflicts(c, n, row_id=None):
-    return conflicts(c, 'faults', n, row_id)
-
-
 def _distinct(x, y):
     """One row's notes say it is a different fault from the other (the #221 `distinct_of` decision)."""
     return any((a['notes'] or '').startswith('Distinct from fault') and f"#{b['id']}" in a['notes'] for a, b in ((x, y), (y, x)))
@@ -164,33 +160,9 @@ def duplicates_report(c):
     return '\n'.join(out) + '\n'
 
 
-def backfill_codes(faults, patch=None):
-    """Proposes a component_code for every active fault without one (#221 phase 3): returns (matched, unmatched) as
-    [(id, part, component, code)]. Dry run unless `patch(id, code)` is given, which is called for matched rows only: a fault
-    whose pattern finds nothing (or only OTHER) stays NULL for a person and keeps the wording-only matching."""
-    matched, unmatched = [], []
-    for f in faults:
-        if f.get('component_code') is not None or f.get('archived'):
-            continue
-        code = config.suggest_component(f.get('part'), f.get('component'))
-        (matched if code and code != 'OTHER' else unmatched).append((f['id'], f.get('part'), f.get('component'), code))
-    if patch:
-        for fid, _, _, code in matched:
-            patch(fid, code)
-    return matched, unmatched
-
-
-if __name__ == '__main__':  # python -m carlos.consistency --duplicates [db] | --backfill-codes [--apply] (through the API, admin token)
+if __name__ == '__main__':  # python -m carlos.consistency --duplicates [db]
     import sqlite3, sys
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
-    if '--backfill-codes' in sys.argv:
-        sys.path.insert(0, str(config.ROOT))
-        import agent_tools as t
-        ok, other = backfill_codes(t.get('/api/admin/data/faults?limit=5000'), (lambda i, k: t.patch('faults', i, {'component_code': k})) if '--apply' in sys.argv else None)
-        print(*[f'{i}, {p}, {c!r} -> {k}' for i, p, c, k in ok], sep='\n')
-        print(f"{len(ok)} {'written' if '--apply' in sys.argv else 'would be written (dry run; --apply to write)'}; {len(other)} left NULL for a person:")
-        print(*[f'{i}, {p}, {c!r}' for i, p, c, _ in other], sep='\n')
-        raise SystemExit(0)
     if '--duplicates' not in sys.argv:
         raise SystemExit('usage: python -m carlos.consistency --duplicates [database]')
     con = sqlite3.connect(f'file:{args[0] if args else config.DB}?mode=ro', uri=True)
