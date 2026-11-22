@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=47). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=48). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
