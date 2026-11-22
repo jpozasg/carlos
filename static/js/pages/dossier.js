@@ -5,7 +5,7 @@ import { t, tv, comp } from '../i18n.js';
 import { $, esc, euro, num, PEND, eP, sumKnown, totalP, perMonth, pct, consumptionTxt, consumptionSpread, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, safeUrl, statusTags, gaps, intervalTxt, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb, busy, fmtDate } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
-let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
+let PHOTOS = [], PHOTO_IDS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
 const lb = $('lightbox');
 const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, budget: euro, safety: v => num(v, 0) + ' ★', distance: v => num(v, 0) + ' km', mileage: v => num(v, 0) + ' km', age: yrs, reliability: v => num(v, 1), inspection: v => num(v, 0),
   power: v => num(v, 0) + ' PS', confidence: v => num(v, 0) + ' %' };
@@ -19,20 +19,35 @@ const errP = k => `<p class="hint err" id="err-${k}" role="alert"${ERR.has(k) ? 
 // a seller claim as the platform states it: claimed, never checked by Carlos (a null claim is not asked about)
 const claim = x => x == null ? PEND() : `${esc(x)} <span class="tag">${t('claimed')}</span>`;
 
+// an inline confirm for a photo action (remove, or delete for good): hidden until its button opens it
+const askBox = (mode, question, yes, id = '') => `<div class="photo-ask" data-ask="${mode}" data-id="${id}" hidden><p class="small">${esc(question)}</p>
+  <div class="row"><button type="button" class="btn danger sm" data-ask-yes>${yes}</button><button type="button" class="btn ghost sm" data-ask-no>${t('photo_cancel')}</button></div></div>`;
+// photos removed (archived, #photo-remove): hidden from the strip; restorable, or deleted for good after a second confirm
+function removedPhotos(list) {
+  if (!list.length) return '';
+  return `<details class="removed-photos"><summary class="small">${t('photos_removed', { n: list.length })}</summary><ul class="removed-list">${list.map(m => {
+    const when = esc(fmtDate(m.captured_at));
+    return `<li><span class="small">${t('photo_removed_item', { d: when })}</span>
+      <span class="row"><button type="button" class="btn ghost sm" data-restore="${m.id}" aria-label="${t('photo_restore_aria', { d: when })}">${t('photo_restore')}</button>
+      <button type="button" class="btn danger sm" data-delete-ask="${m.id}" aria-label="${t('photo_delete_aria', { d: when })}">${t('photo_delete')}</button></span>
+      ${askBox('delete', t('photo_delete_ask'), t('photo_delete'), m.id)}</li>`; }).join('')}</ul></details>`;
+}
 function viewer(d) {
-  PHOTOS = d.media.map(m => m.file_path); cur = 0;
-  if (!PHOTOS.length) return `<div class="card"><div class="hero" style="cursor:default;aspect-ratio:16/10"><span class="nophoto"><span>${CAR_SVG}${t('no_photos_unit')}</span></span></div></div>`;
+  PHOTOS = d.media.map(m => m.file_path); PHOTO_IDS = d.media.map(m => m.id); cur = 0;
+  const removed = removedPhotos(d.removed_media || []);
+  if (!PHOTOS.length) return `<div class="card"><div class="hero" style="cursor:default;aspect-ratio:16/10"><span class="nophoto"><span>${CAR_SVG}${t('no_photos_unit')}</span></span></div>${removed}</div>`;
   return `<div class="card viewer" style="padding:12px">
     <div style="position:relative"><button class="main" type="button" data-zoom aria-label="${t('zoom')}"><img id="vMain" src="${media(PHOTOS[0])}" alt="${t('photo_n', { n: 1 })} · ${unitName(d)}"><span class="count" id="vCount">1 / ${PHOTOS.length}</span></button>
       ${PHOTOS.length > 1 ? `<button class="navbtn prev" type="button" data-step="-1" aria-label="${t('prev_photo')}">‹</button><button class="navbtn next" type="button" data-step="1" aria-label="${t('next_photo')}">›</button>` : ''}</div>
-    <div class="strip" role="group" aria-label="${t('thumbnails')}">${PHOTOS.map((p, i) => `<button type="button" data-photo="${i}" aria-current="${i === 0}" aria-label="${t('photo_n', { n: i + 1 })}"><img src="${media(p)}" alt="" loading="lazy"></button>`).join('')}</div></div>`;
+    <div class="strip" role="group" aria-label="${t('thumbnails')}">${PHOTOS.map((p, i) => `<span class="thumb"><button type="button" data-photo="${i}" aria-current="${i === 0}" aria-label="${t('photo_n', { n: i + 1 })}"><img src="${media(p)}" alt="" loading="lazy"></button><button type="button" class="photo-rm" data-remove="${PHOTO_IDS[i]}" data-n="${i + 1}" aria-label="${t('photo_remove', { n: i + 1 })}">${t('photo_remove_btn')}</button></span>`).join('')}</div>
+    ${askBox('remove', '', t('photo_remove_btn'))}${errP('photo')}${removed}</div>`;
 }
 function showPhoto(i) {
   if (!PHOTOS.length) return; cur = (i + PHOTOS.length) % PHOTOS.length;
   const m = $('vMain'); if (m) { m.src = media(PHOTOS[cur]); m.alt = t('photo_n', { n: cur + 1 }); $('vCount').textContent = `${cur + 1} / ${PHOTOS.length}`; }
   document.querySelectorAll('.strip [data-photo]').forEach(b => b.setAttribute('aria-current', +b.dataset.photo === cur));
   // centre the thumbnail by scrolling the strip itself; scrollIntoView also scrolled the page (issue #179)
-  const th = document.querySelector(`.strip [data-photo="${cur}"]`), st = th?.parentElement;
+  const th = document.querySelector(`.strip [data-photo="${cur}"]`), st = th?.closest('.strip');
   if (th && st) { const r = th.getBoundingClientRect(), sr = st.getBoundingClientRect();
     if (r.left < sr.left || r.right > sr.right) st.scrollLeft += r.left - sr.left - (sr.width - r.width) / 2; }
   if (lb.open) { lb.querySelector('img').src = media(PHOTOS[cur]); lb.querySelector('.count').textContent = `${cur + 1} / ${PHOTOS.length}`; }
@@ -480,6 +495,15 @@ function bind() {
       try { await busy(an, async () => { await ui('POST', 'listing_events', { listing_id: D.id, text: v }); $('vnote').value = ''; setErr('vnote'); toast(t('note_added')); await refresh(); }); } catch (err) { setErr('vnote', t('not_saved', { m: err.message })); } return; }
     const ac = e.target.closest('[data-addcheck]'); if (ac) { const v = $('newcheck').value.trim(); if (!v) return;
       try { await busy(ac, async () => { await ui('POST', 'inspection_items', { listing_id: D.id, item: v }); $('newcheck').value = ''; setErr('newcheck'); await refresh(); }); } catch (err) { setErr('newcheck', t('not_saved', { m: err.message })); } return; }
+    const rm = e.target.closest('[data-remove]'); if (rm) { const box = root.querySelector('.photo-ask[data-ask="remove"]'); box._from = rm; box.dataset.id = rm.dataset.remove;
+      box.querySelector('p').textContent = t('photo_remove_ask', { n: rm.dataset.n }); box.hidden = false; box.querySelector('[data-ask-yes]').focus(); return; }
+    const da = e.target.closest('[data-delete-ask]'); if (da) { const box = da.closest('li').querySelector('.photo-ask'); box._from = da; box.hidden = false; box.querySelector('[data-ask-yes]').focus(); return; }
+    const no = e.target.closest('[data-ask-no]'); if (no) { const box = no.closest('.photo-ask'); box.hidden = true; box._from?.focus(); return; }
+    const yes = e.target.closest('[data-ask-yes]'); if (yes) { const box = yes.closest('.photo-ask'), id = box.dataset.id;
+      try { await busy(yes, async () => { if (box.dataset.ask === 'remove') { await ui('PATCH', 'photo/' + id, { archived: 1 }); toast(t('photo_removed_toast')); }
+        else { await ui('DELETE', 'photo/' + id, { id: +id, confirm: true }); toast(t('photo_deleted')); }
+        setErr('photo'); await refresh(); }); } catch (err) { setErr('photo', t('not_saved', { m: err.message })); toast(err.message, true); } return; }
+    const rs = e.target.closest('[data-restore]'); if (rs) { try { await busy(rs, async () => { await ui('PATCH', 'photo/' + rs.dataset.restore, { archived: 0 }); toast(t('photo_restored')); setErr('photo'); await refresh(); }); } catch (err) { setErr('photo', t('not_saved', { m: err.message })); toast(err.message, true); } return; }
     const ph = e.target.closest('[data-photo]'); if (ph) { showPhoto(+ph.dataset.photo); return; }
     const st = e.target.closest('[data-step]'); if (st) { showPhoto(cur + +st.dataset.step); return; }
     if (e.target.closest('[data-zoom]')) { lb.showModal(); showPhoto(cur); return; }

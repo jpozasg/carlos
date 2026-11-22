@@ -28,6 +28,7 @@ function paint() {
   $('p2l').textContent = t('auth_repeat_password');
   $('b').textContent = inv ? t('auth_save_sign_in') : t('auth_sign_in');
   $('lg').textContent = t('language');
+  $('f-src').textContent = t('source_code'); $('f-priv').textContent = t('footer_privacy'); $('f-imp').textContent = t('footer_imprint');
 }
 async function setLang(l) { await load(l); $('lang').value = l; paint(); }
 $('lang').innerHTML = Object.entries(NAMES).map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
