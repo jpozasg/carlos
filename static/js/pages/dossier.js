@@ -2,7 +2,7 @@
 import { S, refreshTco, go } from '../app.js';
 import { get, send } from '../api.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, sumKnown, totalP, perMonth, pct, rangeTxt, consumptionTxt, consumptionSpread, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, safeUrl, statusTags, gaps, intervalTxt, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, sumKnown, totalP, perMonth, pct, rangeTxt, consumptionTxt, consumptionSpread, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, safeUrl, statusTags, gaps, intervalTxt, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb, busy, fmtDate } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
 let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
@@ -290,6 +290,62 @@ const tbl = (head, rows) => `<div class="tablewrap"><table><thead><tr>${head.map
 const certainTbl = (d, cat) => { const r = certainOf(d, cat); return r.length ? `<h4 class="small" style="margin:10px 0 4px">${t('co_certain_items')}</h4>` + tbl([[t('concept')], [t('parts'), 1], [t('labour'), 1], [t('mp_src')]], r.map(x => `<tr><td>${esc(x.item)}${stTag(x.status)} ${noteBox(x.notes)}</td><td class="n">${eP(x.parts_eur)}</td><td class="n">${eP(x.labor_eur)}</td><td>${srcLink(d, x.source_id)}</td></tr>`)) : ''; };
 const none = () => empty(t('co_none'));
 const goTab = (k, label) => `<a href="#" data-tab-pick="${k}" class="small">${label} →</a>`;
+// a quote expires after the server's QUOTE_MAX_AGE_DAYS (60): when it stops counting as fresh, in text
+function quoteExpiry(d, x) {
+  if (x.premium_status !== 'QUOTE' || !x.quote_date || d.quote_max_age_days == null) return '';
+  const end = new Date(x.quote_date.slice(0, 10) + 'T12:00:00'); end.setDate(end.getDate() + d.quote_max_age_days);
+  const iso = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  return end < new Date() ? `<div class="small"><span class="tag warn">${t('q_expired', { d: fmtDate(iso) })}</span></div>` : `<div class="small muted">${t('q_valid_until', { d: fmtDate(iso) })}</div>`;
+}
+// a manual insurance quote (#399): typed in by the account, never fetched by Carlos; the comparison site is a plain link
+let QUOTE_OK = false;
+const COVERS = ['Haftpflicht', 'Teilkasko', 'Vollkasko'];
+function quoteForm(d, hasQuote) {
+  const ok = QUOTE_OK; QUOTE_OK = false;
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const fld = (id, label, input, err = false) => `<div class="field"><label for="${id}">${label}</label>${input}${err ? `<p class="hint err" id="${id}-err" hidden></p>` : ''}</div>`;
+  const inp = (id, attrs = '') => `<input id="${id}" type="text" autocomplete="off" spellcheck="false" ${attrs}>`;
+  const car = [d.hsn && d.tsn ? `HSN/TSN ${esc(d.hsn)}/${esc(d.tsn)}` : '', d.first_registration ? `${t('registration')} ${esc(d.first_registration)}` : ''].filter(Boolean).join(' · ');
+  return `<details class="quote-entry"${hasQuote && !ok ? '' : ' open'}><summary>${t('q_title')}</summary>
+    ${ok ? `<p class="hint" id="quoteOk" role="status" tabindex="-1"><span class="tag good">${t('q_saved')}</span></p>` : ''}
+    <p class="small muted">${t('q_lead')}</p>
+    <div class="howto"><b class="small">${t('q_how_title')}</b><p class="small" style="margin:4px 0">${t('q_how')}</p>
+      ${car ? `<p class="small muted" style="margin:4px 0">${t('q_car')}: ${car}</p>` : ''}
+      <a class="small" href="https://www.check24.de/kfz-versicherungen/" target="_blank" rel="noopener noreferrer">${t('q_how_link')}</a></div>
+    <form id="quoteForm" novalidate><div class="fields two">
+      ${fld('q_premium', t('q_premium'), inp('q_premium', 'inputmode="decimal" required aria-describedby="q_premium-err" maxlength="12"'), true)}
+      ${fld('q_period', t('q_period'), `<select id="q_period"><option value="year">${t('q_per_year')}</option><option value="month">${t('q_per_month')}</option></select>`)}
+      ${fld('q_insurer', t('q_insurer'), inp('q_insurer', 'maxlength="80"'))}
+      ${fld('q_tariff', t('q_tariff'), inp('q_tariff', 'maxlength="80"'))}
+      ${fld('q_date', t('q_date'), `<input id="q_date" type="date" required max="${today}" value="${today}" aria-describedby="q_date-err">`, true)}
+      ${fld('q_cover', t('q_cover'), `<select id="q_cover"><option value="">${t('q_unstated')}</option>${COVERS.map(v => `<option value="${v}">${t('cover_' + v)}</option>`).join('')}</select>`)}
+      ${fld('q_deductible', t('q_deductible'), inp('q_deductible', 'inputmode="decimal" maxlength="6" aria-describedby="q_deductible-err"'), true)}
+      ${fld('q_sf', t('q_sf'), inp('q_sf', 'maxlength="8"'))}
+    </div><p class="hint err" id="q-err" role="alert" hidden></p><div class="row" style="margin-top:10px"><button class="btn" type="submit">${t('q_submit')}</button></div></form></details>`;
+}
+async function saveQuote(form) {
+  // "1.234,56", "1,234.56", "45,90 EUR": spaces, NBSP and the euro sign go; when both separators appear the last one is the decimal point;
+  // anything that is not a finite number is NaN (never sent: Infinity would reach the server as null)
+  const dec = id => {
+    let v = $(id).value.replace(/[\s\u00a0\p{Sc}]/gu, ''); if (v === '') return null;
+    const i = Math.max(v.lastIndexOf(','), v.lastIndexOf('.'));
+    if (i >= 0) v = v.slice(0, i).replace(/[.,]/g, '') + '.' + v.slice(i + 1);
+    const n = /^\d+(\.\d*)?$|^\.\d+$/.test(v) ? Number(v) : NaN; return Number.isFinite(n) ? n : NaN;
+  };
+  const bad = (id, key) => { const e = $(id + '-err'); e.textContent = t(key); e.hidden = false; $(id).setAttribute('aria-invalid', 'true'); return $(id); };
+  form.querySelectorAll('.hint.err').forEach(e => { e.hidden = true; e.textContent = ''; }); form.querySelectorAll('[aria-invalid]').forEach(e => e.removeAttribute('aria-invalid'));
+  const premium = dec('q_premium'), ded = dec('q_deductible'), date = $('q_date').value;
+  const first = [(premium == null || !(premium > 0)) && bad('q_premium', 'q_err_premium'),
+    (!date || date > $('q_date').max) && bad('q_date', 'q_err_date'),
+    ded != null && !(ded >= 0) && bad('q_deductible', 'q_err_deductible')].find(Boolean);
+  if (first) { first.focus(); return; }
+  const btn = form.querySelector('button[type=submit]'), err = $('q-err');
+  try {
+    await busy(btn, () => ui('POST', 'listing_quotes', { listing_id: D.id, premium_eur: premium, period: $('q_period').value, insurer: $('q_insurer').value, tariff: $('q_tariff').value,
+      quote_date: date, cover: $('q_cover').value, deductible_eur: ded, sf_class: $('q_sf').value }));
+    QUOTE_OK = true; await refresh(); $('quoteOk')?.focus();
+  } catch (e) { err.textContent = t('q_err_server', { m: e.message }); err.hidden = false; }  // stays until the next try: no timeout
+}
 function costBlocks(d) {
   const cd = d.cost_detail || {}, C = d.components || {};
   const cons = (d.observations || []).filter(o => o.category === 'consumption');
@@ -300,7 +356,8 @@ function costBlocks(d) {
     [t('co_period'), `${num(d.period_km, 0)} km · ${num(d.period_months, 0)} ${t('co_months')}`]])
     + (cons.length ? `<div class="small muted">${cons.map(o => `${esc(o.metric)}${stTag(o.status)} ${qTag(o.evidence_quality)} ${noteBox(o.notes)}`).join('<br>')}</div>` : '');
   const ins = [...(d.insurance || []), ...(d.quotes || [])];
-  B.insurance = ins.length ? tbl([[t('date')], [t('premium'), 1], [t('status')], [t('mp_src')]], ins.map(x => `<tr><td>${esc(x.quote_date ?? x.year ?? '')}</td><td class="n">${eP(x.annual_premium_eur)}</td><td>${esc(tv(x.premium_status) ?? '')}${[x.insurer, x.tariff].filter(Boolean).map(v => ' · ' + esc(v)).join('')} ${noteBox(x.notes)}</td><td>${srcLink(d, x.source_id)}</td></tr>`)) : (d.annual_insurance != null ? facts([[t('premium'), euro(d.annual_insurance)]]) : none());
+  B.insurance = (ins.length ? tbl([[t('date')], [t('premium'), 1], [t('status')], [t('mp_src')]], ins.map(x => `<tr><td>${esc(x.quote_date ?? x.year ?? '')}${quoteExpiry(d, x)}</td><td class="n">${eP(x.annual_premium_eur)}</td><td>${esc(tv(x.premium_status) ?? '')}${[x.insurer, x.tariff].filter(Boolean).map(v => ' · ' + esc(v)).join('')} ${noteBox(x.notes)}</td><td>${srcLink(d, x.source_id)}</td></tr>`)) : (d.annual_insurance != null ? facts([[t('premium'), euro(d.annual_insurance)]]) : none()))
+    + (d.is_reference ? '' : quoteForm(d, ins.length > 0));
   B.tax = (d.tax || []).length ? d.tax.map(x => `${facts([[t('co_tax_year'), eP(x.annual_tax_eur) + stTag(x.status) + ' ' + srcLink(d, x.source_id)], ...(x.registered_from || x.registered_to ? [[t('co_window'), `${esc(x.registered_from ?? '…')} – ${esc(x.registered_to ?? '…')}`]] : []), ...(d.tax_exempt_months ? [[t('co_exempt'), `${num(d.tax_exempt_months, 0)} ${t('co_months')}`]] : [])])}${x.basis ? `<div class="small muted">${esc(x.basis)}</div>` : ''}`).join('') : (d.annual_tax != null ? facts([[t('co_tax_year'), euro(d.annual_tax)]]) : none());
   B.maintenance = facts([[t('co_scheduled'), eP(cd.maintenance_scheduled)], [t('co_certain'), eP(cd.maintenance_certain)], ...(cd.maintenance_diy_hours ? [[t('co_hours'), num(cd.maintenance_diy_hours, 1) + ' h']] : [])]) + certainTbl(d, 'maintenance') + goTab('maintenance', t('dt_maintenance'));
   B.repairs = facts([[t('co_certain'), eP(cd.repairs_certain)], [t('co_expected'), eP(cd.repairs_expected)], ...(cd.repairs_diy_hours ? [[t('co_hours'), num(cd.repairs_diy_hours, 1) + ' h']] : [])]) + certainTbl(d, 'repairs') + goTab('maintenance', t('dt_maintenance')) + ' ' + goTab('reliability', t('dt_reliability'));
@@ -363,6 +420,7 @@ function bind() {
     const ph = e.target.closest('[data-photos]'); if (ph && ph.files.length) { let ok = 0;
       for (const [i, f] of [...ph.files].entries()) { toast(t('uploading', { i: i + 1, n: ph.files.length })); try { await ui('POST', 'media/' + D.id, await shrink(f), 'image/jpeg'); ok++; } catch (err) { toast(err.message, true); } }
       if (ok) toast(t('photos_added', { n: ok })); await refresh(); } });
+  root.addEventListener('submit', e => { if (e.target.id === 'quoteForm') { e.preventDefault(); saveQuote(e.target); } });
   root.addEventListener('click', async e => {
     const tp = e.target.closest('[data-tab-pick]'); if (tp) { e.preventDefault(); pickTab(tp.dataset.tabPick); return; }
     const jp = e.target.closest('[data-jump]'); if (jp) { e.preventDefault(); document.getElementById(jp.dataset.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }

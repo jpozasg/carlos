@@ -37,6 +37,14 @@ export function toast(msg, bad) {
   const el = $('toast'); el.textContent = msg; el.className = 'show' + (bad ? ' bad' : '');
   clearTimeout(el._h); el._h = setTimeout(() => el.className = bad ? 'bad' : '', 3500);
 }
+// a request-sending control: disabled and aria-busy while `work` runs, restored in finally so a double submit is impossible
+export async function busy(btn, work) {
+  const label = btn.textContent; btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = t('saving');
+  try { return await work(); }
+  finally { if (btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = label; } }
+}
+// an ISO date (YYYY-MM-DD) as the reader's locale writes it
+export const fmtDate = iso => /^\d{4}-\d\d-\d\d/.test(iso || '') ? new Intl.DateTimeFormat(locale(), { dateStyle: 'medium' }).format(new Date(iso.slice(0, 10) + 'T12:00:00')) : '';
 export const empty = x => `<p class="empty">${x}</p>`;
 export const facts = pairs => `<dl class="facts">${pairs.map(([k, v]) => `<dt>${k}</dt><dd>${v ?? PEND()}</dd>`).join('')}</dl>`;
 export const media = fp => '/media/' + esc(fp);
