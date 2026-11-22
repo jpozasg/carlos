@@ -39,7 +39,7 @@ function form() {
       ${f('electricity_public_eur_kwh', t('p_elec_public'), inp('electricity_public_eur_kwh', 'number', 'step=".01" min="0.01" inputmode="decimal"'))}${f('electricity_public_date', t('p_elec_public_date'), inp('electricity_public_date', 'date'))}
       ${f('wallbox_cost_eur', t('p_wallbox_cost'), inp('wallbox_cost_eur', 'number', 'step="50" min="0" inputmode="numeric"'))}
     </div></fieldset>
-    <div class="row"><button class="btn" type="submit" id="saveParams">${t('save_params')}</button><button class="btn ghost" type="button" id="discardParams">${t('discard')}</button><span class="small" id="previewNote" role="status"></span></div></form>`;
+    <div class="row"><button class="btn" type="submit" id="saveParams">${t('save_params')}</button><button class="btn ghost" type="button" id="discardParams">${t('discard')}</button><span class="small" id="previewNote" role="status"></span></div><p class="hint err" id="paramErr" role="alert"></p></form>`;
 }
 function paramUi() {
   const km = +$('annual_km').value, y = +$('ownership_years').value, d = $('fuel_price_date').value;
@@ -54,8 +54,10 @@ async function preview() {
   const same = CALC.every(k => String(val(k) ?? '') === String(S.saved[k] ?? ''));
   let d;
   try { d = await get('/api/tco' + (same ? '' : '?' + q)); }
-  catch (e) { const k = CALC.find(k => e.message.startsWith(k)); if (k) { $(k).setAttribute('aria-invalid', 'true'); if (k === 'budget_ideal_eur') $('budget_max_eur').setAttribute('aria-invalid', 'true'); } else toast(e.message, true); return; }
-  CALC.forEach(k => $(k).removeAttribute('aria-invalid'));
+  catch (e) { const k = CALC.find(k => e.message.startsWith(k));
+    if (k) { for (const f of k === 'budget_ideal_eur' ? [k, 'budget_max_eur'] : [k]) { $(f).setAttribute('aria-invalid', 'true'); $(f).setAttribute('aria-describedby', 'paramErr'); } $('paramErr').textContent = e.message; }
+    else toast(e.message, true); return; }
+  CALC.forEach(k => { $(k).removeAttribute('aria-invalid'); $(k).removeAttribute('aria-describedby'); }); $('paramErr').textContent = '';
   Object.assign(S, { p: d.parameters, units: d.listings, ranking: d.ranking, preview: d.preview, fuelStale: d.fuel_price_stale });
   renderShell(); paramUi();
 }
@@ -67,13 +69,14 @@ function appearance() {
 }
 function account() {
   return `<div class="card"><h3>${t('account')} <span class="muted small">${esc(S.me.username)} · ${esc(t('role_' + S.me.role))}</span></h3>
-    <form id="pwForm" class="stack"><div class="fields"><div class="field"><label for="pw_old">${t('pw_old')}</label><input id="pw_old" type="password" autocomplete="current-password" required></div>
-      <div class="field"><label for="pw_new">${t('pw_new')}</label><input id="pw_new" type="password" autocomplete="new-password" minlength="8" required></div></div>
+    <form id="pwForm" class="stack"><div class="fields"><div class="field"><label for="pw_old">${t('pw_old')}</label><input id="pw_old" type="password" autocomplete="current-password" required aria-describedby="pw_err"></div>
+      <div class="field"><label for="pw_new">${t('pw_new')}</label><input id="pw_new" type="password" autocomplete="new-password" minlength="8" required aria-describedby="pw_err"></div></div>
+      <p class="hint err" id="pw_err" role="alert"></p>
       <div><button class="btn ghost sm" type="submit">${t('pw_change')}</button></div></form>
     <h3 class="mt16">${t('my_data')}</h3><p class="small muted mt0">${t('my_data_hint')}</p>
     <div class="row"><button class="btn ghost sm" type="button" data-export>${t('export_my_data')}</button></div>
     ${S.me.role === 'admin' ? `<h3 class="mt16">${t('agent_token')}</h3><p class="small muted mt0">${t('agent_token_hint')}</p>
-    <div class="row"><button class="btn ghost sm" type="button" data-token>${S.me.has_token ? t('token_renew') : t('token_create')}</button></div><div id="tokenOut"></div>` : ''}</div>`;  // agent tokens: admins only (issue #130)
+    <div class="row"><button class="btn ghost sm" type="button" data-token>${S.me.has_token ? t('token_renew') : t('token_create')}</button></div><div id="tokenOut"></div><p class="hint err" id="tok_err" role="alert"></p>` : ''}</div>`;  // agent tokens: admins only (issue #130)
 }
 // ranking filters (#169): cars that fail one are not ranked; unknown never passes
 const FILTERS = { filter_seller: ['', 'DEALER', 'PRIVATE'], filter_warranty: ['', '1'], filter_service_history: ['', 'YES', 'YES_OR_CLAIMED'],
@@ -90,6 +93,14 @@ function draw() {
     <div class="grid mt16">${filters()}${appearance()}${account()}</div></div>`;
   paramUi();
 }
+// the agent token shown once: created or renewed under busy(); a failure is shown inline and as a toast
+async function makeToken(btn) {
+  $('tok_err').textContent = '';
+  try { const r = await busy(btn, () => post('/api/account/token', {}));
+    $('tokenOut').innerHTML = `<p class="small">${t('token_shown_once')}</p><div class="token-box">${esc(r.token)}</div>`; S.me.has_token = true;
+    const b = root.querySelector('[data-token]'); if (b) b.textContent = t('token_renew'); }
+  catch (err) { $('tokenOut').innerHTML = ''; $('tok_err').textContent = err.message; toast(err.message, true); }
+}
 function bind() {
   root.addEventListener('input', e => { const id = e.target.id;
     if (id.endsWith('_range')) $(id.replace('_range', '')).value = e.target.value;
@@ -98,21 +109,30 @@ function bind() {
     paramUi(); if (CALC.includes(id.replace('_range', ''))) { clearTimeout(previewTimer); previewTimer = setTimeout(preview, 350); } });
   root.addEventListener('click', async e => {
     if (e.target.id === 'fuelToday') { $('fuel_price_date').value = new Date().toISOString().slice(0, 10); paramUi(); return; }
-    if (e.target.id === 'discardParams') { draft = null; await loadAll(); renderShell(); draw(); return; }
+    if (e.target.id === 'discardParams') { await busy(e.target, async () => { draft = null; await loadAll(); renderShell(); draw(); }); return; }
     const md = e.target.closest('[data-mode-pick]'); if (md) { snap(); applyTheme(md.dataset.modePick); draw(); return; }
     const ex = e.target.closest('[data-export]');  // the person's own rows, as the Settings page shows them (the login, not a viewed account)
     if (ex) { await busy(ex, async () => { try { const d = await get('/api/account/export'); const a = document.createElement('a'); const url = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }));
       a.href = url; a.download = `carlos-${S.me.username}.json`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (err) { toast(err.message, true); } }); return; }
-    if (e.target.closest('[data-token]')) { try { const r = await post('/api/account/token', {}); $('tokenOut').innerHTML = `<p class="small">${t('token_shown_once')}</p><div class="token-box">${esc(r.token)}</div>`; S.me.has_token = true; } catch (err) { toast(err.message, true); } } });
+    const tk = e.target.closest('[data-token]');  // renewing an existing token stops the agent using it: confirm first
+    if (tk) { if (!S.me.has_token) return makeToken(tk);
+      $('tokenOut').innerHTML = `<span class="confirm" role="alert"><span class="small">${t('confirm_token_renew')}</span> <button class="btn sm" type="button" data-token-yes>${t('confirm_yes')}</button> <button class="btn ghost sm" type="button" data-token-no>${t('cancel')}</button></span>`;
+      $('tokenOut').querySelector('[data-token-no]').focus(); return; }
+    if (e.target.closest('[data-token-no]')) { $('tokenOut').innerHTML = ''; root.querySelector('[data-token]')?.focus(); return; }
+    const ty = e.target.closest('[data-token-yes]'); if (ty) return makeToken(ty); });
   root.addEventListener('change', async e => {
     const k = e.target.dataset.filter; if (!k) return;
     try { await post('/api/preferences', { [k]: e.target.value || null }); S.prefs[k] = e.target.value; await refreshTco(); toast(t('saved')); } catch (err) { toast(err.message, true); } });
   root.addEventListener('submit', async e => {
     e.preventDefault();
-    if (e.target.id === 'pwForm') { try { await post('/api/account/password', { old: $('pw_old').value, new: $('pw_new').value }); toast(t('pw_changed')); e.target.reset(); } catch (err) { toast(err.message, true); } return; }
-    const body = {}; KEYS.forEach(k => { $(k).removeAttribute('aria-invalid'); body[k] = val(k); });
-    try { await post('/api/parameters', body); draft = null; toast(t('saved')); await loadAll(); renderShell(); draw(); }
-    catch (err) { const k = KEYS.find(k => (err.message || '').startsWith(k)); if (k) { $(k).setAttribute('aria-invalid', 'true'); $(k).focus(); } toast(t('not_saved', { m: err.message }), true); } });
+    if (e.target.id === 'pwForm') { $('pw_err').textContent = '';
+      try { await busy(e.target.querySelector('button[type="submit"]'), () => post('/api/account/password', { old: $('pw_old').value, new: $('pw_new').value })); toast(t('pw_changed')); e.target.reset(); }
+      catch (err) { $('pw_err').textContent = err.message; toast(err.message, true); } return; }
+    const body = {}; KEYS.forEach(k => { $(k).removeAttribute('aria-invalid'); $(k).removeAttribute('aria-describedby'); body[k] = val(k); }); $('paramErr').textContent = '';
+    try { await busy($('saveParams'), () => post('/api/parameters', body)); draft = null; toast(t('saved')); await loadAll(); renderShell(); draw(); }
+    catch (err) { const k = KEYS.find(k => (err.message || '').startsWith(k)), msg = t('not_saved', { m: err.message });
+      if (k) { $(k).setAttribute('aria-invalid', 'true'); $(k).setAttribute('aria-describedby', 'paramErr'); $(k).focus(); }
+      $('paramErr').textContent = msg; toast(msg, true); } });
 }
 export async function render(main) {
   if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="settings"></div>'; root = main.firstElementChild; draft = null; bind(); }
