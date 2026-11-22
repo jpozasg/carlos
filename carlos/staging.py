@@ -87,6 +87,8 @@ def write(c, req, table, row_id, data):
     """Stages an insert (row_id None), a PATCH of a staged row (row_id < 0) or a PATCH of a real row (row_id > 0) of the run `req`
     (a research_requests row). Returns {'table', 'id': -<finding id>, 'staged': True}. Raises NotAllowed-like errors as the
     server maps them: NotAllowed (403), ValueError (400), NotFound (404), Conflict (409)."""
+    if req['unit'] in ru.STAGED_UNITS and not req['scope']:  # N2: the scope check below needs it; NULL would let any in-variant row through
+        raise NotAllowed(f'{req["unit"]} run {req["id"]} has no scope: its writes cannot be checked against the car')
     if table not in PATCHABLE or table not in AGENT_TABLES:
         raise NotAllowed(f'{table} is not part of a research run (staging takes sources, levels, faults, recalls, jobs, checks, '
                               f'observations, tyres and patches of real rows)')

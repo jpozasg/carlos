@@ -60,6 +60,16 @@ PROFILE_PARAMS = ('postal_code', 'purchase_mode', 'ranking_weights', 'ranking_an
 RUN_PREFERENCES = ('diy_jobs', 'diy_skills', 'driving_mix', 'search_radius', 'preferred_engine', 'current_car', 'onboarding_done')
 
 
+def coarse_distance(obj):
+    """N9: a research run sees a car's distance to the nearest 10 km only; the exact figure would narrow the requester's postcode area."""
+    if isinstance(obj, dict):
+        return {k: round(v / 10) * 10 if k in ('distance', 'distance_km') and isinstance(v, (int, float)) and not isinstance(v, bool)
+                else coarse_distance(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [coarse_distance(v) for v in obj]
+    return obj
+
+
 class Forbidden(Exception):
     pass
 
@@ -285,6 +295,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------ responses
     def send_json(self, obj, status=200, cookie=None):
+        if getattr(self, 'request', None) is not None:  # every answer to a request token (N9)
+            obj = coarse_distance(obj)
         # level 1: the API's payloads are large and the Pi is slow; the ratio loss against level 6 is small
         self.send_body(json.dumps(obj, ensure_ascii=False).encode(), 'application/json; charset=utf-8', status, cookie=cookie, level=1)
 
@@ -489,7 +501,7 @@ class Handler(BaseHTTPRequestHandler):
             client, username = self.client_ip(), str(d.get('username') or '')
             raw = auth.login(c, username, str(d.get('password') or ''), client)
             if raw is None:
-                self.send_json({'error': 'Wrong username or password'}, 429 if auth.locked(client) or auth.locked(auth.user_key(username)) else 401); return
+                self.send_json({'error': 'Wrong username or password'}, 429 if auth.capped() or auth.locked(client) or auth.locked(auth.user_key(username)) else 401); return
             u = auth.user_by_session(c, raw)
             self.send_json(auth.public(u), cookie=self.session_cookie(raw))
         elif path == '/api/auth/logout' and method == 'POST':

@@ -421,8 +421,8 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, reques
             if table in OWNED:
                 catalogue = admin and (table in MODEL or table == 'sources' and any(data.get(k) is not None for k in config.LEVEL_COLUMNS))
                 data['owner_id'] = None if catalogue else user_id
-            elif table in _KNOW and ('USER DATA' in (data.get('status'), data.get('premium_status')) or data.get('annual_premium_eur') is not None):
-                data['owner_id'] = user_id
+            elif table == 'insurance_data' or table in _KNOW and ('USER DATA' in (data.get('status'), data.get('premium_status')) or data.get('annual_premium_eur') is not None):
+                data['owner_id'] = user_id  # N6: an insurance row is the account's own, even one without a premium (a NULL owner is shared)
             cur = c.execute(f'INSERT INTO main.{table} ({",".join(data)}) VALUES ({",".join("?" * len(data))})', list(data.values()))
             row_id, old = cur.lastrowid, None
         else:
