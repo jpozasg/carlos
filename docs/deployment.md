@@ -31,10 +31,16 @@ The first start prints the one-time invite link for the admin password in the jo
 ## Caddy
 ```
 carlos.example.net {
+    header {
+        Strict-Transport-Security "max-age=15552000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        -Server
+    }
     reverse_proxy 127.0.0.1:8000
 }
 ```
-Caddy sets `X-Forwarded-Proto: https`, which makes the session cookie `Secure` and the invite links use the public host. Do not expose port 8000 directly.
+Caddy sets `X-Forwarded-Proto: https`, which makes the session cookie `Secure` and the invite links use the public host. Do not expose port 8000 directly. The app itself sends `Content-Security-Policy` (scripts only from `/static/`), `X-Frame-Options: DENY`, `X-Content-Type-Options` and `Referrer-Policy` on every response and adds `Strict-Transport-Security` when `X-Forwarded-Proto` is `https`; the `header` block repeats HSTS and `nosniff` so that an error page from Caddy itself carries them too. Add `includeSubDomains` to HSTS only when every subdomain is HTTPS. The login lock uses the last `X-Forwarded-For` hop, which Caddy appends; a proxy that passes a client-supplied header on unchanged makes the per-address lock evadable (the per-username lock still holds), so put exactly one proxy in front.
 
 ## Moving the data between machines
 The data directory is a git repository of its own (private). After a session: commit and push it (`cars.sqlite`, `media/`, `dossiers/`); `backups/` stays ignored. On the other machine: pull, start the app; pending migrations run automatically with a backup first. The agent token in `.env` is per machine: generate one in Settings on the new machine or copy `.env` by hand.

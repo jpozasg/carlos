@@ -13,8 +13,9 @@ const PAGES = {
 const NAV = ['compare', 'ranking', 'models', 'sources', 'settings'];
 // "view as account" (issue #142): the admin's session sends this cookie, so every page and photo shows that account
 export const viewing = () => +(document.cookie.match(/(?:^|; )carlos_view=(\d+)/) || [])[1] || null;
+const viewCookie = id => `carlos_view=${id || ''}; path=/; SameSite=Strict${id ? '' : '; max-age=0'}${location.protocol === 'https:' ? '; Secure' : ''}`;
 function setView(id) {
-  document.cookie = id ? `carlos_view=${id}; path=/; SameSite=Strict` : 'carlos_view=; path=/; max-age=0; SameSite=Strict';
+  document.cookie = viewCookie(id);
   location.hash = '#/compare'; location.reload();
 }
 
@@ -31,7 +32,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => appl
 export async function setLang(l) { await i18n.load(l); renderShell(); route(); }
 
 export async function loadAll() {
-  const [me, p, tco, st, td, ss, pr] = await Promise.all([get('/api/auth/me'), get('/api/parameters'), get('/api/tco'), get('/api/storage'), get('/api/todo'), get('/api/sources'), get('/api/preferences')]);
+  const [me, p, tco, st, td, ss, pr] = await Promise.all([get('/api/auth/me'), get('/api/parameters'), get('/api/tco'), get('/api/storage').catch(() => null), get('/api/todo'), get('/api/sources'), get('/api/preferences')]);
   Object.assign(S, { me, p, saved: p, preview: false, units: tco.listings, components: tco.components, ranking: tco.ranking, budget: tco.budget,
     fuelStale: tco.fuel_price_stale, storage: st, todo: td, sources: ss, models: null,
     prefs: Object.fromEntries(pr.map(x => [x.preference_key, x.preference_value])) });
@@ -50,7 +51,7 @@ export function renderShell() {
   document.querySelectorAll('[data-aria]').forEach(b => b.setAttribute('aria-label', t(b.dataset.aria)));
   const p = S.p, st = S.storage;
   const chips = p ? `<a class="chip${S.fuelStale || S.preview ? ' warn' : ''}" href="#/settings" title="${esc(S.fuelStale ? t('fuel_stale') : t('edit_params'))}">${S.preview ? '✎ ' : S.fuelStale ? '⚠ ' : ''}${num(p.annual_km, 0)} ${t('per_year_short')} · ${yrs(p.ownership_years)} · ${num(p.fuel_price_eur_l, 2)} €/l</a>
-    <span class="chip chip-store${st && st.total_bytes / st.limit_bytes >= .9 ? ' bad' : st && st.total_bytes / st.limit_bytes >= .8 ? ' warn' : ''}" title="${esc(t('storage_hint'))}">${st ? `${num(st.total_bytes / 1048576, 1)} / ${num(st.limit_bytes / 1048576, 0)} MB` : ''}</span>` : '';
+    ${st ? `<span class="chip chip-store${st.total_bytes / st.limit_bytes >= .9 ? ' bad' : st.total_bytes / st.limit_bytes >= .8 ? ' warn' : ''}" title="${esc(t('storage_hint'))}">${num(st.total_bytes / 1048576, 1)} / ${num(st.limit_bytes / 1048576, 0)} MB</span>` : ''}` : '';  // storage is admin only (403 for an account)
   const langs = `<div class="seg" role="group" aria-label="${esc(t('language'))}">${Object.keys(i18n.LANGS).map(l => `<button type="button" data-lang="${l}" lang="${l}" aria-pressed="${l === i18n.current()}">${l.toUpperCase()}</button>`).join('')}</div>`;
   $('hdr').innerHTML = `<div class="bar"><a class="brand" href="#/compare" aria-label="${esc(t('app_title'))}"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="/static/brand/mark.svg#mark"/></svg><span><b>Carlos</b><small>${esc(t('tagline'))}</small></span></a>${chips}${langs}
     ${S.me?.role === 'admin' ? `<select class="chip" data-viewas aria-label="${esc(t('view_as'))}" title="${esc(t('view_as'))}"><option value="">${esc(t('view_as_me'))}</option>${S.accounts.filter(u => u.is_active && u.id !== S.me.id).map(u => `<option value="${u.id}"${u.id === viewing() ? ' selected' : ''}>${esc(t('view_as'))}: ${esc(u.username)}</option>`).join('')}</select>` : ''}
@@ -86,7 +87,7 @@ export async function route() {
     if (busy !== token) return;
     await mod.render(main, r);
   } catch (e) {
-    main.innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p><button class="btn ghost" type="button" onclick="location.reload()">${t('retry')}</button></div>`;
+    main.innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p><button class="btn ghost" type="button" data-reload>${t('retry')}</button></div>`;
   }
   if (!r.q.keep) { scrollTo({ top: 0 }); main.focus({ preventScroll: true }); }  // screen readers and keyboard start at the new page
 }
@@ -94,8 +95,9 @@ export async function route() {
 document.addEventListener('click', async e => {
   if (e.target.closest('[data-i18n-skip]')) { e.preventDefault(); $('main').focus(); return; }  // a #main href would break the hash router
   const l = e.target.closest('[data-lang]'); if (l) { await setLang(l.dataset.lang); return; }
+  if (e.target.closest('[data-reload]')) { location.reload(); return; }  // no inline handlers: the CSP forbids them
   if (e.target.closest('[data-viewas-exit]')) { setView(null); return; }
-  if (e.target.closest('[data-logout]')) { document.cookie = 'carlos_view=; path=/; max-age=0; SameSite=Strict'; await post('/api/auth/logout', {}); location.href = '/login'; }
+  if (e.target.closest('[data-logout]')) { document.cookie = viewCookie(null); await post('/api/auth/logout', {}); location.href = '/login'; }
 });
 const tip = $('tip');
 document.addEventListener('mousemove', e => { const s = e.target.closest('[data-tip]'); if (!s) { tip.style.opacity = 0; return; }
