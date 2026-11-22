@@ -268,12 +268,13 @@ class AppTest(unittest.TestCase):
         half = {x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[f1]['expected_eur']
         self.assertAlmostEqual(half, plan[f1]['expected_eur'] / 2, delta=0.02)
         self.assertEqual(self.agent('PATCH', f'faults/{f1}', {'warranty_share': None, 'warranty_km': None, 'warranty_years': None})[0], 200)
-        # documented fix at today's km without a fixed-part curve: no risk left; with one: that curve from the repair
+        # documented fix at today's km without a fixed-part curve: the part is new from today, so its own curve restarts at 0
+        # (the chance over the period, not zero, owner rule 2026-11-22); with a fixed-part curve: that curve from the repair
         src = self.agent('POST', 'sources', {'title': 'Invoice', 'source_type': 'listing'})[1]['id']
         self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'fault_id': f1, 'item': 'New chain', 'status': 'DONE',
                                                                 'km': km, 'evidence': 'DOCUMENTED', 'source_id': src})[0], 201)
         fixed = lambda: {x['id']: x for x in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}[f1]
-        self.assertEqual(fixed()['expected_eur'], 0)
+        self.assertAlmostEqual(fixed()['expected_eur'], round(costs.conditional(curve, 0, period, config.CURVE_END_KM) * 1000, 2), places=2)
         f2 = self.agent('POST', 'faults', {**base, 'component': 'Revised chain', 'distinct_of': [f1], 'notes': 'the fixed design after the repair', 'curve_km': [[200000, 0.05]]})[1]['id']
         self.assertEqual(self.agent('PATCH', f'faults/{f1}', {'fixed_fault_id': f2})[0], 200)
         self.assertAlmostEqual(fixed()['probability'], round(costs.conditional([[200000, 0.05]], 0, period, 300000), 4), places=4)
@@ -306,8 +307,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['annual_insurance'], 777)
 
     def test_owner_chance_on_one_car_379(self):
-        """#379 (owner decision 2026-11-22): after a DONE restart a fault costs nothing more (no fixed part's curve), unless the
-        owner gives this car its own chance for the period; that chance applies to this car only, is validated, logged as
+        """#379 (owner decision 2026-11-22): after a DONE restart a fault follows its own curve from the DONE km (or the fixed
+        part's curve), unless the owner gives this car its own chance for the period; that chance applies to this car only, is validated, logged as
         user data, and the shared fault row and the other cars keep their figures. The BMW case: a chain replaced, due again."""
         f1 = self.agent('POST', 'faults', {'component': 'Chain', 'component_code': 'ENGINE_INTERNALS', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE',
                                            'existence': 'CONFIRMED', 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
@@ -319,7 +320,10 @@ class AppTest(unittest.TestCase):
                                                       'evidence': 'DOCUMENTED', 'source_id': src})
         self.assertEqual(hist[0], 201)
         hA = hist[1]['id']
-        self.assertEqual((plan(CAR_A)['expected_eur'], plan(CAR_A)['owner_chance']), (0, None))   # today: a documented fix leaves no risk
+        a0 = self.req('GET', f'/api/listings/{CAR_A}')[1]   # the fix restarts its own curve at 80,000 km (owner rule 2026-11-22)
+        own_curve = round(costs.conditional([[100000, 0.1], [200000, 0.4]], a0['mileage_km'] - 80000, a0['mileage_km'] - 80000 + a0['period_km'],
+                                            config.CURVE_END_KM) * 1000, 2)
+        self.assertEqual((plan(CAR_A)['expected_eur'], plan(CAR_A)['owner_chance']), (own_curve, None))
         st, adm = self.login()
         chance = lambda row, body, ck=adm: self.req('PATCH', f'/api/ui/listing_history/{row}', body, token=None, cookie=ck)
         self.assertEqual(chance(hA, {'owner_probability': 0.3, 'owner_reason': 'Chain stretched after 61,500 km; owner expects a repeat'})[0], 200)
@@ -342,7 +346,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(hopen[0], 201)
         self.assertEqual(chance(hopen[1]['id'], {'owner_probability': 0.3, 'owner_reason': 'x'})[0], 400)   # only a DONE repair
         self.assertEqual(chance(hA, {'owner_probability': None})[0], 200)                       # null clears it: unknown, not zero
-        self.assertEqual((plan(CAR_A)['expected_eur'], plan(CAR_A)['owner_chance']), (0, None))
+        self.assertEqual((plan(CAR_A)['expected_eur'], plan(CAR_A)['owner_chance']), (own_curve, None))
 
     def test_scoped_rows_need_exactly_one_level(self):
         base = {'item': 'x', 'interval_km': 10000, 'schedule': 'ITEM', 'diy': 0, 'reference_cost_eur': 10, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE}
@@ -522,15 +526,48 @@ class AppTest(unittest.TestCase):
         self.assertEqual(plan(f, None)['warranty_cover'], 0)                            # was: the car counted as brand new
         self.assertEqual(plan({**f, 'warranty_km': None, 'warranty_years': None}, 5.0)['warranty_cover'], 0)   # was: unlimited
         self.assertGreater(plan({**f, 'warranty_years': None}, None)['warranty_cover'], 0)   # a km limit alone needs no age
-        # a documented fix at an unknown km: no risk left when nothing follows it; unknown when a fixed part's curve follows
+        # a documented fix at an unknown km: unknown, whether the fault's own curve (restarted at that km) or a fixed part's curve follows
         g = {**f, 'id': 2, 'curve_km': json.dumps([[200000, 0.05]]), 'warranty_share': None}
         run = lambda fixed: costs.fault_plan([{**f, 'warranty_share': None, 'fixed_fault_id': fixed}], 90000, 60000, 5.0, 48,
                                              done={1: None}, by_id={2: g})[0]
-        self.assertEqual(run(None)['expected_eur'], 0)
+        self.assertIsNone(run(None)['expected_eur'])                                    # was: 0, the fix taken as a zero risk
         self.assertIsNone(run(2)['expected_eur'])                                       # was: the fix taken at km 0
         self.assertEqual((run(2)['fixed'], run(2)['repaired_at_km']), (True, None))     # the fix is registered, its km is not
         self.assertIsNotNone(costs.fault_plan([{**f, 'warranty_share': None, 'fixed_fault_id': 2}], 90000, 60000, 5.0, 48,
                                               done={1: 80000}, by_id={2: g})[0]['expected_eur'])
+
+    def test_a_fixed_fault_restarts_its_own_curve_2026_11_22(self):
+        """Owner rule (2026-11-22): a DONE repair means the part is new from its km (and date). A fault with its own curve and no
+        replacement curve follows that curve restarted there (a belt done at 60,000 km, car at 100,000 km: the chance over the
+        next window, not zero); a fixed_fault_id keeps the replacement part's curve; the owner's own chance overrides both."""
+        from carlos import costs
+        curve = [[80000, 0.3], [160000, 0.8]]                                            # belt: replaced every 80,000 km
+        belt = {'id': 1, 'component': 'Timing belt', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'parts_eur': 400, 'labor_eur': 600,
+                'curve_km': json.dumps(curve), 'warranty_share': None}
+        plan = lambda f, done, **kw: costs.fault_plan([f], 100000, 40000, None, 48, done={1: done}, **kw)[0]
+        # (a) the window starts at the DONE km: F(80k) - F(40k) over 1 - F(40k) (about 17.6 %), not the window at 100,000 km (about 43 %)
+        self.assertAlmostEqual(plan(belt, 60000)['expected_eur'], round(costs.conditional(curve, 40000, 80000, config.CURVE_END_KM) * 1000, 2), places=2)
+        self.assertAlmostEqual(plan(belt, 60000)['expected_eur'], 176.47, places=2)
+        self.assertNotAlmostEqual(plan(belt, 60000)['expected_eur'], round(costs.conditional(curve, 100000, 140000, config.CURVE_END_KM) * 1000, 2), places=0)
+        self.assertIsNone(plan(belt, None)['expected_eur'])                              # a fix at an unknown km: unknown, never 0
+        self.assertFalse(plan(belt, 60000)['age_unknown'])                               # no age curve: nothing is unknown about age
+        # the age part: restarted at the DONE date when known; without it the km curve alone is used and the age part is marked unknown
+        aged = {**belt, 'curve_km': None, 'curve_age': json.dumps([[5, 0.1], [10, 0.4]])}
+        unknown = costs.fault_plan([aged], 100000, 40000, 8.0, 48, done={1: 60000})[0]
+        self.assertEqual((unknown['expected_eur'], unknown['age_unknown']), (None, True))
+        dated = costs.fault_plan([aged], 100000, 40000, 8.0, 48, done={1: 60000}, done_age={1: 2.0})[0]
+        self.assertEqual(dated['age_unknown'], False)
+        self.assertAlmostEqual(dated['expected_eur'], round(costs.conditional([[5, 0.1], [10, 0.4]], 2.0, 6.0, config.CURVE_END_YEARS) * 1000, 2), places=2)
+        self.assertEqual(costs.fault_done_ages([{'status': 'DONE', 'fault_id': 1, 'event_date': '2022-11-22'},
+                                                {'status': 'DONE', 'fault_id': 2, 'event_date': None}], datetime.date(2026, 11, 22)), {1: 4.0, 2: None})
+        # (b) a fixed_fault_id keeps using the replacement part's curve from the DONE km (unchanged), not the fault's own curve
+        repl = {'id': 2, 'curve_km': json.dumps([[200000, 0.05]])}
+        b = costs.fault_plan([{**belt, 'fixed_fault_id': 2}], 100000, 40000, None, 48, done={1: 60000}, by_id={2: repl})[0]
+        self.assertAlmostEqual(b['expected_eur'], round(costs.conditional([[200000, 0.05]], 40000, 80000, config.CURVE_END_KM) * 1000, 2), places=2)
+        self.assertIsNone(costs.fault_plan([{**belt, 'fixed_fault_id': 2}], 100000, 40000, None, 48, done={1: None}, by_id={2: repl})[0]['expected_eur'])
+        # (c) the owner's own chance for this car overrides the curve after the fix
+        o = plan(belt, 60000, chance={1: {'probability': 0.3, 'reason': 'x'}})
+        self.assertEqual((round(o['expected_eur'], 2), o['probability'], o['owner_chance']['probability']), (300.0, 0.3, 0.3))
 
     def test_a_certain_cost_without_a_figure_is_unknown_388(self):
         """C6 (data-truth review): a certain cost with neither parts nor labour is a pending price, so its component is
