@@ -30,6 +30,7 @@
  "saved": "Zapisano",
  "saved_short": "Zapisano",
  "not_saved": "Nie zapisano: {m}",
+ "photo_not_shrunk": "Przeglądarka nie może odczytać tego zdjęcia, więc nie zostało wysłane: oryginał może zawierać lokalizację. Spróbuj z plikiem JPEG lub PNG.",
  "discard": "Odrzuć",
  "today": "Dziś",
  "all": "Wszystkie",

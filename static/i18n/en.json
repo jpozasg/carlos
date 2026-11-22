@@ -29,6 +29,7 @@
  "saved": "Saved",
  "saved_short": "Saved",
  "not_saved": "Not saved: {m}",
+ "photo_not_shrunk": "The browser cannot read this photo, so it was not sent: the original may carry its location. Try a JPEG or PNG.",
  "discard": "Discard",
  "today": "Today",
  "all": "All",

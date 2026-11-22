@@ -1,7 +1,7 @@
 """The agent's write API: validation against the real schema, change log, photo storage, quota."""
 import hashlib, json, math, os, re, time
 from pathlib import Path
-from . import config, research
+from . import config, photo_strip, research
 from .auth import SOURCE_TABLES, _KNOW, _LISTING_CHILDREN, ARCHIVABLE, MODEL, OWNED
 
 # Format of controlled codes written by the agent (English: upper-case statuses, snake_case kinds).
@@ -493,6 +493,7 @@ def save_media(c, listing_id, body, query):
     kind = next((v for magic, v in config.IMAGE_TYPES.items() if body.startswith(magic)), None)
     if kind is None or (kind[1] == 'webp' and body[8:12] != b'WEBP'):
         raise ValueError('Only JPEG, PNG or WebP are accepted')
+    body = photo_strip.strip(body, kind[1])  # GPS and device metadata are removed before anything is hashed or stored (#411)
     if c.execute('SELECT 1 FROM listings WHERE id=?', (listing_id,)).fetchone() is None:
         raise NotFound(f'listings id={listing_id} does not exist')
     digest = hashlib.sha256(body).hexdigest()
