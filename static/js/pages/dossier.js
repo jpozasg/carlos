@@ -436,7 +436,7 @@ async function draw(id, quiet = false, keepUi = true) {
   D = d;
   const kept = quiet && keepUi ? keep() : null;  // taken right before the swap: what the reader typed or opened since the request
   root.innerHTML = picker + `<div class="dossier-top${compactTop() ? ' compact' : ''}">${viewer(d)}<div class="dossier-side">${scoreBox(d)}${plate(d)}</div></div>${tabBar()}<div class="grid dtab" data-tab="overview"${hid('overview')}>
-    <div class="card span2"><div class="unit-head"><div><div class="unit-name"><a class="carlink" href="#/models/${d.vehicle_id}">${unitName(d)} ${esc(d.trim ?? '')}</a></div><div class="unit-sub">${unitSub(d)} · ${esc(tv(d.listing_status) ?? '')} <a href="#/models/${d.vehicle_id}" style="margin-left:8px">${t('open_model')}</a></div></div>
+    <div class="card span2"><div class="unit-head"><div><h1 class="unit-name"><a class="carlink" href="#/models/${d.vehicle_id}">${unitName(d)} ${esc(d.trim ?? '')}</a></h1><div class="unit-sub">${unitSub(d)} · ${esc(tv(d.listing_status) ?? '')} <a href="#/models/${d.vehicle_id}" style="margin-left:8px">${t('open_model')}</a></div></div>
       <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')}</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
       ${d.is_reference ? '' : decisionBar(d)}
       ${gaps(S.todo.listings.find(x => x.listing_id === d.id)?.todo)}

@@ -9,7 +9,7 @@ the real data dir is never opened. Needs the Python `playwright` package and a C
 
 Writes DIR/shots/*.png, DIR/report.json, DIR/report.md and DIR/server.log. Exit 1 when a page has a console error, a failed
 request, horizontal overflow, a raw undefined/NaN/[object, more than one h1 or a bare i18n key. Clipped text and a missing
-h1 (no route renders one yet, audit S7) are listed as notes, not failures.
+h1 is a failure since #424 (every route renders one); clipped text stays a note.
 """
 import argparse, json, os, shutil, socket, sqlite3, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
@@ -27,7 +27,7 @@ PROBE = """() => {
   const vw = innerWidth, bad = [], clip = [], sel = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\\s+/).slice(0, 2).join('.') : '');
   const overflow = document.documentElement.scrollWidth > vw + 1;
   if (overflow) for (const e of document.body.querySelectorAll('*')) { const r = e.getBoundingClientRect(); if (r.width && r.right > vw + 1 && bad.length < 6 && !e.closest('[class*=scroll],.tablewrap,.rail,.dtabs,nav,pre,table')) bad.push(sel(e) + ' right=' + Math.round(r.right)); }
-  for (const e of document.querySelectorAll('main *, header *')) { const s = getComputedStyle(e); if (e.scrollWidth > e.clientWidth + 1 && e.clientWidth > 0 && (s.overflowX === 'hidden' || s.textOverflow === 'ellipsis') && e.textContent.trim() && clip.length < 8) clip.push(sel(e) + ': ' + e.textContent.trim().slice(0, 40)); }
+  for (const e of document.querySelectorAll('main *, header *')) { const s = getComputedStyle(e); if (!e.classList.contains('sr-only') && e.scrollWidth > e.clientWidth + 1 && e.clientWidth > 0 && (s.overflowX === 'hidden' || s.textOverflow === 'ellipsis') && e.textContent.trim() && clip.length < 8) clip.push(sel(e) + ': ' + e.textContent.trim().slice(0, 40)); }
   const text = document.getElementById('main').innerText;
   const raw = (text.match(/\\bundefined\\b|\\bNaN\\b|\\[object|\\bnull\\b/g) || []).slice(0, 3);
   const keys = [...document.getElementById('main').querySelectorAll('*')].filter(e => !e.children.length && /^[a-z]{2,}(_[a-z0-9]+)+$/.test(e.textContent.trim())).map(e => e.textContent.trim()).slice(0, 5);
@@ -91,7 +91,7 @@ def main():
     log_file = open(out / 'server.log', 'w')
     srv = subprocess.Popen([sys.executable, 'app.py'], cwd=ROOT, env={**os.environ, 'CARLOS_DATA': tmp, 'CARLOS_PORT': str(port)},
                            stdout=log_file, stderr=subprocess.STDOUT)  # app.py binds 127.0.0.1 only (carlos/config.py HOST)
-    results, failures, no_h1 = [], 0, 0
+    results, failures = [], 0
     try:
         for _ in range(60):
             try: urllib.request.urlopen(base + '/login').read(); break
@@ -134,12 +134,12 @@ def main():
                             page.screenshot(path=str(out / 'shots' / f'{name}.png'), full_page=True)
                             errs = [] if a.state == 'error' else list(log)
                             notes = [f'clipped {c}' for c in res['clipped']]
-                            if not res['h1'] and a.state in ('default', 'empty'): no_h1 += 1
                             if a.state == 'loading' and res['busy'] != 'true': notes.append('loading state without aria-busy="true"')
                             problems = errs + (['horizontal overflow: ' + '; '.join(res['offenders'])] if res['overflow'] else []) \
                                 + (['raw text: ' + ', '.join(res['raw'])] if res['raw'] and a.state != 'error' else []) \
                                 + (['bare i18n key: ' + ', '.join(res['keys'])] if res['keys'] else []) \
                                 + (['%d h1 elements' % res['h1']] if res['h1'] > 1 else []) \
+                                + (['no h1 (#424)'] if not res['h1'] and a.state in ('default', 'empty') else []) \
                                 + (['still loading'] if res['loading'] and a.state != 'loading' else []) \
                                 + (['load-failed card missing'] if a.state == 'error' and not res['failed'] else [])
                             failures += bool(problems)
@@ -154,7 +154,6 @@ def main():
         shutil.rmtree(tmp, ignore_errors=True)
     (out / 'report.json').write_text(json.dumps(results, indent=1))
     lines = [f'# Carlos UI sweep ({a.state}): {len(results)} pages, {failures} with problems', '']
-    if no_h1: lines += [f'Note: {no_h1} pages have no h1 (known gap, audit S7; not counted as a problem).', '']
     for r in results:
         if r['problems'] or r['notes']:
             lines.append(f"- {r['route']} {r['lang']} {r['mode']} {r['width']}px ({r['shot']})")

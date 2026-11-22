@@ -112,7 +112,7 @@ tr.off td{filter:saturate(.2)}/* a deselected car is greyed, never faded: opacit
 .unit.is-ref{border-color:var(--accent);background:linear-gradient(var(--ref-soft),var(--surface) 90px)}
 .unit.off{filter:saturate(.2)}
 .unit-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
-.unit-name{font-weight:700;font-size:16px;line-height:1.3;font-family:var(--font-display)}
+.unit-name{font-weight:700;font-size:16px;line-height:1.3;font-family:var(--font-display)}h1.unit-name{margin:0}
 .unit-sub{font-size:13px;color:var(--text-3)}
 .unit-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto;padding-top:8px;border-top:1px solid var(--border)}
 .hero{margin:-16px -16px 0;aspect-ratio:16/10;border-radius:var(--radius) var(--radius) 0 0;overflow:hidden;position:relative;background:var(--surface-2);display:block;border:0;padding:0;cursor:pointer;width:calc(100% + 32px)}
@@ -173,7 +173,7 @@ tr.off td{filter:saturate(.2)}/* a deselected car is greyed, never faded: opacit
 .plate{position:relative;align-self:start;padding:18px 22px;background:var(--surface-2);border:var(--border-w) solid var(--border-strong);border-radius:var(--radius-s)}
 .plate h3{margin:0 0 10px;font-size:13px;color:var(--text-3);font-weight:600}
 .plate dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:14px}
-.plate dt{color:var(--text-3)}.plate dd{margin:0;font-variant-numeric:tabular-nums;font-family:var(--readout);text-align:right;overflow-wrap:anywhere}
+.plate dt{color:var(--text-3)}.plate dd{margin:0;font-variant-numeric:tabular-nums;font-family:var(--readout);text-align:right;overflow-wrap:anywhere}.plate dd .tag{white-space:normal}/* a nowrap tag widened the value column past the card (#421) */
 .plate dd.hi{font-size:22px;font-weight:700;line-height:1.1}
 /* "Your Carlos score" (issue #110): a ring split by criteria with a notch at the average; number and word in the rating
    colour; theme tokens only; the arcs turn in once on open */
@@ -215,7 +215,7 @@ tr.off td{filter:saturate(.2)}/* a deselected car is greyed, never faded: opacit
 @media (max-width:860px){.dossier-top{grid-template-columns:1fr}}
 /* the Carlos score card sits above the spec plate, outside it; the cost per month is a strip at the top of the plate (issue #80) */
 .plate-cost{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin:0 0 12px;padding:0;color:var(--text)}
-.plate-cost span{font-size:28px;line-height:1.1;font-weight:700;text-transform:uppercase;letter-spacing:.02em}.plate-cost b small{font-size:.5em;font-weight:600;margin-left:2px}.plate-cost b{font-family:var(--readout);font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.plate-cost span{font-size:28px;line-height:1.1;font-weight:700;text-transform:uppercase;letter-spacing:.02em}.plate-cost b small{font-size:.5em;font-weight:600;margin-left:2px}.plate-cost b{font-family:var(--readout);font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums;max-width:100%;overflow-wrap:break-word}.plate-cost b .tag{white-space:normal}/* the "(unvollständig)" tag wraps under the figure instead of running past the card (#421) */
 .dossier-side{display:flex;flex-direction:column;gap:12px;align-self:start;min-width:0}.dossier-side>.plate{align-self:stretch}
 
 /* compare bar and views */
@@ -318,7 +318,7 @@ details.formula{padding:14px 16px}
 .rail li{flex:1;min-width:0}
 .rail button{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:6px;background:none;border:0;border-top:3px solid var(--border);padding:8px 2px 0;color:var(--text-3);cursor:pointer;text-align:left;font-size:12px;font-weight:600}
 .rail button:disabled{cursor:default}
-.rail .n{font-size:11px}.rail .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.rail .n{font-size:11px}.rail .l{max-width:100%;overflow-wrap:break-word}/* step names wrap instead of an ellipsis that cuts "Optional" (#422) */
 .rail li.done button{border-top-color:var(--accent);color:var(--text-2)}
 .rail li[aria-current=step] button{border-top-color:var(--accent);color:var(--text)}
 .setup-step h2{font-size:clamp(1.5rem,1.2rem + 1.2vw,2rem);outline:none}
@@ -484,7 +484,8 @@ main:focus{outline:none}
   nav.main{-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
   .selbar b{flex-basis:100%}
   .sr-legend span{white-space:normal;overflow:visible}
-  .tablewrap td:first-child{min-width:170px}
+  .tablewrap:not(.ov-wrap) td:first-child{min-width:170px}/* the overview table has a narrow checkbox first (#423) */
+  .ov-wrap{-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}/* scroll cue: the table runs past the phone edge */
   /* the chart's labels are 11 units in a 1100-wide viewBox: under 640 px they draw at ~6 px, so the table below it (same numbers) is the phone view */
   .be-wrap{display:none}
 }
