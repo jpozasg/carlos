@@ -232,7 +232,9 @@ def check_unit_write(c, req, table, row_id, data):
             levels = [_level(dict(base)), _level({**dict(base), **data})]
             if any(col is None for col, _ in levels):
                 raise NotAllowed(f'{table} id={row_id} has no level (a global default or a shared source): {unit} does not change it')
-    chain = variant_chain(c, req['listing_id']) if levels and req['listing_id'] else []
+        elif base is not None:  # an account's own row: a level it is moved to (a listing's variant, a source of its car) stays on the car's chain
+            levels = [(k, data[k]) for k in config.LEVEL_COLUMNS if data.get(k) is not None]
+    chain =variant_chain(c, req['listing_id']) if levels and req['listing_id'] else []
     for col, lid in levels:
         if col is not None and [col, lid] not in chain:
             raise NotAllowed(f"{col}={lid} is outside the variant of listing {req['listing_id']}: {unit} writes only on that car's levels")

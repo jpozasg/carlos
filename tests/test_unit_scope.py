@@ -103,6 +103,13 @@ class UnitScopeTest(unittest.TestCase):
             st, e = self.api('CAPTURE', 'PATCH', f'agent/{table}/{rid}', {'status': 'PARTIAL'} if table != 'sources' else {'quality': 'A'})
             self.assertEqual(st, 403, (table, e)); self.assertIn('CAPTURE does not change', e['error'])
 
+    def test_own_rows_moved_off_the_cars_chain_are_refused(self):  # round 2 finding B: a level move of an owned row stays on the car's chain
+        self.assertEqual(self.api('LISTING', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': V_B})[0], 403)   # a foreign variant re-point
+        self.assertEqual(self.sql('SELECT vehicle_id FROM listings WHERE id=?', (CAR_A,)), [(V_A,)])
+        self.assertEqual(self.api('LISTING', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': V_A, 'price_eur': 5900})[0], 200)
+        self.assertEqual(self.api('LISTING', 'PATCH', f'agent/sources/{SRC_LISTING}', {'engine_id': E_B})[0], 403)  # the own source moved to another car's engine
+        self.assertEqual(self.sql('SELECT engine_id FROM sources WHERE id=?', (SRC_LISTING,)), [(None,)])
+
     def test_retired_units_and_an_unlisted_unit_are_closed(self):  # owner decision 2026-11-22: the single-run units are refused
         st, e = self.api('VARIANT', 'PATCH', f'agent/engines/{E_B}', {'notes': 'retired unit'})
         self.assertEqual(st, 403, e); self.assertIn('retired', e['error'])
