@@ -1,5 +1,7 @@
 # AGENTS.md — how Carlos works and how agents work on it
 
+> Short guide for every agent (start, fixed rules, skill routing, workflow, common mistakes): [`docs/guide-agents.md`](docs/guide-agents.md).
+
 Carlos compares the real cost of used cars for sale against the car an account already owns. This file is the contract for every agent (and person) that fills in data, changes code or runs the research. Read it whole before doing anything; then `README.md`, `docs/data-model.md`, `docs/api.md`, `docs/ranking.md`, `docs/cost-research-protocol.md`, `docs/browser-tasks.md` and `docs/frontend.md` as the task needs.
 
 ## Principles
