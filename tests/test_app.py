@@ -1942,6 +1942,14 @@ class AppTest(unittest.TestCase):
             self.assertEqual(re.findall(r'\son(?:click|change|input|submit|load|error)\s*=\s*\\?["\']', js.read_text()), [], js.name)
         self.assertIn("location.protocol === 'https:' ? '; Secure'", (config.STATIC / 'js' / 'app.js').read_text())   # the carlos_view cookie
 
+    def test_login_page_has_landmarks_and_loads_its_strings(self):
+        """The sign-in page has one h1 and a main, and loads its strings as a module from the app's i18n file."""
+        html = (config.STATIC / 'auth.html').read_text()
+        self.assertEqual(html.count('<h1'), 1)
+        self.assertIn('<main>', html)
+        self.assertIn('<script type="module" src="/static/js/auth.js">', html)
+        self.assertIn("from './i18n.js'", (config.STATIC / 'js' / 'auth.js').read_text())
+
     def test_negative_and_oversized_content_length(self):
         head = 'POST /api/auth/login HTTP/1.0\r\nContent-Type: application/json\r\nContent-Length: %s\r\n\r\n'
         self.assertIn(' 400 ', self.raw_http(head % '-1'))                              # answered at once, no wait for a body
