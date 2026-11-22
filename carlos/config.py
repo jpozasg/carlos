@@ -22,6 +22,8 @@ IMAGE_TYPES = {b'\xff\xd8\xff': ('image/jpeg', 'jpg'), b'\x89PNG': ('image/png',
 TCO_COMPONENTS = ['fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres', 'purchase_sale', 'depreciation']
 RUNNING_COMPONENTS = ('fuel', 'insurance', 'tax', 'maintenance', 'repairs', 'tyres')
 UNIT_COST_CATEGORIES = ['repairs', 'maintenance', 'tyres', 'purchase_sale']
+# Standard workshop labour rate, EUR per hour, for every car and every estimate (owner, 2026-11-22; protocol, Period and shared conventions).
+WORKSHOP_LABOUR_EUR_PER_H = 100
 # Reliability (issue #54): every weak point belongs to one part; each part counts its RELIABILITY_TOP worst points, so
 # documenting more mild issues never makes a car look worse, only a more severe finding does. Higher is better:
 # each part keeps RELIABILITY_PART_MAX minus those points, the score is the sum of the parts (max 36).

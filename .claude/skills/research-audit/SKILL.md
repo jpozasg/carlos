@@ -53,7 +53,7 @@ Every `ESTIMATED` row says how in `notes`; a bare "estimated" is a defect (`ESTI
 ```
 est: parts <EUR> (<source id/URL or "sibling <job> on <engine>">) + <h> h x <rate> EUR/h (<where the hours come from>); basis: <what it was derived from>; alt: <other figure if any>
 ```
-Every risk and fault gets a price, estimated when nothing better exists (AGENTS.md). Leave NULL for consumption, tax and insurance. Labour rate: the protocol says about 100 EUR/h, `docs/prompts/units/research.md` says 90 EUR/h (C2); state the rate you used. A maintenance job price nobody found: AGENTS.md and the protocol keep it NULL (never the other price, to-do), `units/research.md` item 2 says estimate it (C15). That is open: do not decide it in a review, ask the owner; in the meantime check that every car got the same treatment.
+Every risk and fault gets a price, estimated when nothing better exists (AGENTS.md). Leave NULL for consumption, tax and insurance. Labour rate: EUR 100/h everywhere (protocol, Period and shared conventions; C2 resolved); state the rate you used. A maintenance job price nobody found: AGENTS.md and the protocol keep it NULL (never the other price, to-do), `units/research.md` item 2 says estimate it (C15). That is open: do not decide it in a review, ask the owner; in the meantime check that every car got the same treatment.
 
 ## 5. Prompt change protocol
 Any edit to a prompt, the protocol or the contract is tested by re-running golden cars and diffing, before merge. Steps and what to compare: `references/prompt-change-protocol.md`. It lists steps only; run nothing against the real data directory or during an owner session without the owner's OK.
