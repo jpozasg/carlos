@@ -1760,9 +1760,9 @@ class AppTest(unittest.TestCase):
         self.assertEqual(post({'fuel_price_date': 'yesterday'}), 400)
         self.assertEqual(post({'fuel_price_eur_l': float('inf')}), 400)
         self.assertEqual(post({'annual_km': 1}, 'text/plain'), 415)
-        st, p = self.req('POST', '/api/parameters', {'annual_km': 12000, 'sf_class': '  ', 'driver_age': None})
+        st, p = self.req('POST', '/api/parameters', {'annual_km': 12000, 'postal_code': '  '})
         self.assertEqual(st, 200)
-        self.assertEqual((p['annual_km'], p['sf_class'], p['driver_age']), (12000, None, None))
+        self.assertEqual((p['annual_km'], p['postal_code']), (12000, None))
         self.assertTrue(self.req('GET', '/api/tco')[1]['fuel_price_stale'] is False)
         self.req('POST', '/api/parameters', {'fuel_price_date': '2026-01-01'})
         self.assertTrue(self.req('GET', '/api/tco')[1]['fuel_price_stale'])
@@ -2137,7 +2137,7 @@ class AppTest(unittest.TestCase):
     def test_request_token_reads_an_allow_list(self):
         """M3/N6: a research run reads the research endpoints; no request token reads the profile."""
         self.sql_write("INSERT INTO project_preferences (owner_id, preference_key, preference_value) VALUES (1, 'insurance_holder_birth_date', '1980-01-01'), (1, 'diy_jobs', 'oil and filters')")
-        self.sql_write("UPDATE project_parameters SET postal_code='80331', sf_class='SF5', driver_age=45 WHERE owner_id=1")
+        self.sql_write("UPDATE project_parameters SET postal_code='80331' WHERE owner_id=1")
         rt = self.run_token('CAPTURE')
         for path in ('/api/agent/todo', '/api/todo', '/api/agent/schema', '/api/models', '/api/vehicles', f'/api/vehicles/{V_A}', '/api/generations',
                      '/api/engines', '/api/sources', '/api/listings', f'/api/listings/{CAR_A}', '/api/tco', '/api/preferences'):
