@@ -127,6 +127,45 @@ class UnitScopeTest(unittest.TestCase):
         self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': made[1]['id']})[0], 200)  # a variant this run created
         self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': V_B})[0], 403)           # and back to a foreign one: refused
 
+    def test_a_unit_writes_only_its_own_listings_rows(self):  # SEC-1: a request token patches its own car's rows, never another car's
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 200)   # its listing: the first it writes
+        self.assertEqual(self.api('CAPTURE', 'PATCH', 'agent/inspection_items/3', {'status': 'PROBLEM'})[0], 403)  # the checklist of CAR_B
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listing_events', {'listing_id': CAR_B, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'x'})[0], 403)
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_B}', {'price_eur': 1})[0], 403)
+        self.assertEqual(self.api('CAPTURE', 'PATCH', 'agent/inspection_items/1', {'status': 'PROBLEM'})[0], 200)  # its own checklist
+        self.assertEqual(self.sql('SELECT status FROM inspection_items WHERE id=3'), [('OK',)])
+        self.assertEqual(self.sql('SELECT price_eur FROM listings WHERE id=?', (CAR_B,)), [(7500,)])
+        self.assertEqual(self.api('LISTING', 'PATCH', 'agent/inspection_items/3', {'status': 'PROBLEM'})[0], 403)  # a request with its listing set
+        self.assertEqual(self.api('LISTING', 'PATCH', 'agent/inspection_items/2', {'status': 'PROBLEM'})[0], 200)
+
+    def test_a_capture_listing_names_only_a_variant_it_created(self):  # SEC-2: a new listing on a foreign variant is refused
+        new = {'listing_id': 'N1', 'url': 'https://example.test/n1', 'platform': 'Test', 'source_id': SRC_LISTING, 'listing_status': 'UNDER REVIEW',
+               'is_reference': 0, 'last_checked': fx.TODAY, 'price_eur': 100}
+        st, e = self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'vehicle_id': V_B})
+        self.assertEqual(st, 403, e); self.assertIn('outside the variant', e['error'])
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'vehicle_id': V_A})[0], 403)   # an existing variant it did not create
+        self.assertEqual(self.sql("SELECT count(*) FROM listings WHERE listing_id='N1'"), [(0,)])
+        self.tokens['ADMIN'] = TOKEN
+        made = self.api('CAPTURE', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Made 1.4', 'transmission': 'Manual',
+                                                              'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                              'hsn': '9999', 'tsn': 'EEE', 'technical_status': 'VERIFIED'})[1]['id']
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'vehicle_id': made})[0], 201)   # the variant this run created
+
+    def test_a_capture_reusing_a_known_variant_is_logged_and_may_list_on_it(self):  # SEC-2: a reuse by HSN/TSN is the run's own link
+        self.tokens['ADMIN'] = TOKEN
+        known = self.api('ADMIN', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Known 1.4', 'transmission': 'Manual',
+                                                             'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                             'hsn': '6161', 'tsn': 'KKK', 'technical_status': 'VERIFIED'})[1]['id']
+        st, e = self.api('CAPTURE', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Known 1.4', 'transmission': 'Manual',
+                                                                  'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                                  'hsn': '6161', 'tsn': 'KKK', 'technical_status': 'VERIFIED'})
+        self.assertEqual((st, e.get('id'), e.get('existing')), (200, known, True))
+        self.assertEqual(self.sql("SELECT row_id, action FROM change_log WHERE request_id=101 AND table_name='vehicles'"), [(known, 'reuse')])
+        new = {'listing_id': 'R1', 'url': 'https://example.test/r1', 'platform': 'Test', 'source_id': SRC_LISTING, 'listing_status': 'UNDER REVIEW',
+               'is_reference': 0, 'last_checked': fx.TODAY, 'price_eur': 100, 'vehicle_id': known}
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', new)[0], 201)   # the reused variant
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'listing_id': 'R2', 'vehicle_id': V_B})[0], 403)   # a foreign one still
+
     def test_retired_units_and_an_unlisted_unit_are_closed(self):  # owner decision 2026-11-22: the single-run units are refused
         st, e = self.api('VARIANT', 'PATCH', f'agent/engines/{E_B}', {'notes': 'retired unit'})
         self.assertEqual(st, 403, e); self.assertIn('retired', e['error'])
