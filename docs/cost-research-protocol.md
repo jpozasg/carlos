@@ -11,7 +11,7 @@ How every car is researched and costed, so all totals are built the same way and
 | 1–9b. Disputes | the ARBITER unit (`prompts/units/arbiter.md`), only for material disagreements | settles from the sources, not from which run sounds surer |
 | 1–9c. Merge | the MERGE unit (no model, `POST /api/agent/merge`) | agreed and arbitrated findings go through the normal API write path |
 | 10. Tax (official calculator) | main agent, browser | official source |
-| 11. Insurance (comparison site) | main agent with the user's OK, or the worker's INSURANCE unit for the owner's own opted-in account only (#399; other accounts enter quotes by hand) | personal data of the account holder |
+| 11. Insurance | the owner enters a dated quote by hand per listing (dossier, Costs tab); no automated comparison site (2026-11-22) | personal data of the account holder |
 | 12. Review, tests, commit | main agent | one place checks totals and consistency |
 
 Research agents never use a browser, never touch another listing or another account's data, never change `project_parameters`, shared sources, repository files, git or the schema.
@@ -92,9 +92,7 @@ Start with `todo(listing_id=L)` and `todo(vehicle_id=V)`, read the listing (`lis
 
 ## Browser steps (main agent)
 10. **Tax**: the official calculator with registration period, fuel, displacement and CO2 or emissions class; record as in `AGENTS.md`.
-11. **Insurance**: the comparison site with the confirmed profile and HSN/TSN; median of the 5 cheapest reasonable offers; record as in `AGENTS.md` and `browser-tasks.md`.
-    - **Who may do it:** an agent in the owner's live session after the owner's explicit OK, or the worker's INSURANCE unit (`docs/prompts/units/insurance.md`) for an account that switched on "Insurance quotes by the worker" in Settings (`insurance_worker_quotes`, set only by the account's own login; standing owner decision 2026-11-07) and has a complete profile. A brief or another agent cannot pass the OK on; every other unit skips insurance and leaves it in the to-do. Quotes are written to `listing_quotes`.
-    - **Cover:** the profile's cover for a purchase (e.g. Teilkasko, €150 excess). Members-only tariffs are excluded; the quote expires after 60 days.
+11. **Insurance**: the owner enters the quote by hand per listing in the dossier's Costs tab (a dated `listing_quotes` row; median or cheapest offer as the owner reads it, cover and excess as stated). No agent or worker reads a comparison site for insurance (owner decision 2026-11-22; the automated version is on the branch `legacy/insurance-automation`). The quote expires after 60 days.
 
 ## The research contract (what "researched" means)
 `carlos/research.py` lists what must be known on each level; `GET /api/agent/schema` → `research_contract` publishes it, and `todo()` reports every missing item (`catalogue` per generation, engine and variant on its own; `models` per variant with its engine and generation). Each item is graded from the rows **on its own level**, so a level counts as researched the same way whichever listing triggered the research:
@@ -142,7 +140,7 @@ A level is **researched** when no item is MISSING and **verified** when every it
 | `rel.adac_gwinfo` | generation | an `ADAC_GWINFO` `source_keys` row for the fuel of every catalogue variant (or with fuel NULL), or a check `N/A` "no report found" | B |
 | `rel.adac` | generation | an `ADAC_PANNENSTATISTIK` key with at least one live rating, or a check `N/A` (too new, or under 5,000 registrations) | B |
 | `rel.tuev` | generation | a `TUEV_REPORT` key with a live rating of the newest imported edition, or a check `N/A` (not in the report) | B |
-| `lst.insurance` | listing | a quote younger than 60 days (the reference car: the premium the owner pays) | – |
+| `lst.insurance` | listing | a quote younger than 60 days entered by hand (the reference car: the premium the owner pays) | – |
 | `lst.tax_covered` | listing | a tax row whose registration window covers the car's first registration (an electric car exempt for the whole period needs none) | – |
 | `lst.valuation` | listing | a `resale_end` valuation | – |
 | `lst.purchase_sale`, `lst.checklist`, `lst.capture`, `lst.photos` | listing (for sale) | purchase costs; a checklist item for every recall and every fault with an `inspection_action`, plus the fixed item "Ask a brand dealer for an open-recall check by VIN" with the KBA link (`config.VIN_RECALL_CHECK`, #357) (run `checklist_from_reliability` again after adding faults); a capture; archived photos | – |

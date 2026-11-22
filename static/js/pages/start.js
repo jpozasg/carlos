@@ -1,6 +1,6 @@
-// Setup wizard (#/start, issue #13): everything Carlos and the research agents need from the account holder, one topic
-// per step, prefilled from what is stored. Saves through the same API as Settings: project_parameters for the
-// calculation and the insurance profile, project_preferences for search, workshop and the extra insurance answers.
+// Setup wizard (#/start, issue #13): everything Carlos needs from the account holder, one topic per step, prefilled from
+// what is stored. Saves through the same API as Settings: project_parameters for the calculation and the search origin,
+// project_preferences for search, workshop and charging. Insurance is not asked here: quotes are entered per listing.
 import { S, go, loadAll, renderShell, current } from '../app.js';
 import { get, post } from '../api.js';
 import { t } from '../i18n.js';
@@ -12,31 +12,15 @@ const CHOICE = {
   driving_mix: { town: 'Mostly town', mixed: 'Mixed', motorway: 'Mostly motorway' },
   preferred_fuel: { any: 'Any', petrol: 'Petrol', diesel: 'Diesel', hybrid: 'Hybrid', phev: 'Plug-in hybrid', electric: 'Electric' },
   preferred_transmission: { any: 'Any', manual: 'Manual', automatic: 'Automatic' },
-  insurance_claims_3y: { none: '0', one: '1', more: '2 or more' },
-  insurance_parking: { street: 'Street', carport: 'Carport', garage: 'Garage', private: 'Private ground' },
-  insurance_usage: { private: 'Private (including commuting)', business: 'Business only', both: 'Private and business' },  // as CHECK24 asks
-  insurance_main_user: { holder: 'Policyholder', driver2: 'Driver 2', other: 'Someone else' },
-  insurance_keeper: { holder: 'Policyholder', driver2: 'Driver 2', other: 'Someone else' },
-  insurance_cancelled: { no: 'No', yes: 'Yes' },
-  insurance_seasonal_plate: { no: 'No', yes: 'Yes' },
-  insurance_workshop_binding: { either: 'Either', yes: 'Yes', no: 'No' },
 };
-// People on the policy (CHECK24 "Versicherungsnehmer" and "Fahrer"): codes stored as they are; docs/data-model.md
-const PERSON = { gender: ['female', 'male', 'diverse'], licence_country: ['germany', 'eu', 'other'],
-  marital: ['single', 'married', 'partnership', 'divorced', 'widowed'],
-  occupation: ['employee', 'worker', 'public_service', 'civil_servant', 'self_employed', 'student', 'trainee', 'retired', 'homemaker', 'not_working'],
-  relationship: ['partner', 'child', 'other'], yesno: ['yes', 'no'] };
-const DISCOUNTS = ['homeowner', 'children', 'transit_pass', 'bahncard', 'club', 'liability', 'household', 'legal', 'accident', 'other_policy'];
-const PARAM_CHOICE = { purchase_mode: ['cash', 'financing'], insurance_cover: ['Haftpflicht', 'Teilkasko', 'Vollkasko'],
-  home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'] };  // home_charging: electric cars (#121); leasing was removed: second-hand purchases only (#165)
+const PARAM_CHOICE = { purchase_mode: ['cash', 'financing'], home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'] };  // home_charging: electric cars (#121); leasing was removed: second-hand purchases only (#165)
 const DIY = { oil: 'oil and filters', plugs: 'spark plugs', service: 'yearly service', brakes: 'brake pads and discs', battery: 'battery',
   bulbs: 'bulbs', wipers: 'wipers', coolant: 'coolant', timing: 'timing belt or chain', clutch: 'clutch' };
 const DIY_DEFAULT = ['oil', 'plugs', 'service', 'brakes', 'battery', 'bulbs', 'wipers'];  // docs/cost-research-protocol.md
-const SF = ['SF 0', 'SF 1/2', ...Array.from({ length: 35 }, (_, i) => 'SF ' + (i + 1)), 'M', 'S'];
-const STEPS = ['drive', 'money', 'search', 'drivers', 'insurance', 'workshop', 'charging', 'priorities', 'done'];  // charging after workshop keeps the older ?step= links
-const OPTIONAL = ['drivers', 'insurance', 'workshop', 'charging'];  // a car ranks without them; the answers they give sharpen costs and quotes
+const STEPS = ['drive', 'money', 'search', 'workshop', 'charging', 'priorities', 'done'];  // the index is in the URL (#/start?step=n)
+const OPTIONAL = ['workshop', 'charging'];  // a car ranks without them; the answers they give sharpen the costs
 
-let root, step = 0, prefs = {}, drivers = [], finishing = false;
+let root, step = 0, prefs = {}, finishing = false;
 const P = k => S.saved?.[k] == null ? '' : String(S.saved[k]).replace(/\.0$/, '');
 const field = (id, label, control, hint = '') => `<div class="field"><label for="${id}">${label}</label>${control}${hint ? `<p class="hint">${hint}</p>` : ''}</div>`;
 // one inputmode per field: numeric for whole numbers, decimal where the value can have a fraction (prices per litre or kWh)
@@ -50,35 +34,6 @@ const prefChoice = (k, label, hint) => {
   const cur = prefs[k] ?? '', known = Object.values(CHOICE[k]).includes(cur);
   return group(k, label, choice(k, Object.entries(CHOICE[k]), cur, c => `o_${k}_${c}`) + (cur && !known ? `<p class="hint">${t('kept_note', { v: esc(cur) })}</p>` : ''), hint);
 };
-const sel = (id, opts, cur, lbl) => `<select id="${id}"><option value="">—</option>${opts.map(o => `<option value="${o}" ${o === cur ? 'selected' : ''}>${esc(t(lbl(o)))}</option>`).join('')}</select>`;
-const codeChoice = (id, opts, cur, lbl) => choice(id, opts.map(o => [o, o]), cur, lbl);
-function personFields(px, d, holder, first = '') {  // px: id prefix; d: stored values; first: an extra leading field
-  return `<div class="fields two">${first}
-    ${group(px + 'gender', t('p_gender'), codeChoice(px + 'gender', PERSON.gender, d.gender, c => 'o_gender_' + c))}
-    ${field(px + 'birth_date', t('p_birth_date'), `<input id="${px}birth_date" type="date" value="${esc(d.birth_date ?? '')}" max="${new Date().toISOString().slice(0, 10)}">`)}
-    ${field(px + 'licence_date', t('p_licence_date'), `<input id="${px}licence_date" type="date" value="${esc(d.licence_date ?? '')}">`, holder ? t('h_licence_date') : '')}
-    ${field(px + 'occupation', t('p_occupation'), sel(px + 'occupation', PERSON.occupation, d.occupation, c => 'o_occ_' + c), t('h_occupation'))}
-    ${field(px + 'marital', t('p_marital'), sel(px + 'marital', PERSON.marital, d.marital, c => 'o_marital_' + c))}
-    ${holder ? group(px + 'licence_country', t('p_licence_country'), codeChoice(px + 'licence_country', PERSON.licence_country, d.licence_country, c => 'o_lc_' + c)) : ''}
-    ${group(px + 'bf17', t('p_bf17'), codeChoice(px + 'bf17', PERSON.yesno, d.bf17, c => 'o_' + c))}
-    ${field(px + 'points', t('p_points'), number(px + 'points', d.points ?? '', 'min="0" max="20"'), t('h_points'))}
-    ${group(px + 'other_car', t('p_other_car'), codeChoice(px + 'other_car', PERSON.yesno, d.other_car, c => 'o_' + c), t('h_other_car'))}</div>`;
-}
-const HOLDER_KEYS = ['gender', 'birth_date', 'licence_date', 'occupation', 'marital', 'licence_country', 'bf17', 'points', 'other_car'];
-const holderStored = () => Object.fromEntries(HOLDER_KEYS.map(k => [k, prefs['insurance_holder_' + k] ?? '']));
-function readPerson(px, keys) {
-  return Object.fromEntries(keys.map(k => [k, (root.querySelector(`input[name="${px}${k}"]:checked`)?.value ?? $(px + k)?.value ?? '').trim()]));
-}
-const DRIVER_KEYS = ['relationship', 'household', ...HOLDER_KEYS.filter(k => k !== 'licence_country')];
-function readDrivers() { return [...root.querySelectorAll('[data-driver]')].map(el => readPerson('d' + el.dataset.driver + '_', DRIVER_KEYS)); }
-const ageOn = (birth, today = new Date()) => { const b = new Date(birth + 'T00:00'); if (isNaN(b)) return null;
-  return today.getFullYear() - b.getFullYear() - (today < new Date(today.getFullYear(), b.getMonth(), b.getDate()) ? 1 : 0); };
-function driverCards() {
-  return drivers.map((d, i) => `<fieldset class="person" data-driver="${i}"><legend>${t('driver_n', { n: i + 2 })}</legend>
-    <div class="fields two">${group(`d${i}_relationship`, t('p_relationship'), codeChoice(`d${i}_relationship`, PERSON.relationship, d.relationship, c => 'o_rel_' + c))}
-      ${group(`d${i}_household`, t('p_household'), codeChoice(`d${i}_household`, PERSON.yesno, d.household, c => 'o_' + c))}</div>
-    ${personFields(`d${i}_`, d, false)}<button class="btn ghost sm" type="button" data-rm-driver="${i}">${t('driver_remove')}</button></fieldset>`).join('');
-}
 const radio = id => root.querySelector(`input[name="${id}"]:checked`)?.value ?? null;
 const val = id => { const e = $(id); return e ? e.value.trim() : null; };
 
@@ -98,36 +53,11 @@ const VIEWS = {
       ${field('diesel_price_eur_l', t('p_diesel_price'), number('diesel_price_eur_l', P('diesel_price_eur_l'), 'step=".01" min="0.01"', 'decimal'))}</div>
     <p class="hint">${t('h_fuel')}</p>`,
   search: () => `<div class="fields two">
+      ${field('postal_code', t('p_postal'), text('postal_code', P('postal_code'), 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code"'), t('h_postal'))}
       ${field('search_center', t('p_search_center'), text('search_center', prefs.search_center ?? '', 'maxlength="100" autocomplete="address-level2"'), t('h_search_center'))}
       ${field('search_radius', t('p_search_radius'), `<select id="search_radius">${['', '25', '50', '100', '200', '300', 'Any'].map(v => `<option value="${v}" ${String(prefs.search_radius ?? '') === v ? 'selected' : ''}>${v === '' ? '—' : v === 'Any' ? t('o_any_distance') : v + ' km'}</option>`).join('')}${prefs.search_radius && !['25', '50', '100', '200', '300', 'Any'].includes(prefs.search_radius) ? `<option selected value="${esc(prefs.search_radius)}">${esc(prefs.search_radius)}</option>` : ''}</select>`)}</div>
     ${prefChoice('preferred_fuel', t('p_pref_fuel'))}${prefChoice('preferred_transmission', t('p_pref_gearbox'))}
     ${prefs.preferred_engine ? `<p class="hint">${t('kept_note', { v: esc(prefs.preferred_engine) })}</p>` : ''}`,
-  drivers: () => `<p class="note">${t('ins_privacy')}</p>
-    <fieldset class="person"><legend>${t('holder_title')}</legend>
-      ${personFields('h_', holderStored(), true, field('postal_code', t('p_postal'), text('postal_code', P('postal_code'), 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code"'), t('h_postal')))}</fieldset>
-    <div id="driverList">${driverCards()}</div>
-    <div class="row"><button class="btn ghost" type="button" data-add-driver>${t('driver_add')}</button><span class="hint" style="margin:0">${t('h_drivers')}</span></div>
-    <div class="fields two">${prefChoice('insurance_main_user', t('p_main_user'))}${prefChoice('insurance_keeper', t('p_keeper'), t('h_keeper'))}</div>`,
-  insurance: () => { const disc = (prefs.insurance_discounts ?? [prefs.insurance_homeowner === 'Yes' ? 'homeowner' : '', prefs.insurance_club_member === 'Yes' ? 'club' : ''].filter(Boolean).join(',')).split(',').map(x => x.trim());
-    return `<div class="fields two">
-      ${field('sf_class', t('p_sf'), `<select id="sf_class">${['', ...SF, ...(P('sf_class') && !SF.includes(P('sf_class')) ? [P('sf_class')] : [])].map(v => `<option value="${esc(v)}" ${v === P('sf_class') ? 'selected' : ''}>${v || '—'}</option>`).join('')}</select>`, t('h_sf'))}
-      ${field('insurance_start_date', t('p_ins_start'), `<input id="insurance_start_date" type="date" value="${esc(prefs.insurance_start_date ?? '')}">`, t('h_ins_start'))}</div>
-    ${group('insurance_cover', t('p_cover'), choice('insurance_cover', PARAM_CHOICE.insurance_cover.map(v => [v, v]), P('insurance_cover'), c => 'cover_' + c), t('h_cover'))}
-    <div class="fields two">
-      ${field('insurance_deductible_eur', t('p_deductible'), `<select id="insurance_deductible_eur">${['', '0', '150', '300', '500', '1000'].map(v => `<option value="${v}" ${v === P('insurance_deductible_eur') ? 'selected' : ''}>${v === '' ? '—' : euro(+v)}</option>`).join('')}</select>`)}
-      ${prefChoice('insurance_workshop_binding', t('p_workshop_binding'), t('h_workshop_binding'))}</div>
-    ${prefChoice('insurance_claims_3y', t('p_claims'))}
-    <div class="fields two">
-      ${field('insurance_previous_insurer', t('p_prev_insurer'), text('insurance_previous_insurer', prefs.insurance_previous_insurer ?? '', 'maxlength="80"'), t('h_prev_insurer'))}
-      ${field('insurance_previous_years', t('p_prev_years'), number('insurance_previous_years', prefs.insurance_previous_years ?? '', 'min="0" max="80"'))}</div>
-    ${prefChoice('insurance_cancelled', t('p_cancelled'))}
-    ${prefChoice('insurance_usage', t('p_usage'))}${prefChoice('insurance_parking', t('p_parking'))}${prefChoice('insurance_seasonal_plate', t('p_seasonal'))}
-    <div class="role-group" role="group" aria-labelledby="disc-l"><span class="label" id="disc-l">${t('p_discounts')}</span>
-      <div class="chips">${DISCOUNTS.map(k => `<label class="chk"><input type="checkbox" value="${k}" data-disc ${disc.includes(k) ? 'checked' : ''}><span>${t('disc_' + k)}</span></label>`).join('')}</div></div>
-    <div class="fields two">
-      ${field('insurance_club_name', t('p_club_name'), text('insurance_club_name', prefs.insurance_club_name ?? '', 'maxlength="60" placeholder="ADAC"'))}
-      ${field('insurance_liability_insurer', t('p_liability_insurer'), text('insurance_liability_insurer', prefs.insurance_liability_insurer ?? '', 'maxlength="60"'))}
-      ${field('current_premium_eur_year', t('p_premium_now'), number('current_premium_eur_year', prefs.current_premium_eur_year ?? '', 'min="0" step="1"'), t('h_premium_now'))}</div>`; },
   workshop: () => { const have = prefs.diy_jobs != null ? prefs.diy_jobs.split(',').map(s => s.trim()) : DIY_DEFAULT.map(k => DIY[k]);
     return `<div class="role-group" role="group" aria-labelledby="diy-l"><span class="label" id="diy-l">${t('p_diy')}</span>
       <div class="chips">${Object.entries(DIY).map(([k, v]) => `<label class="chk"><input type="checkbox" value="${esc(v)}" data-diy ${have.includes(v) ? 'checked' : ''}><span>${t('diy_' + k)}</span></label>`).join('')}</div></div>
@@ -149,24 +79,8 @@ function collect(name) {
     Object.assign(params, { budget_ideal_eur: num_('budget_ideal_eur'), budget_max_eur: num_('budget_max_eur'), purchase_mode: radio('purchase_mode'), fuel_price_eur_l: num_('fuel_price_eur_l'), diesel_price_eur_l: num_('diesel_price_eur_l') });
     if (String(params.fuel_price_eur_l) !== P('fuel_price_eur_l')) params.fuel_price_date = today;
     if (params.diesel_price_eur_l != null && String(params.diesel_price_eur_l) !== P('diesel_price_eur_l')) params.diesel_price_date = today; }
-  if (name === 'search') Object.assign(pr, { search_center: val('search_center'), search_radius: val('search_radius'), preferred_fuel: radio('preferred_fuel'), preferred_transmission: radio('preferred_transmission') });
-  if (name === 'drivers') {
-    const h = readPerson('h_', HOLDER_KEYS), ds = readDrivers();
-    for (const k of HOLDER_KEYS) pr['insurance_holder_' + k] = h[k];
-    for (const k of ['insurance_main_user', 'insurance_keeper']) pr[k] = radio(k);
-    pr.insurance_drivers = ds.length ? JSON.stringify(ds) : null;
-    params.postal_code = val('postal_code');
-    // the calculation's "drivers" and "youngest driver's age" follow from the people entered
-    params.drivers_count = 1 + ds.length;
-    const ages = [h, ...ds].map(p => p.birth_date && ageOn(p.birth_date)).filter(a => a != null && a >= 16);
-    if (ages.length) params.driver_age = Math.min(...ages);
-  }
-  if (name === 'insurance') {
-    Object.assign(params, { sf_class: val('sf_class'), insurance_cover: radio('insurance_cover'), insurance_deductible_eur: num_('insurance_deductible_eur') });
-    for (const k of ['insurance_start_date', 'insurance_previous_insurer', 'insurance_previous_years', 'insurance_club_name', 'insurance_liability_insurer', 'current_premium_eur_year']) pr[k] = val(k);
-    for (const k of ['insurance_claims_3y', 'insurance_cancelled', 'insurance_usage', 'insurance_parking', 'insurance_seasonal_plate', 'insurance_workshop_binding']) pr[k] = radio(k);
-    pr.insurance_discounts = [...root.querySelectorAll('[data-disc]:checked')].map(e => e.value).join(', ') || 'none';
-  }
+  if (name === 'search') { Object.assign(pr, { search_center: val('search_center'), search_radius: val('search_radius'), preferred_fuel: radio('preferred_fuel'), preferred_transmission: radio('preferred_transmission') });
+    params.postal_code = val('postal_code'); }  // the origin of the distance (costs.py)
   if (name === 'charging') { const today = new Date().toISOString().slice(0, 10);
     Object.assign(params, { home_charging: radio('home_charging'), home_charging_pct: radio('home_charging') === 'none' ? 0 : num_('home_charging_pct'), wallbox_cost_eur: num_('wallbox_cost_eur'),
       electricity_home_eur_kwh: num_('electricity_home_eur_kwh'), electricity_public_eur_kwh: num_('electricity_public_eur_kwh') });
@@ -205,9 +119,7 @@ function summary() {
   const p = S.saved, yes = v => v == null || v === '' ? `<span class="pending">${t('pending')}</span>` : esc(v);
   const rows = [[t('step_drive'), [[t('p_annual_km'), p.annual_km && num(p.annual_km, 0) + ' km'], [t('p_ownership_years'), p.ownership_years], [t('p_driving_mix'), shown('driving_mix')], [t('p_current_car'), prefs.current_car]]],
     [t('step_money'), [[t('p_budget_ideal'), p.budget_ideal_eur && euro(p.budget_ideal_eur)], [t('p_budget_max'), p.budget_max_eur && euro(p.budget_max_eur)], [t('p_purchase'), p.purchase_mode && t('pm_' + p.purchase_mode)]]],
-    [t('step_search'), [[t('p_search_center'), prefs.search_center], [t('p_search_radius'), /^\d+$/.test(prefs.search_radius ?? '') ? prefs.search_radius + ' km' : prefs.search_radius === 'Any' ? t('o_any_distance') : prefs.search_radius], [t('p_pref_fuel'), shown('preferred_fuel')], [t('p_pref_gearbox'), shown('preferred_transmission')]]],
-    [t('step_drivers'), [[t('p_postal'), p.postal_code], [t('holder_title'), [prefs.insurance_holder_gender && t('o_gender_' + prefs.insurance_holder_gender), prefs.insurance_holder_birth_date && ageOn(prefs.insurance_holder_birth_date) + ' ' + t('years_old'), prefs.insurance_holder_occupation && t('o_occ_' + prefs.insurance_holder_occupation)].filter(Boolean).join(', ')], [t('p_drivers'), p.drivers_count], [t('p_age'), p.driver_age]]],
-    [t('step_insurance'), [[t('p_sf'), p.sf_class], [t('p_cover'), p.insurance_cover && t('cover_' + p.insurance_cover)], [t('p_deductible'), p.insurance_deductible_eur != null ? euro(p.insurance_deductible_eur) : null], [t('p_claims'), shown('insurance_claims_3y')], [t('p_usage'), shown('insurance_usage')], [t('p_parking'), shown('insurance_parking')], [t('p_discounts'), prefs.insurance_discounts && prefs.insurance_discounts !== 'none' ? prefs.insurance_discounts.split(',').map(x => t('disc_' + x.trim())).join(', ') : prefs.insurance_discounts && t('none_word')]]],
+    [t('step_search'), [[t('p_search_center'), prefs.search_center], [t('p_search_radius'), /^\d+$/.test(prefs.search_radius ?? '') ? prefs.search_radius + ' km' : prefs.search_radius === 'Any' ? t('o_any_distance') : prefs.search_radius], [t('p_pref_fuel'), shown('preferred_fuel')], [t('p_pref_gearbox'), shown('preferred_transmission')], [t('p_postal'), p.postal_code]]],
     [t('step_workshop'), [[t('p_diy'), diyShown()]]],
     [t('step_charging'), [[t('p_home_charging'), p.home_charging && t('hc_' + p.home_charging)], [t('p_home_pct'), p.home_charging_pct != null ? p.home_charging_pct + ' %' : null],
       [t('p_elec_home'), p.electricity_home_eur_kwh && num(p.electricity_home_eur_kwh, 2) + '\u00a0' + t('unit_eur_kwh')], [t('p_elec_public'), p.electricity_public_eur_kwh && num(p.electricity_public_eur_kwh, 2) + '\u00a0' + t('unit_eur_kwh')]]]];
@@ -247,14 +159,11 @@ function bind() {
     else if (e.target.closest('[data-skip-step]')) move(step + 1);  // nothing is posted: answers already saved stay as they are
     else if (e.target.closest('[data-goto]')) { const to = +e.target.closest('[data-goto]').dataset.goto; if (to < step || prefs.onboarding_done) move(to); }
     else if (e.target.closest('[data-skip]')) await run(e.target.closest('[data-skip]'), finish);
-    else if (e.target.closest('[data-add-driver]')) { drivers = [...readDrivers(), {}]; $('driverList').innerHTML = driverCards(); $('driverList').lastElementChild?.querySelector('input')?.focus(); }
-    else if (e.target.closest('[data-rm-driver]')) { const i = +e.target.closest('[data-rm-driver]').dataset.rmDriver; drivers = readDrivers().filter((_, j) => j !== i); $('driverList').innerHTML = driverCards(); }
     else if (e.target.closest('[data-later]')) await run(e.target.closest('[data-later]'), async () => { await post('/api/preferences', { onboarding_done: 'skipped' }); S.prefs = { ...S.prefs, onboarding_done: 'skipped' }; go('compare'); });
   });
 }
 export async function render(main, r = current()) {
   prefs = Object.fromEntries((await get('/api/preferences')).map(x => [x.preference_key, x.preference_value]));
-  try { drivers = JSON.parse(prefs.insurance_drivers || '[]'); } catch (e) { drivers = []; }
   if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="start"></div>'; root = main.firstElementChild; bind(); }
   step = Math.min(Math.max(+(r.q.step || 0), 0), STEPS.length - 1);
   draw();

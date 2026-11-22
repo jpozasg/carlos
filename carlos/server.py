@@ -55,7 +55,6 @@ SECURITY_HEADERS = (
 # What a per-request token (the headless research run of one claimed request, #141) may read. The profile (parameters,
 # preferences, ranking answers), the disk and the queue stay closed to it (issue #383, review M3/N6).
 RUN_GET = re.compile(r'/api/(agent/(todo|schema|stage|disputes)|todo|models|vehicles(/\d+)?|generations|engines|sources|listings(/\d+)?|tco|preferences)')
-PROFILE_GET = ('/api/parameters',)  # the INSURANCE unit only (with the unfiltered /api/preferences): it fills the quote form from them
 # The profile inside /api/tco and /api/listings and /api/preferences: every other unit gets the calculation settings
 # and the DIY/driving choices it needs (agent_tools.diy_jobs, resale_rule_of_thumb), not the person.
 PROFILE_PARAMS = ('postal_code', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'drivers_count', 'driver_age',
@@ -387,11 +386,9 @@ class Handler(BaseHTTPRequestHandler):
         self.admin = self.curator = False
         if self.request is not None:  # catalogue writes as the worker always did, listing data only in the requester's account
             p = urlsplit(self.path).path
-            reads = self.command == 'GET' and (RUN_GET.fullmatch(p) or p in PROFILE_GET and self.request['unit'] == 'INSURANCE')
+            reads = self.command == 'GET' and RUN_GET.fullmatch(p)
             if admin or self.headers.get('X-Carlos-Account') or not (reads or self.command in ('POST', 'PATCH') and p.startswith('/api/agent/')):
                 raise NotAllowed("A request token reads and writes research data for the requester's account only (no admin, settings, profile, queue or deletes)")
-            if self.request['unit'] == 'INSURANCE' and not rq.owner_is_admin(c, self.request['owner_id']):
-                raise NotAllowed(rq.WORKER_QUOTES_PAUSED)  # a unit queued before the pause never reads another account's profile
             self.curator, self.uid = True, self.request['owner_id']  # curator, never admin: the token inherits no admin check
             auth.scope(c, self.uid, curator=True)
             return self.user
@@ -558,14 +555,14 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/api/engines':
                 self.send_json(rows(c, 'SELECT * FROM engines ORDER BY id'))
             elif path == '/api/parameters':
-                self.send_json(p)  # a request token reaches this only as the INSURANCE unit (require)
+                self.send_json(p)
             elif path == '/api/ui/check':
                 self.send_json({'ok': True})
             elif path == '/api/ranking':
                 self.send_json({**ranking_state(p), 'criteria': CRITERIA, 'tasks': TASKS})
             elif path == '/api/preferences':
                 self.send_json([r for r in rows(c, 'SELECT * FROM project_preferences ORDER BY preference_key')
-                                if self.request is None or self.request['unit'] == 'INSURANCE' or r['preference_key'] in RUN_PREFERENCES])
+                                if self.request is None or r['preference_key'] in RUN_PREFERENCES])
             elif path in ('/api/tco', '/api/listings'):
                 over = {k: v[-1] for k, v in query.items() if k in CALC_PARAMS}
                 p = {**p, **clean_params(over)}  # preview: overrides are validated and never stored
@@ -573,7 +570,7 @@ class Handler(BaseHTTPRequestHandler):
                 out, n = ranked_rows(c, p)
                 fuel_age = days_since(p['fuel_price_date'], datetime.date.today())
                 ranking = {**ranking_state(p), 'criteria': CRITERIA, 'tasks': TASKS, 'candidates': n}
-                if self.request is not None and self.request['unit'] != 'INSURANCE':  # no profile for a research run (M3/N6)
+                if self.request is not None:  # no profile for a research run (M3/N6)
                     p = {k: v for k, v in p.items() if k not in PROFILE_PARAMS}
                     ranking = {'criteria': CRITERIA, 'tasks': TASKS, 'candidates': n}
                 self.send_json({'parameters': p, 'preview': bool(over), 'components': config.TCO_COMPONENTS, 'listings': out,
@@ -675,15 +672,8 @@ class Handler(BaseHTTPRequestHandler):
             d = self.read_json()
             if not isinstance(d, dict) or any(not re.fullmatch(r'[a-z][a-z0-9_]{0,49}', str(k)) for k in d) or len(d) > 50:
                 raise ValueError('Expected an object of preference_key (snake_case) → value')
-            if 'insurance_worker_quotes' in d:  # consent for the worker's insurance quotes is the account's own decision
-                if re.match(r'Bearer ', self.headers.get('Authorization', '') or ''):
-                    raise NotAllowed('Consent to worker insurance quotes can only be changed by the account itself (Settings), never with a token')
-                if d['insurance_worker_quotes'] not in (None, '', 'yes'):
-                    raise ValueError("insurance_worker_quotes: 'yes' or empty (off)")
-                if d['insurance_worker_quotes'] == 'yes':
-                    if not rq.owner_is_admin(c, uid):  # until a lawyer answers (2026-11-22, #399)
-                        raise NotAllowed(rq.WORKER_QUOTES_PAUSED)
-                    d = {**d, 'insurance_worker_quotes': f'yes {datetime.date.today().isoformat()}'}
+            if d.get('insurance_worker_quotes') not in (None, ''):  # removed 2026-11-22 (CHECK24 bans automated applications): refused, a stored value may be cleared
+                raise ValueError(rq.INSURANCE_REMOVED)
             with c:
                 for k, v in d.items():
                     if v is None or str(v).strip() == '':

@@ -1,7 +1,8 @@
 # Design: two independent research runs per car, compare, arbitrate, merge (#253) and fault component codes (#221 phase 3)
 
 Status: design (Opus, 2026-11-08), owner decision 2026-11-08. Not implemented. Build it in the PRs of section 6, in order.
-**Update 2026-11-08 (#283):** by owner decision only RESEARCH_A runs per car; RESEARCH_B is created SKIPPED and the ARBITER is skipped (`research_units.SECOND_RUN = False`; `True` restores the pair). Compare and MERGE still run on the one run's staged rows.
+**Update 2026-11-22:** the INSURANCE unit named in the unit lists below was removed (owner decision: CHECK24 bans automated applications); its code is on `legacy/insurance-automation`. Insurance quotes are entered by hand per listing.
+**Update 2026-11-08 (#283):
 Everything marked **(unverified)** was not checked in code or data and must be confirmed by the PR that touches it.
 
 ## 0. Why, and what changes

@@ -1,4 +1,4 @@
-"""What a non-staged unit (CAPTURE, TAX, LISTING, INSURANCE) may write with its per-request token, and the scope of a staged run
+"""What a non-staged unit (CAPTURE, TAX, LISTING) may write with its per-request token, and the scope of a staged run
 for rows without a level (#386, finding N2). Synthetic database (tests/fixture.py), real HTTP server, no network."""
 import json, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
@@ -7,7 +7,7 @@ from carlos import auth, config, server, staging
 from tests import fixture as fx
 from tests.fixture import ADMIN, CAR_A, E_A, E_B, G1, G2, SRC_GUIDE, SRC_HU, SRC_LISTING, SRC_QUOTE, SRC_TAX_OFFICIAL, V_A, V_B, TOKEN
 
-UNITS = ('CAPTURE', 'TAX', 'LISTING', 'INSURANCE', 'RESEARCH_A', 'MERGE', 'VARIANT', 'NONE')
+UNITS = ('CAPTURE', 'TAX', 'LISTING', 'RESEARCH_A', 'MERGE', 'VARIANT', 'NONE')
 TAX = {'annual_tax_eur': 99, 'status': 'VERIFIED', 'basis': '1400 cc, 140 g/km', 'source_id': SRC_TAX_OFFICIAL}
 
 
@@ -71,22 +71,21 @@ class UnitScopeTest(unittest.TestCase):
 
     def test_a_unit_writes_only_its_own_tables(self):
         for unit, table, body in (('TAX', 'faults', {'engine_id': E_A}), ('TAX', 'maintenance_items', {'engine_id': E_A}),
-                                  ('TAX', 'unit_costs', {'listing_id': CAR_A}), ('INSURANCE', 'tax_data', {**TAX, 'vehicle_id': V_A}),
+                                  ('TAX', 'unit_costs', {'listing_id': CAR_A}),
                                   ('LISTING', 'tax_data', {**TAX, 'vehicle_id': V_A}), ('LISTING', 'faults', {'engine_id': E_A}),
-                                  ('CAPTURE', 'faults', {'engine_id': E_A}), ('CAPTURE', 'tax_data', {**TAX, 'vehicle_id': V_A}),
-                                  ('INSURANCE', 'insurance_data', {'vehicle_id': V_A})):
+                                  ('CAPTURE', 'faults', {'engine_id': E_A}), ('CAPTURE', 'tax_data', {**TAX, 'vehicle_id': V_A})):
             st, e = self.api(unit, 'POST', f'agent/{table}', body)
             self.assertEqual(st, 403, (unit, table, e)); self.assertIn(f'{unit} writes only', e['error'])
         self.assertEqual(self.api('TAX', 'PATCH', f'agent/engines/{E_A}', {'status': 'PARTIAL'})[0], 403)
         self.assertEqual(self.api('LISTING', 'PATCH', f'agent/generations/{G1}', {'status': 'PARTIAL'})[0], 403)
         self.assertEqual(self.sql('SELECT status FROM engines WHERE id=?', (E_A,)), [('VERIFIED',)])
 
-    def test_listing_and_insurance_units_do_their_work(self):
+    def test_listing_unit_does_its_work(self):
         self.assertEqual(self.api('LISTING', 'POST', 'agent/unit_costs', {'listing_id': CAR_A, 'category': 'repairs', 'item': 'Brake discs',
                                                                            'parts_eur': 120, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})[0], 201)
         self.assertEqual(self.api('LISTING', 'POST', 'agent/listing_events', {'listing_id': CAR_A, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'x'})[0], 201)
-        self.assertEqual(self.api('INSURANCE', 'POST', 'agent/listing_quotes', {'listing_id': CAR_A, 'annual_premium_eur': 777, 'premium_status': 'QUOTE',
-                                                                               'quote_date': fx.TODAY, 'source_id': SRC_QUOTE})[0], 201)
+        self.assertEqual(self.api('LISTING', 'POST', 'agent/listing_quotes', {'listing_id': CAR_A, 'annual_premium_eur': 777, 'premium_status': 'QUOTE',
+                                                                             'quote_date': fx.TODAY, 'source_id': SRC_QUOTE})[0], 403)   # quotes are entered by hand, no unit writes them
         # a source on a level of this car; a source on another car's level; a shared source without a level cannot be changed
         self.sql("INSERT INTO sources (id, engine_id, title, source_type, quality, accessed_date) VALUES (50, ?, 'Other engine guide', 'buying_guide', 'C', ?)", (E_B, fx.TODAY))
         self.assertEqual(self.api('LISTING', 'PATCH', f'agent/sources/{SRC_GUIDE}', {'limitations': 'one guide'})[0], 200)   # engine E_A: in the chain

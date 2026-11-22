@@ -77,19 +77,8 @@ def without_items(summary):
     return {k: v for k, v in summary.items() if k != 'items'}
 
 
-# What a comparison-site quote needs from the account (docs/browser-tasks.md, setup wizard Drivers/Insurance steps).
-QUOTE_PARAMS = ('postal_code', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'annual_km')
-QUOTE_PREFS = ('insurance_holder_gender', 'insurance_holder_birth_date', 'insurance_holder_licence_date', 'insurance_holder_occupation',
-               'insurance_holder_marital', 'insurance_claims_3y', 'insurance_usage', 'insurance_parking', 'insurance_start_date')
-
-
-def quote_profile_gaps(p, prefs):
-    """The parameters and preferences a comparison-site quote still needs from the account (empty: complete)."""
-    return [k for k in QUOTE_PARAMS if p.get(k) in (None, '')] + [k for k in QUOTE_PREFS if not prefs.get(k)]
-
-
 def account_todo(c, p, today):
-    """Gaps of the account itself: setup, ranking answers, fuel price, the profile an insurance quote needs."""
+    """Gaps of the account itself: setup, ranking answers, fuel price."""
     prefs = {r[0]: r[1] for r in c.execute('SELECT preference_key, preference_value FROM project_preferences')}
     t = []
     if not prefs.get('onboarding_done'):
@@ -105,7 +94,4 @@ def account_todo(c, p, today):
             age = days_since(p.get(k + '_date'), today)
             if p.get(k + '_eur_kwh') is not None and (age is None or age > config.STALE_FUEL_PRICE_DAYS):
                 t.append(f'{k.replace("_", " ")} price older than {config.STALE_FUEL_PRICE_DAYS} days or undated (Settings)')
-    missing = quote_profile_gaps(p, prefs)  # the worker's quotes are paused for other accounts (#399): no "not enabled" line
-    if missing:
-        t.append('insurance profile incomplete for quotes (ask the user or the setup Drivers/Insurance steps): ' + ', '.join(missing))
     return t

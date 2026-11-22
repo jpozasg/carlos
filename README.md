@@ -4,7 +4,7 @@
 
 Carlos is a small self-hosted web app for people choosing a car, new or used. If you already own one, you register it as the *reference*; an agent (or you) researches the cars you are interested in, and Carlos shows what each one would really cost over the years you plan to keep it: fuel, insurance, road tax, maintenance, expected repairs, tyres, purchase and sale costs and depreciation. A questionnaire turns what matters to you into ranking weights, and every number can be traced back to its source.
 
-It was built and tested with German data (the official BMF road-tax calculator, CHECK24 insurance quotes, HSN/TSN type codes, Bavarian registration and inspection fees), but nothing in the method is German: anywhere else, swap those regional sources for the local ones (`docs/cost-research-protocol.md`, `agent_tools.py` shared sources) and the same calculation works.
+It was built and tested with German data (the official BMF road-tax calculator, insurance quotes typed in by hand,
 
 **Why "Carlos"?** It is a typical Spanish name, and read with a bit of German, *Car-los* means *car-less* (*-los* = without). It was written by a Spaniard who does not have a car, to find the right one.
 
@@ -29,13 +29,13 @@ It was built and tested with German data (the official BMF road-tax calculator, 
 | **Dossier** (click a car) | Photos, listing facts and seller claims, the ranking explanation with the evidence behind it, the maintenance plan and repair risks (each row tagged with the level it comes from: variant, engine or generation), checklist, valuations, own costs, watch points, listing archive, log, sources. *Viewing mode* on a phone: tick the checklist, add notes and photos while looking at the car. |
 | **Models** | Make → model → generation → engine → variant with filters; each variant shows its listings and inherits the rows of its engine and generation. |
 | **Sources** | Every source with its quality A–D, what it supports and its limitations. |
-| **Settings** | The assumptions (km per year, years, fuel prices, budget), the insurance profile, light/dark mode, language, password, agent token (admins). |
+| **Settings** | The assumptions (km per year, years, fuel prices, budget), light/dark mode,
 | **Accounts** (admin) | Create accounts and invite links, deactivate, change roles. |
 
 ## How the numbers are built
 Per listing, over the period (km per year × years from Settings):
 - **Fuel:** real-world consumption of the exact variant (the same source for every car, the reference included) × km × fuel price (petrol or diesel; a full hybrid as petrol). Electric cars: kWh/100 km (ev-database.org's real-world estimate, the same source for every electric car) × km × the electricity price from the charging answers (home and public price weighted by the share charged at home, +10 % extra loss at a household socket), all of it +8 % charging losses (the source excludes them). Plug-in hybrids: not costed yet, fuel stays unknown.
-- **Insurance:** the latest comparison quote for the variant (median of the five cheapest reasonable offers); for the reference car, the premium you actually pay.
+- **Insurance:** the latest quote you enter by hand for each car (dated; a quote expires after 60 days); for the reference car, the premium you actually pay.
 - **Tax:** the latest known annual amount, preferably from the official calculator. Electric cars first registered by 2030-12-31 pay nothing for 10 years (until 2035-12-31 at the latest): tax counts only the months of the period after that, and is a known 0 when the whole period is exempt.
 - **Maintenance:** item schedules costed job by job as an expected value (period ÷ interval, whichever of km and months is reached first). A job due at purchase (e.g. a timing belt overdue by age) is a certain maintenance cost listed by name, and restarts its schedule. DIY jobs count parts only; DIY hours are shown, never priced.
 - **Repairs:** certain one-off repairs of the listing (present faults, listed by name) plus the expected cost of each known risk (probability × share of its km window driven in the period). Every risk must carry a price; an unpriced risk, no risk research or no mileage makes the component unknown.
