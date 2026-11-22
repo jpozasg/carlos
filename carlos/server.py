@@ -738,6 +738,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'DELETE /api/agent/<table>/<id> deletes one row (ask the owner first)'}, 405); return
             if not self.admin:
                 check_writable(c, agent[1], int(agent[2]), {})
+            if self.request is not None:  # a non-staged unit: the scope of its edits (SR-1)
+                staging.check_unit_delete(c, self.request, agent[1], int(agent[2]))
             others = linked_accounts(c, agent[1], int(agent[2]))
             removed = agent_delete(c, agent[1], int(agent[2]), uid, self.request_id())
             self.export_all(c, uid, others)

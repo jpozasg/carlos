@@ -239,6 +239,14 @@ def _own_listing(c, req):
     return first[0] if first else None
 
 
+def _on_own_listing(unit, own, table, lid):
+    """Raises NotAllowed unless `lid` (a row's listing) is the listing a non-staged unit works on (`own`, SEC-1)."""
+    if lid is not None and lid != own:
+        if own is None:  # no claim yet: a capture claims only a listing it inserted (SEC-A)
+            raise NotAllowed(f'{table} belongs to listing {lid}: {unit} has not inserted a listing of its own in this run')
+        raise NotAllowed(f'{table} belongs to listing {lid}: {unit} works on listing {own} only')
+
+
 def check_unit_write(c, req, table, row_id, data):
     """The generic /api/agent write of a non-staged unit (CAPTURE, TAX, LISTING; `req` is its research_requests row):
     its own tables only; a row or a new row that belongs to a listing only on the request's own listing (SEC-1); a new row on a
@@ -254,10 +262,7 @@ def check_unit_write(c, req, table, row_id, data):
     own = _own_listing(c, req)
 
     def on_own_listing(lid):
-        if lid is not None and lid != own:
-            if own is None:  # no claim yet: a capture claims only a listing it inserted (SEC-A)
-                raise NotAllowed(f'{table} belongs to listing {lid}: {unit} has not inserted a listing of its own in this run')
-            raise NotAllowed(f'{table} belongs to listing {lid}: {unit} works on listing {own} only')
+        _on_own_listing(unit, own, table, lid)
     levels = []  # every level column a row names, not only the first (SEC-C); the merged row for an edit (SEC-D)
     if row_id is None:
         if table != 'listings':  # a listings row is its listing: its listing_id is the platform's id, not ours
@@ -287,6 +292,35 @@ def check_unit_write(c, req, table, row_id, data):
             continue
         if not (unit == 'CAPTURE' and table == 'listings' and col == 'vehicle_id' and _capture_variant(c, req, own, lid)):
             raise NotAllowed(f"{col}={lid} is outside the variant of this run's listing ({own}): {unit} writes only on that car's levels")
+
+
+def check_unit_delete(c, req, table, row_id):
+    """The DELETE of a non-staged unit (CAPTURE, TAX, LISTING; SR-1): the same scope as its edits. Its own tables; a row of its own
+    listing, or a row whose levels are all on the car's chain; never a shared catalogue row, never a listing (the owner deletes
+    those), never a row that belongs to neither. A row this account cannot see is left to agent_delete (404).
+    Raises NotAllowed (403)."""
+    unit, allowed = req['unit'], UNIT_TABLES.get(req['unit'])
+    if allowed is None:  # as check_unit_write: nothing is written through /api/agent
+        raise NotAllowed(ru.refusal(unit) or f'{unit} writes nothing through /api/agent')
+    if table not in allowed:
+        raise NotAllowed(f'{unit} writes only {", ".join(sorted(allowed))}, not {table}')
+    if table == 'listings':
+        raise NotAllowed(f'{unit} does not delete listings: the owner does (AGENTS.md)')
+    base = c.execute(f'SELECT * FROM {_view(table)} WHERE id=?', (row_id,)).fetchone()  # table is one of the fixed names above
+    if base is None:
+        return
+    if _shared(c, table, row_id):
+        raise NotAllowed(f'{unit} does not delete shared catalogue rows ({table} id={row_id})')
+    own = _own_listing(c, req)
+    lid = base['listing_id'] if 'listing_id' in base.keys() else None
+    levels = [(k, base[k]) for k in config.LEVEL_COLUMNS if k in base.keys() and base[k] is not None]
+    if lid is None and not levels:
+        raise NotAllowed(f'{table} id={row_id} belongs to no listing or car: {unit} does not delete it')
+    _on_own_listing(unit, own, table, lid)
+    chain = variant_chain(c, own) if levels and own else []
+    for col, v in levels:
+        if [col, v] not in chain and not _run_made(c, req, col, v):
+            raise NotAllowed(f"{col}={v} is outside the variant of this run's listing ({own}): {unit} deletes only on that car's levels")
 
 
 def _fault_conflicts(c, req, p, mine, distinct):

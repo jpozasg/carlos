@@ -251,6 +251,43 @@ class UnitScopeTest(unittest.TestCase):
         self.assertEqual(st, 404, e)                                              # hidden by the account scope, as before: no existence leak
         self.assertEqual(self.sql('SELECT limitations FROM sources WHERE id=60'), [(None,)])
 
+    def test_unit_delete_is_refused_at_the_gate_and_scoped_when_it_reaches_the_check(self):  # SR-1
+        own, _ = self.claim()
+        ev = self.api('CAPTURE', 'POST', 'agent/listing_events', {'listing_id': own, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'mine'})
+        self.assertEqual(ev[0], 201, ev)
+        fixture_ev = self.sql('SELECT id FROM listing_events WHERE listing_id=? LIMIT 1', (CAR_A,))[0][0]
+        # request tokens never delete over HTTP (server.py auth gate, #141): every DELETE is refused before the handler
+        self.assertEqual(self.api('CAPTURE', 'DELETE', f"agent/listing_events/{ev[1]['id']}")[0], 403)
+        self.assertEqual(self.api('LISTING', 'DELETE', 'agent/inspection_items/2')[0], 403)
+        self.assertEqual(self.sql('SELECT count(*) FROM listing_events WHERE id=?', (fixture_ev,)), [(1,)])
+        self.assertEqual(self.sql('SELECT count(*) FROM inspection_items WHERE id=2'), [(1,)])
+        # the scope check itself, as it would apply if the gate let a unit delete (defence in depth)
+        c = sqlite3.connect(config.DB); c.row_factory = sqlite3.Row
+        try:
+            auth.scope(c, ADMIN, curator=True)
+            cap, lst, tax = {'id': 101, 'unit': 'CAPTURE', 'listing_id': None}, {'id': 103, 'unit': 'LISTING', 'listing_id': CAR_A}, {'id': 102, 'unit': 'TAX', 'listing_id': CAR_A}
+            cap_own = {**cap, 'id': 101}
+            staging.check_unit_delete(c, lst, 'inspection_items', 2)                               # CAR_A's own checklist item
+            staging.check_unit_delete(c, lst, 'valuations', self.sql('SELECT id FROM valuations WHERE listing_id=?', (CAR_A,))[0][0])
+            self.assertEqual(staging.check_unit_delete(c, cap_own, 'listing_events', 9999), None)  # not visible: agent_delete answers 404
+            for req, table, row, msg in ((lst, 'inspection_items', 3, 'listing'),                 # another listing of the same account
+                                         (cap, 'listing_events', fixture_ev, 'belongs to listing'),
+                                         (tax, 'tax_data', self.shared_tax(V_A), 'shared catalogue'),       # a shared row of its own car
+                                         (cap, 'generations', G2, 'shared catalogue'),
+                                         (tax, 'sources', SRC_LISTING, 'belongs to no listing or car'),   # no listing, no car
+                                         (lst, 'listings', CAR_A, 'does not delete listings'),
+                                         (lst, 'faults', 1, 'writes only'),
+                                         ({'id': 104, 'unit': None, 'listing_id': CAR_A}, 'inspection_items', 2, 'retired single run')):
+                with self.assertRaises(staging.NotAllowed, msg=(table, row)) as cm:
+                    staging.check_unit_delete(c, req, table, row)
+                self.assertIn(msg, str(cm.exception))
+        finally:
+            c.close()
+        self.assertEqual(self.sql('SELECT count(*) FROM listing_events WHERE id=?', (fixture_ev,)), [(1,)])
+        self.assertEqual(self.sql('SELECT count(*) FROM generations WHERE id=?', (G2,)), [(1,)])
+        self.tokens['ADMIN'] = TOKEN                                                             # the owner's admin path is unchanged
+        self.assertEqual(self.api('ADMIN', 'DELETE', f'agent/listing_events/{fixture_ev}')[0], 200)
+
     def test_check_unit_write_directly(self):
         c = sqlite3.connect(config.DB); c.row_factory = sqlite3.Row
         req = {'id': 101, 'unit': 'TAX', 'listing_id': CAR_A}
