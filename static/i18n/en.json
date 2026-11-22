@@ -1036,5 +1036,19 @@
  "q_err_deductible": "Enter 0 or more, or leave it empty.",
  "q_err_server": "The quote was not saved: {m}",
  "q_valid_until": "Valid until {d}",
- "q_expired": "Expired {d}; still used in the cost"
+ "q_expired": "Expired {d}; still used in the cost",
+ "source_code": "Source code (AGPL-3.0)",
+ "footer_privacy": "Privacy",
+ "footer_imprint": "Imprint",
+ "imprint_title": "Imprint",
+ "imprint_missing": "No imprint text is set for this instance yet.",
+ "my_data": "My data",
+ "my_data_hint": "Your own rows as one JSON file: cars, notes, insurance figures you entered and settings. Passwords and tokens are not included; photos appear by file name only.",
+ "export_my_data": "Download my data (JSON)",
+ "erase_account": "Erase account",
+ "erase_type": "Type {u} to confirm",
+ "erase_confirm": "Erase for good",
+ "cancel": "Cancel",
+ "erase_lead": "Erases the account with its cars, notes, photos and settings. The data is first written to an export file in the data directory. Catalogue data shared with other accounts stays.",
+ "erase_done": "Erased {u}. The export is in {f} (data directory)."
 }

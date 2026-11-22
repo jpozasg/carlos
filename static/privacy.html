@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en" data-theme="cluster"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0d10"><title>Carlos · privacy notice</title>
+<link rel="icon" href="/static/brand/favicon.svg?v=3" type="image/svg+xml"><link rel="stylesheet" href="/static/css/tokens.css"><link rel="stylesheet" href="/static/css/app.css">
+<style>.legal{max-width:76ch;margin:0 auto;padding:24px 16px 8px}.legal h1{font-size:1.6rem;margin:0 0 6px}.legal h2{font-size:1.05rem;margin:22px 0 6px}.legal p,.legal li{font-size:14px;line-height:1.55;color:var(--text-2)}.legal ul{padding-left:20px;margin:6px 0}.legal .note{background:var(--surface-2);border-radius:var(--radius-s);padding:10px 12px;font-size:13px}.legal .todo{color:var(--text);font-style:italic}</style></head>
+<body>
+<main class="legal" id="main">
+<p class="small"><a href="/">Carlos</a></p>
+<h1>Privacy notice</h1>
+<p class="note">This notice is in English only for now; the English text is the reference. Text in square brackets is for the operator of this instance to complete before the instance is opened to other people.</p>
+
+<h2>1. Who is responsible</h2>
+<p>The operator of this instance, named on the <a href="/impressum">imprint page</a>. <span class="todo">[Operator: the contact address for privacy requests is given on the imprint page.]</span></p>
+
+<h2>2. What is stored</h2>
+<ul>
+<li><b>Your account:</b> username, role, active flag, creation date; the password only as a salted scrypt hash; sessions, invitation links and the optional agent token only as hashes. No e-mail address is stored.</li>
+<li><b>Your own car:</b> the facts you enter (mileage, first registration, the insurance premium you pay, the maintenance and service history you enter, checklist answers).</li>
+<li><b>Cars for sale you add:</b> the facts of the advertisement (make, model, price, mileage, equipment, location, and the seller's details as far as the advertisement publishes them), the advertisement's text and photos as archived, and the valuations and notes you enter.</li>
+<li><b>Insurance:</b> the annual premium you pay for your own car, and insurance quotes you enter by hand for a car for sale (premium, insurer, tariff, date, how you obtained it). Quotes older than 60 days are shown as expired; the costs keep using the newest quote until you replace it.</li>
+<li><b>Viewings:</b> what you write during a viewing and the photos you take. Photos are stored with their location and device metadata removed.</li>
+<li><b>Settings:</b> the calculation parameters (postal code, driving, budget, fuel price), your ranking answers and your filters.</li>
+<li><b>Server log:</b> the client's IP address, the time and the request path. Invitation tokens and query strings are removed from the log lines.</li>
+<li><b>In your browser:</b> the session cookie and a few settings under the browser's local storage (language, colour mode, filters, sort). See section 8.</li>
+</ul>
+
+<h2>3. Purposes</h2>
+<p>To run the cost comparison for your account, to keep the research each car needs, to keep the service secure and to find and fix errors. <span class="todo">[Operator, with a lawyer: state the legal basis for each purpose.]</span></p>
+
+<h2>4. Recipients and processors</h2>
+<ul>
+<li><b>Anthropic:</b> the research worker runs Claude, a model of Anthropic, on the text of the advertisements and on the research requests you make. Anthropic receives this text to produce the research. <span class="todo">[Operator: name the plan or API terms used and the data processing agreement.]</span></li>
+<li><b>Public sources read by hand:</b> advertisements, comparison and tax sites and reliability sources are opened and read by the operator in a browser, one page at a time. No automated quoting service is used for insurance.</li>
+<li><b>Hosting and backups:</b> the server, the data directory and any remote backup of it. <span class="todo">[Operator: name the hosting provider and any remote backup.]</span></li>
+<li><b>Administrators of this instance:</b> see section 6.</li>
+</ul>
+
+<h2>5. Retention</h2>
+<ul>
+<li>Sessions end after 30 days; invitation links after 72 hours.</li>
+<li>Insurance quotes older than 60 days are shown as expired; they stay in the costs until replaced.</li>
+<li>Accounts, cars, notes and photos are kept until you ask for erasure or the account is erased. <span class="todo">[Operator: state the periods for the server log and for backups.]</span></li>
+</ul>
+
+<h2>6. Access by administrators</h2>
+<p>Administrators of this instance can see the data of every account, including cars, notes and photos, and can change it. Changes are recorded with the name of the person who made them. <span class="todo">[Operator: tell invited people this before they sign in.]</span></p>
+
+<h2>7. Your rights</h2>
+<ul>
+<li><b>Access and copy:</b> in Settings, "Download my data" gives you your own rows as one JSON file.</li>
+<li><b>Correction:</b> you can change your data in the app, or ask an administrator.</li>
+<li><b>Erasure:</b> ask an administrator. The administrator deletes the account with its cars, notes and photos; before that, the data is written to an export file kept in the instance's data directory.</li>
+<li><b>Restriction and objection:</b> ask an administrator.</li>
+<li><b>Complaint:</b> you may lodge a complaint with a data protection supervisory authority.</li>
+</ul>
+
+<h2>8. Cookies and browser storage</h2>
+<p>The app uses no tracking, no advertising and no third-party scripts or fonts. It sets: a session cookie (<code>carlos_session</code>, HttpOnly, SameSite=Strict) to keep you signed in; a cookie (<code>carlos_view</code>) that tells an administrator which account is being viewed; and browser local storage entries whose names start with <code>carlos.</code> (language, colour mode, filters, sort).</p>
+
+<h2>9. Source code</h2>
+<p>Carlos is free software under the GNU Affero General Public License, version 3. The source code of this version: <a href="{{SOURCE_URL}}" rel="noopener">{{SOURCE_URL}}</a></p>
+</main>
+<footer class="wrap" style="padding:16px"><a href="{{SOURCE_URL}}" rel="noopener">Source code (AGPL-3.0)</a> · <a href="/impressum">Imprint</a> · <a href="/">Carlos</a></footer>
+</body></html>

@@ -14,3 +14,4 @@ export async function send(method, url, body, ctype = 'application/json') {
 }
 export const post = (url, body) => send('POST', url, body);
 export const patch = (url, body) => send('PATCH', url, body);
+export const del = (url, body) => send('DELETE', url, body);

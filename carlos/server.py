@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 import datetime, gzip, json, math, os, re, secrets, sqlite3, sys, threading
 import markdown_export
-from . import auth, config, research, research_requests as rq, research_units, staging
+from . import account, auth, config, pages, research, research_requests as rq, research_units, staging
 from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RETIRED_TABLES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_level, resolve_variant, row_owner, save_media,
                     photo_write, storage_usage, table_columns)
@@ -434,10 +434,9 @@ class Handler(BaseHTTPRequestHandler):
         if not host_allowed(self.headers.get('Host')):  # DNS rebinding and stray names: nothing is served
             self.send_json({'error': 'Unknown host name: the Host header must be one of CARLOS_HOSTS'}, 400); return
         path = urlsplit(self.path).path
-        if method == 'GET' and path in ('/', '/index.html'):
-            self.send_file(config.STATIC / 'index.html', STATIC_TYPES['.html']); return
-        if method == 'GET' and (path == '/login' or path.startswith('/invite/')):
-            self.send_file(config.STATIC / 'auth.html', STATIC_TYPES['.html']); return
+        if method == 'GET' and (path in ('/', '/index.html', '/login', '/privacy', '/impressum') or path.startswith('/invite/')):
+            body = pages.imprint() if path == '/impressum' else pages.page({'/': 'index.html', '/index.html': 'index.html', '/privacy': 'privacy.html'}.get(path, 'auth.html'))
+            self.send_body(body, STATIC_TYPES['.html'], level=6); return
         static = re.fullmatch(r'/static/((?:[\w-]+/)*[\w-]+\.[a-z0-9]+)', path)
         if method == 'GET' and static:
             f = config.STATIC / static[1]
@@ -530,6 +529,8 @@ class Handler(BaseHTTPRequestHandler):
             self.worker_api(c, method, path, w); return
         user = self.require(c)
         uid = self.uid
+        if path == '/api/account/export' and method == 'GET':  # the logged-in person's own rows (never a viewed account's)
+            self.send_json(account.export(c, user['id'])); return
         query = parse_qs(urlsplit(self.path).query)
         p = params(c)
         if method == 'GET':
@@ -910,6 +911,9 @@ class Handler(BaseHTTPRequestHandler):
             if c.execute('SELECT 1 FROM main.users WHERE id=?', (int(m[1]),)).fetchone() is None:
                 raise NotFound('No such user')
             self.send_json({'invite': self.invite_url(auth.new_invite(c, int(m[1]), admin['id']))}, 201)
+        elif m and not m[2] and method == 'DELETE':  # erasure (admin, typed username; the export is written first)
+            d = self.read_json()
+            self.send_json(account.erase(c, int(m[1]), d.get('username'), admin['id'], config.DATA_DIR, config.MEDIA_DIR, config.MD_DIR))
         elif m and not m[2] and method == 'PATCH':
             d = self.read_json()
             if int(m[1]) == admin['id'] and (d.get('is_active') == 0 or d.get('role') == 'user'):

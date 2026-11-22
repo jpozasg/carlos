@@ -14,11 +14,13 @@ All endpoints are under http://127.0.0.1:8000 (behind the proxy, the same paths)
 | `GET /api/auth/invite/<token>` | | `{username}` of a valid, unused invite |
 | `POST /api/auth/invite/<token>` | `{password}` (8+ characters) | sets the password, burns the invite, signs in |
 | `POST /api/account/password` | `{old, new}` | changes the password |
+| `GET /api/account/export` | | the logged-in account's own rows as JSON: `account`, `tables` (table name → rows across the account-scoped tables and the listings' tables), `note`; no hashes, the users and sessions tables, the change log or the worker registrations; photos by file name only. Settings → "Download my data" |
 | `POST /api/account/token` | | admin only: `{token}`, a new agent token shown once; the previous one stops working; 403 for normal accounts |
 | `GET /api/admin/users` | | all accounts (admin) |
 | `POST /api/admin/users` | `{username, role?}` | creates the account with its parameters and returns `{id, username, invite}` (the invite URL) |
 | `POST /api/admin/users/<id>/invite` | | a new invite link (password reset) |
 | `PATCH /api/admin/users/<id>` | `{is_active?, role?}` | deactivating ends the sessions and the token; you cannot deactivate yourself |
+| `DELETE /api/admin/users/<id>` | `{username}` | erases one account (admin): `username` must match exactly; the account's export is written to `exports/account-<id>-<time>.json` in the data directory first (0600), then its rows, sessions, photos and dossiers are deleted in one transaction. Refused for your own account, and (nothing changed) when another account's row would be left pointing at a deleted row; links from other rows to the account (`change_log.user_id`, `invites.created_by`, `research_requests.requested_by`, `workers.request_id`) become NULL. Other accounts and the shared catalogue are untouched |
 
 ## Reading
 | Path | Result |

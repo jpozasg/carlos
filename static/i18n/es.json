@@ -1036,5 +1036,19 @@
  "q_err_deductible": "Introduce 0 o más, o déjalo vacío.",
  "q_err_server": "No se guardó el presupuesto: {m}",
  "q_valid_until": "Válido hasta {d}",
- "q_expired": "Caducado el {d}; se sigue usando en el coste"
+ "q_expired": "Caducado el {d}; se sigue usando en el coste",
+ "source_code": "Código fuente (AGPL-3.0)",
+ "footer_privacy": "Privacidad",
+ "footer_imprint": "Aviso legal",
+ "imprint_title": "Aviso legal",
+ "imprint_missing": "Esta instancia todavía no tiene aviso legal.",
+ "my_data": "Mis datos",
+ "my_data_hint": "Tus propios datos en un único archivo JSON: coches, notas, datos de seguro que has introducido y ajustes. No incluye contraseñas ni tokens; las fotos aparecen solo con su nombre de archivo.",
+ "export_my_data": "Descargar mis datos (JSON)",
+ "erase_account": "Borrar cuenta",
+ "erase_type": "Escribe {u} para confirmar",
+ "erase_confirm": "Borrar definitivamente",
+ "cancel": "Cancelar",
+ "erase_lead": "Borra la cuenta con sus coches, notas, fotos y ajustes. Antes, los datos se guardan en un archivo de exportación en el directorio de datos. Los datos de catálogo compartidos con otras cuentas se conservan.",
+ "erase_done": "Cuenta {u} borrada. La exportación está en {f} (directorio de datos)."
 }
