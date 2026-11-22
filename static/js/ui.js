@@ -32,6 +32,10 @@ export const notScoredTxt = u => u.excluded === 'over_max' ? t('excluded_over_ma
 export const critColor = (k, keys) => { const i = keys.indexOf(k); return i >= 0 && i < 9 ? `var(--s${i + 1})` : 'var(--text-3)'; };
 export const PEND = () => `<span class="pending">${t('pending')}</span>`;
 export const eP = n => n == null ? PEND() : euro(n);
+// a number with its unit joined by a no-break space; the unit word is per language (PS is KM in Polish); null = pending
+export const unit = (n, u, d = 0) => n == null ? PEND() : `${num(n, d)}\u00a0${t('unit_' + u)}`;
+// a symbol that is only decoration: hidden from screen readers, the word beside it carries the meaning
+export const glyph = g => `<span aria-hidden="true">${g}</span>`;
 // totals reduce to {sum, missing, n}: a row without a figure is counted as missing, never added as 0 (docs/frontend.md)
 export const sumKnown = (rows, pick) => rows.reduce((a, r) => { const v = pick(r); if (v == null) a.missing++; else { a.sum += v; a.n++; } return a; }, { sum: 0, missing: 0, n: 0 });
 // a reduced total as text: the amount, then "+n pending" while any row is unknown; nothing known at all = pending
@@ -42,6 +46,10 @@ export const perMonth = (u, suffix = '') => u.known_cost_per_month == null ? PEN
 export const pct = (v, d = 0) => v == null ? PEND() : `${num(v * 100, d)}\u00a0%`;
 // parts + labour as one price: both unknown = pending, one unknown = the known part with the partial marker (never a complete price)
 export const partsLaborP = (a, b) => a == null && b == null ? PEND() : euro((a || 0) + (b || 0)) + (a == null || b == null ? ` <span class="tag warn">${t('partial_short')}</span>` : '');
+// a certain cost's price: parts + labour only when both are known; one side missing = no figure (it never adds as 0)
+export const certainEur = x => x.parts_eur == null || x.labor_eur == null ? null : x.parts_eur + x.labor_eur;
+// a change against the reference: zero is "same cost" (no arrow, no EUR 0); the arrow is decoration, the sign stays in the text
+export const deltaTxt = d => d === 0 ? `<span class="muted">${t('delta_even')}</span>` : `<span class="${d > 0 ? 'up' : 'down'}">${glyph(d > 0 ? '▲' : '▼')} ${d > 0 ? '+' : ''}${euro(d)}</span>`;
 // "a–b" where one end may be open; both unknown = pending (never "—–—")
 export const rangeTxt = (a, b, d = 0) => a == null && b == null ? PEND() : `${a == null ? '…' : num(a, d)}–${b == null ? '…' : num(b, d)}`;
 // consumption with its unit as the data gives it (no invented unit) and the spread of the source (min-max, sample size) when known
@@ -67,7 +75,11 @@ export async function busy(btn, work) {
   finally { if (btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = label; } }
 }
 // an ISO date (YYYY-MM-DD) as the reader's locale writes it
-export const fmtDate = iso => /^\d{4}-\d\d-\d\d/.test(iso || '') ? new Intl.DateTimeFormat(locale(), { dateStyle: 'medium' }).format(new Date(iso.slice(0, 10) + 'T12:00:00')) : '';
+// a registration month (YYYY-MM) shows the month only, never an invented day; any other text passes through escaped
+export const fmtDate = iso => { const s = String(iso ?? '');
+  if (/^\d{4}-\d\d-\d\d/.test(s)) return new Intl.DateTimeFormat(locale(), { dateStyle: 'medium' }).format(new Date(s.slice(0, 10) + 'T12:00:00'));
+  if (/^\d{4}-\d\d$/.test(s)) return new Intl.DateTimeFormat(locale(), { year: 'numeric', month: 'short' }).format(new Date(s + '-01T12:00:00'));
+  return esc(s); };
 export const empty = x => `<p class="empty">${x}</p>`;
 export const facts = pairs => `<dl class="facts">${pairs.map(([k, v]) => `<dt>${k}</dt><dd>${v ?? PEND()}</dd>`).join('')}</dl>`;
 export const media = fp => '/media/' + esc(fp);
@@ -78,20 +90,24 @@ export const unitName = u => `${esc(u.make)} ${esc(u.model)}`;
 // engine to the models tree filtered to it
 export const modelsHref = f => '#/models?' + new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
 export const carLink = (u, html = carLabel(u)) => `<a class="carlink" href="#/listing/${u.id}">${html}</a>`;
+// engine size in litres with one decimal in the reader's separator (2.0 / 2,0), never a bare "2"
+const litres = cc => new Intl.NumberFormat(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(cc / 1000);
 // short, unambiguous car name: model, engine size and first-registration year
-export const carShort = u => `${esc(u.model)}${u.displacement_cc ? ' ' + (u.displacement_cc / 1000).toFixed(1) : ''}${u.first_registration ? ' · ' + esc(String(u.first_registration).slice(0, 4)) : ''}`;
+export const carShort = u => `${esc(u.model)}${u.displacement_cc ? ' ' + litres(u.displacement_cc) : ''}${u.first_registration ? ' · ' + esc(String(u.first_registration).slice(0, 4)) : ''}`;
 export const carLabel = u => `${esc(u.make)} ${carShort(u)}`;
 export const unitSub = u => u.is_reference ? t('your_car') : `${esc(u.platform ?? '')}${u.listing_id ? ' ' + esc(u.listing_id) : ''}`;
 export const sevTag = s => !s ? PEND() : `<span class="tag ${/HIGH/.test(s) ? 'bad' : /MEDIUM/.test(s) ? 'warn' : 'good'}">${esc(tv(s))}</span>`;
 export const lvlTag = (l, r) => (l ? `<span class="tag lvl lvl-${esc(l)}" title="${esc(t('level_hint'))}"><i class="dot"></i>${esc(tv(l))}</span>` : '')
   + (r && (r.applies_from || r.applies_to) ? ` <span class="tag" title="${esc(t('window_hint'))}">${esc(r.applies_from || '…')}–${esc(r.applies_to || '…')}</span>` : '');  // first-registration window (#153)
 export const qTag = (q, title = '') => { const ql = /^[ABCD]$/.test(q ?? '') ? q : 'X'; return `<span class="q ${ql}" title="${esc(title)}">${esc(q ?? '–')}</span>`; };
+// a car not checked for this many days carries the stale tag (the score does not change with it)
+export const STALE_DAYS = 14;
 export function statusTags(u) {
   const b = u.budget_status, tags = [];
-  if (b === 'over_max') tags.push(`<span class="tag bad">⚠ ${t('over_max')}</span>`);
+  if (b === 'over_max') tags.push(`<span class="tag bad">${glyph('⚠')} ${t('over_max')}</span>`);
   else if (b === 'over_ideal') tags.push(`<span class="tag warn">${t('over_ideal')}</span>`);
-  if (u.price_change) { const d = u.price_change.eur; tags.push(`<span class="tag ${d < 0 ? 'good' : 'warn'}" title="${esc(t('price_change_title', { d: u.price_change.since }))}">${d < 0 ? '▼' : '▲'} ${euro(Math.abs(d))} ${t('since_date', { d: esc(u.price_change.since) })}</span>`); }
-  if (u.stale) tags.push(`<span class="tag warn">⏱ ${t('stale', { n: 14 })}</span>`);
+  if (u.price_change) { const d = u.price_change.eur; tags.push(`<span class="tag ${d < 0 ? 'good' : 'warn'}" title="${esc(t('price_change_title', { d: u.price_change.since }))}">${glyph(d < 0 ? '▼' : '▲')} ${euro(Math.abs(d))} ${t('since_date', { d: esc(u.price_change.since) })}</span>`); }
+  if (u.stale) tags.push(`<span class="tag warn">${glyph('⏱')} ${t('stale', { n: STALE_DAYS })}</span>`);
   if (u.listing_status === 'WITHDRAWN') tags.push(`<span class="tag">${esc(tv('WITHDRAWN'))}</span>`);
   return tags;
 }
@@ -102,15 +118,15 @@ export function researchLevels(levels) {
   const rows = Object.entries(levels || {}).map(([lvl, x]) => {
     const open = x.items.filter(i => i.grade !== 'VERIFIED');
     return `<li>${lvlTag(lvl)} <span class="tag ${RS[x.state]}">${t('rs_' + x.state)}</span>${x.missing.length ? ` <span class="small">${t('rs_missing', { n: x.missing.length })}</span>` : ''}${x.accepted.length ? ` <span class="small muted">· ${t('rs_accepted', { n: x.accepted.length })}</span>` : ''}
-      ${open.length ? `<details class="small"><summary class="cur-p">${open.length}</summary><ul class="mt4 mx0 mb0 pl18" lang="en">${open.map(i => `<li>${i.grade === 'MISSING' ? '✗' : '½'} <code>${esc(i.id)}</code> ${esc(i.title)}${i.hint ? ` <span class="tag warn">${t('rs_move')}</span>` : ''}</li>`).join('')}</ul></details>` : ''}</li>`; }).join('');
+      ${open.length ? `<details class="small"><summary class="cur-p">${open.length}</summary><ul class="mt4 mx0 mb0 pl18" lang="en">${open.map(i => `<li>${glyph(i.grade === 'MISSING' ? '✗' : '½')} <span class="tag">${esc(tv(i.grade))}</span> <code>${esc(i.id)}</code> ${esc(i.title)}${i.hint ? ` <span class="tag warn">${t('rs_move')}</span>` : ''}</li>`).join('')}</ul></details>` : ''}</li>`; }).join('');
   return rows ? `<ul class="rs-levels">${rows}</ul>` : '';
 }
 export function gaps(items) {
-  if (!items || !items.length) return `<p class="small mt10 mx0 mb0"><span class="tag good">✓ ${t('no_gaps')}</span></p>`;
+  if (!items || !items.length) return `<p class="small mt10 mx0 mb0"><span class="tag good">${glyph('✓')} ${t('no_gaps')}</span></p>`;
   return `<details class="mt10"><summary class="small cur-p"><span class="tag warn">${t('gaps', { n: items.length })}</span></summary>
     <ul class="small mt6 mx0 mb0 pl18" lang="en">${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted mt4 mx0 mb0">${t('gaps_note')}</p></details>`;
 }
-export function intervalTxt(km, mo) { const a = []; if (km) a.push(num(km, 0) + ' km'); if (mo) a.push(num(mo, 0) + ' ' + t('months_short')); return a.join(' ' + t('or_word') + ' ') || '—'; }
+export function intervalTxt(km, mo) { const a = []; if (km) a.push(unit(km, 'km')); if (mo) a.push(`${num(mo, 0)}\u00a0${t('months_short')}`); return a.join(' ' + t('or_word') + ' ') || PEND(); }
 
 // review flags of a level (#168): what, why and every review (worker, date, outcome, finding); a flag clears only when
 // two independent reviews reach the same conclusion, so an open one stays visible here and in every inheriting dossier
@@ -122,4 +138,4 @@ export function flagsCard(flags) {
       <div class="small muted">${esc(f.why)}</div>${(f.reviews || []).length ? `<ul class="small mt4 mx0 mb0 pl18">${f.reviews.map(r => `<li>${esc(r.review_date)} · ${esc(r.worker)} · <b>${esc(tv(r.outcome))}</b>: ${esc(r.conclusion)} — ${esc(r.finding)}</li>`).join('')}</ul>` : `<div class="small muted">${t('flag_no_reviews')}</div>`}</div></li>`).join('')}</ul></div>`;
 }
 // a fault's probability as the sources put it: a frequency band with its shape, or a sourced curve (#168)
-export const faultProb = f => f.frequency_band ? `${esc(tv(f.frequency_band))}${f.shape ? ' · ' + esc(tv(f.shape)) : ''}` : (f.curve_km || f.curve_age ? t('f_curve') : '—');
+export const faultProb = f => f.frequency_band ? `${esc(tv(f.frequency_band))}${f.shape ? ' · ' + esc(tv(f.shape)) : ''}` : (f.curve_km || f.curve_age ? t('f_curve') : PEND());

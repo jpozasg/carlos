@@ -1,7 +1,7 @@
 // Compare: overview table, cost composition, break-even, detail table, photo cards. State in S (app.js).
 import { S, refreshTco, go } from '../app.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, sumKnown, perMonth, consumptionTxt, consumptionSpread, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media, scoreTxt, notScoredTxt, safeUrl } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, sumKnown, perMonth, consumptionTxt, consumptionSpread, yrs, store, thumb, unitName, carShort, carLabel, carLink, unitSub, statusTags, CAR_SVG, media, scoreTxt, notScoredTxt, safeUrl, unit, glyph, deltaTxt } from '../ui.js';
 // cars a ranking filter (Settings) excludes (#169)
 export const filteredNote = () => { const n = S.units.filter(u => (u.excluded || '').startsWith('filter:')).length; return n ? `<p class="small muted">${t('filtered_n', { n })} <a href="#/settings">${t('filters_title')}</a></p>` : ''; };
 import { costStack, beChart, beTable, beHover, beColors } from '../charts.js';
@@ -58,9 +58,9 @@ function ruler(all) {
   const refX = ref && ref.known_cost_per_month != null ? x(ref.known_cost_per_month) : null;
   const rows = all.map(u => { const v = u.known_cost_per_month, d = u.delta_vs_reference;
     return `<a class="rrow${u.is_reference ? ' ref' : ''}${u.rank === 1 ? ' top' : ''}" href="#/listing/${u.id}">
-      <span class="car">${u.is_reference ? '' : `<span class="rk">${u.rank ?? '–'}</span>`}${thumb(u, 'sm')}<span class="minw0"><span class="nm">${carLabel(u)}</span><small>${u.is_reference ? t('your_car') : esc(u.location ?? u.platform ?? '')}</small></span></span>
+      <span class="car">${u.is_reference ? '' : `<span class="rk">${u.rank ?? PEND()}</span>`}${thumb(u, 'sm')}<span class="minw0"><span class="nm">${carLabel(u)}</span><small>${u.is_reference ? t('your_car') : esc(u.location ?? u.platform ?? '')}</small></span></span>
       <span class="rtrack">${refX != null && !u.is_reference ? `<i class="rline" data-style="left:${refX}%"></i>` : ''}${v == null ? '' : `<i class="rmark${u.is_reference ? ' refmark' : u.tco_complete ? '' : ' partial'}" data-style="left:${refX ?? x(v)}%" data-x="${x(v)}" title="${esc(euro(v))}${t('per_month')}${u.tco_complete ? '' : ' ' + esc(t('partial_short'))}"></i>`}</span>
-      <span class="rval">${v == null ? PEND() : `<b>${euro(v)}</b>${u.tco_complete ? '' : ` <small class="tag warn">${t('partial_short')}</small>`}${u.is_reference || d == null ? '' : `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${euro(Math.abs(d) / u.period_months)}${t('per_month')}</small>`}`}</span></a>`; }).join('');
+      <span class="rval">${v == null ? PEND() : `<b>${euro(v)}</b>${u.tco_complete ? '' : ` <small class="tag warn">${t('partial_short')}</small>`}${u.is_reference || d == null ? '' : d === 0 ? `<small class="muted">${t('delta_even')}</small>` : `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${euro(Math.abs(d) / u.period_months)}${t('per_month')}</small>`}`}</span></a>`; }).join('');
   return `<div class="section"><h2>${t('ruler_title')}</h2><p class="lead">${t(none ? 'ruler_waiting' : 'ruler_lead')}</p>
     <div class="ruler"><div class="rhead"><span class="car-h">${t('g_unit')}</span><span class="ticks">${ticks.map(v => `<span data-style="left:${x(v)}%">${euro(v)}</span>`).join('')}</span><span class="ta-r">${t('ruler_axis')}</span></div>${rows}</div></div>`;
 }
@@ -68,7 +68,7 @@ function overview(all) {
   const dash = '<span class="muted">—</span>';
   const rows = all.map(u => { const on = selected.has(u.id), d = u.delta_vs_reference;
     return `<tr class="${u.is_reference ? 'refrow' : ''}${on || u.is_reference ? '' : ' off'}">
-      <td>${u.is_reference ? '' : `<input type="checkbox" ${on ? 'checked' : ''} data-toggle="${u.id}" aria-label="${esc(t('compare'))}: ${esc(u.make + ' ' + u.model)}">`}</td>
+      <td>${u.is_reference ? '' : `<input type="checkbox" ${on ? 'checked' : ''} data-toggle="${u.id}" aria-label="${esc(t('compare'))}: ${unitName(u)}${u.listing_id ? ' ' + esc(u.listing_id) : ''}">`}</td>
       <td class="n">${u.rank ? `<b>${u.rank}</b>` : dash}</td>
       <td><a class="linkbtn car" href="#/listing/${u.id}" title="${t('open_dossier')}">${thumb(u, 'sm')}<span>${esc(u.make)} ${carShort(u)}<small>${u.is_reference ? t('your_car') : esc(u.location ?? u.platform ?? '')}</small></span></a></td>
       <td><div class="sc">${u.score == null ? dash : `<div class="scorebar" aria-hidden="true"><i data-style="width:${u.score}%"></i></div><b>${scoreTxt(u)}</b>`}</div></td>
@@ -77,18 +77,18 @@ function overview(all) {
       <td class="n">${u.metrics.age == null ? PEND() : num(u.metrics.age, 1)}</td>
       <td class="n">${perMonth(u)}</td>
       <td class="n"><b>${eP(u.known_cost_subtotal)}</b>${u.tco_complete ? '' : ` <span class="tag warn" title="${esc(u.missing_components.map(comp).join(', '))}">${t('subtotal_partial')}</span>`}</td>
-      <td class="n">${u.is_reference ? dash : d == null ? PEND() : `<span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲ +' : '▼ '}${euro(d)}</span>`}</td>
+      <td class="n">${u.is_reference ? dash : d == null ? PEND() : deltaTxt(d)}</td>
       <td>${tagsHtml(u)}</td></tr>`; }).join('');
-  return `<div class="tablewrap ov-wrap"><table class="ov"><thead><tr><th><span class="sr-only">${t('compare')}</span></th><th class="n">#</th><th>${t('g_unit')}</th><th>${t('score')}</th>
-    <th class="n">${t('asking_price')}</th><th class="n">${t('km')}</th><th class="n">${t('age')}</th><th class="n">${t('eur_month')}</th><th class="n">${t('ov_total', { y: S.p.ownership_years })}</th>
-    <th class="n"><abbr title="${esc(t('delta_help'))}">${t('delta')}</abbr></th><th>${t('ov_status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="tablewrap ov-wrap"><table class="ov"><thead><tr><th scope="col"><span class="sr-only">${t('compare')}</span></th><th scope="col" class="n">#</th><th scope="col">${t('g_unit')}</th><th scope="col">${t('score')}</th>
+    <th scope="col" class="n">${t('asking_price')}</th><th scope="col" class="n">${t('km')}</th><th scope="col" class="n">${t('age')}</th><th scope="col" class="n">${t('eur_month')}</th><th scope="col" class="n">${t('ov_total', { y: S.p.ownership_years })}</th>
+    <th scope="col" class="n"><abbr title="${esc(t('delta_help'))}">${t('delta')}</abbr></th><th scope="col">${t('ov_status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function unitCard(u) {
   const n = S.components.length, known = n - u.missing_components.length, on = selected.has(u.id);
   return `<article class="card unit${u.is_reference ? ' is-ref' : ''}${on ? '' : ' off'}">
     <a class="hero" href="#/listing/${u.id}" aria-label="${esc(t('open_dossier_aria', { u: u.make + ' ' + u.model }))}">
       ${u.cover ? `<img src="${media(u.cover)}" alt="${unitName(u)}" loading="lazy">` : `<span class="nophoto"><span>${CAR_SVG}${t('no_photos')}</span></span>`}
-      ${u.photo_count ? `<span class="count">📷 ${u.photo_count}</span>` : ''}${u.is_reference ? `<span class="tag ref reftag">${t('reference')}</span>` : ''}
+      ${u.photo_count ? `<span class="count">${glyph('📷')} ${u.photo_count}</span>` : ''}${u.is_reference ? `<span class="tag ref reftag">${t('reference')}</span>` : ''}
       ${u.rank ? `<span class="rankbadge">${t('rank_n', { n: u.rank })} · ${scoreTxt(u)}</span>` : ''}</a>
     ${tagsHtml(u)}
     <div class="unit-head"><div><div class="unit-name">${carLink(u, unitName(u))}</div><div class="unit-sub">${[esc(u.trim ?? ''), unitSub(u)].filter(Boolean).join(' · ')}</div></div></div>
@@ -99,13 +99,13 @@ function unitCard(u) {
       <div class="meter${known === n ? ' good' : ''}" role="meter" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${known}" aria-label="${t('cost_known_aria')}"><i data-style="width:${known / n * 100}%"></i></div>
       ${u.missing_components.length ? `<div class="tags mt6">${u.missing_components.map(m => `<span class="tag">${esc(tv(m))}</span>`).join('')}</div>` : ''}</div>
     <div class="small"><span class="muted">${t('verdict')}:</span> ${u.verdict ? esc(u.verdict) : PEND()}</div>
-    <div class="unit-foot"><label class="toggle"><input type="checkbox" ${on ? 'checked' : ''} data-toggle="${u.id}"> ${t('compare')}</label><a class="linkbtn" href="#/listing/${u.id}">${t('open_dossier')}</a></div></article>`;
+    <div class="unit-foot"><label class="toggle"><input type="checkbox" ${on ? 'checked' : ''} data-toggle="${u.id}" aria-label="${esc(t('compare'))}: ${unitName(u)}${u.listing_id ? ' ' + esc(u.listing_id) : ''}"> ${t('compare')}</label><a class="linkbtn" href="#/listing/${u.id}">${t('open_dossier')}</a></div></article>`;
 }
 function costs(us) {
   const comps = S.components, on = k => costSel.has(k), idx = k => comps.indexOf(k) + 1;
   const legend = `<div class="row" role="group" aria-label="${t('cost_pick')}">${comps.map(k => `<button type="button" class="chipbtn" data-cost="${k}" aria-pressed="${on(k)}"><i class="sw" data-style="background:var(--s${idx(k)})"></i>${esc(comp(k))}</button>`).join('')}</div>
     <div class="row small mt8"><span class="muted">${t('cost_presets')}:</span><button type="button" class="linkbtn" data-costset="all">${t('cp_all')}</button><button type="button" class="linkbtn" data-costset="running">${t('cp_running')}</button><button type="button" class="linkbtn" data-costset="none">${t('cp_none')}</button>
-      <span class="spacer"></span><button type="button" class="btn ghost sm" data-sortsel aria-pressed="${sortState.key === 'selected_cost'}" ${selComps().length ? '' : 'disabled'}>${sortState.key === 'selected_cost' ? '✓ ' : ''}${t('sort_by_selected')}</button></div>
+      <span class="spacer"></span><button type="button" class="btn ghost sm" data-sortsel aria-pressed="${sortState.key === 'selected_cost'}" ${selComps().length ? '' : 'disabled'}>${sortState.key === 'selected_cost' ? glyph('✓') + ' ' : ''}${t('sort_by_selected')}</button></div>
     <div class="legend mt6"><span><i class="sw hatch"></i>${t('legend_pending')}</span></div>`;
   if (!selComps().length) return `<div class="card">${legend}<p class="empty">${t('cost_none_selected')}</p></div>`;
   return `<div class="card">${legend}${costStack(us, comps, costSel, selCost) || `<p class="empty">${t('select_one')}</p>`}<p class="small muted mt8 mx0 mb0">${t('chart_note')}</p></div>`;
@@ -122,11 +122,11 @@ function details(us) {
   if (!us.length) return '';
   const dash = '<span class="muted">—</span>';
   const groups = [
-    [t('g_unit'), [[t('asking_price'), u => u.is_reference ? `<span class="muted">${t('owned')}</span>` : eP(u.price_eur)], [t('mileage'), u => u.mileage_km == null ? PEND() : num(u.mileage_km, 0) + ' km'],
+    [t('g_unit'), [[t('asking_price'), u => u.is_reference ? `<span class="muted">${t('owned')}</span>` : eP(u.price_eur)], [t('mileage'), u => unit(u.mileage_km, 'km')],
       [t('age'), u => u.metrics.age == null ? PEND() : yrs(u.metrics.age)], [t('km_per_year'), u => u.metrics.km_per_year == null ? PEND() : num(u.metrics.km_per_year, 0)],
-      [t('power'), u => u.power_ps == null ? PEND() : num(u.power_ps, 0) + ' PS'], [t('insurance_year'), u => eP(u.annual_insurance)], [t('tax_year'), u => eP(u.annual_tax)],
+      [t('power'), u => unit(u.power_ps, 'ps')], [t('insurance_year'), u => eP(u.annual_insurance)], [t('tax_year'), u => eP(u.annual_tax)],
       [t('c_reliability'), u => u.metrics.reliability == null ? PEND() : `${num(u.metrics.reliability, 0)}${u.reliability_sources ? ` <span class="muted small">${t('rel_coverage', { n: u.reliability_sources.present, m: u.reliability_sources.of })}</span>` : ''}`], ...config_slots.map(k => [`· ${t('rel_slot_' + k)}`, u => relCell(u, k)]),
-      [t('c_confidence'), u => u.metrics.confidence == null ? PEND() : num(u.metrics.confidence, 0) + ' %'],
+      [t('c_confidence'), u => unit(u.metrics.confidence, 'pct')],
       [t('score'), u => u.score == null || u.excluded ? `<span class="pending" title="${esc(notScoredTxt(u))}">${esc(notScoredTxt(u))}</span>` : `<b>${scoreTxt(u)}</b>${u.rank ? ` <span class="muted">${t('rank_n', { n: u.rank })}</span>` : ''}`],
       [t('consumption'), u => u.consumption == null ? PEND() : `${consumptionTxt(u)}${consumptionSpread(u) ? `<br><span class="muted">${consumptionSpread(u)}</span>` : ''}`]]],
     [t('g_use'), ['fuel', 'insurance', 'tax', 'maintenance'].map(k => [esc(comp(k)), u => eP(u.components[k])])],
@@ -135,9 +135,9 @@ function details(us) {
     [t('g_tot'), [[t('selected_total', { n: selComps().length }), u => { const r = selCost(u); return !selComps().length ? dash : r.complete ? `<b>${euro(r.sum)}</b>` : `<span class="pending" title="${esc(r.missing.map(comp).join(', '))}">${t('incomplete_n', { n: r.missing.length })}</span>`; }, 'total'],
       [t('subtotal'), u => eP(u.known_cost_subtotal)], [t('eur_month'), u => perMonth(u)],
       [t('range'), u => u.tco_pessimistic == null ? PEND() : euro(u.tco_pessimistic) + ' – ' + euro(u.tco_optimistic)],
-      [`<abbr title="${esc(t('delta_help'))}">${t('delta')}</abbr>`, u => u.is_reference ? dash : u.delta_vs_reference == null ? `<span class="pending">${t('needs_tco')}</span>` : `<span class="${u.delta_vs_reference > 0 ? 'up' : 'down'}">${u.delta_vs_reference > 0 ? '▲ +' : '▼ '}${euro(u.delta_vs_reference)}</span>`],
-      [t('outlay'), u => u.is_reference ? dash : eP(u.initial_outlay)], [t('diy_hours'), u => u.diy_hours == null ? PEND() : num(u.diy_hours, 1) + ' h']]]];
-  const head = `<tr><th scope="col">${t('concept')}</th>${us.map(u => `<th scope="col" class="n${u.is_reference ? ' refcol' : ''}"><span class="who jc-e">${thumb(u, 'sm')}<span>${carLink(u, unitName(u))}${u.is_reference ? ` <span class="tag ref">${t('ref_short')}</span>` : ''}</span></span></th>`).join('')}</tr>`;
+      [`<abbr title="${esc(t('delta_help'))}">${t('delta')}</abbr>`, u => u.is_reference ? dash : u.delta_vs_reference == null ? `<span class="pending">${t('needs_tco')}</span>` : deltaTxt(u.delta_vs_reference)],
+      [t('outlay'), u => u.is_reference ? dash : eP(u.initial_outlay)], [t('diy_hours'), u => unit(u.diy_hours, 'h', 1)]]]];
+  const head = `<tr><th scope="col" scope="col">${t('concept')}</th>${us.map(u => `<th scope="col" scope="col" class="n${u.is_reference ? ' refcol' : ''}"><span class="who jc-e">${thumb(u, 'sm')}<span>${carLink(u, unitName(u))}${u.is_reference ? ` <span class="tag ref">${t('ref_short')}</span>` : ''}</span></span></th>`).join('')}</tr>`;
   const body = groups.map(([g, rows]) => `<tr class="grp"><td>${g}</td><td colspan="${us.length}"></td></tr>` + rows.map(([l, f, cls]) => `<tr class="${cls || ''}"><td>${l}</td>${us.map(u => `<td class="n${u.is_reference ? ' refcol' : ''}">${f(u)}</td>`).join('')}</tr>`).join('')).join('');
   return `<div class="tablewrap"><table class="cmp"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
@@ -155,11 +155,11 @@ function selBar(all) {
 }
 function toolbar() {
   return `<div class="toolbar"><label>${t('sort_by')} <select class="inline" data-sort>${Object.keys(SORTS).map(k => `<option value="${k}" ${k === sortState.key ? 'selected' : ''}>${t('s_' + k)}</option>`).join('')}</select></label>
-    <button class="btn ghost sm" type="button" data-dir aria-label="${t('toggle_dir')}">${sortState.dir === 'asc' ? '↑ ' + t('asc') : '↓ ' + t('desc')}</button>
+    <button class="btn ghost sm" type="button" data-dir>${sortState.dir === 'asc' ? glyph('↑') + ' ' + t('asc') : glyph('↓') + ' ' + t('desc')}</button>
     <label class="toggle"><input type="checkbox" data-filter="pinRef" ${filters.pinRef ? 'checked' : ''}> ${t('pin_ref')}</label>
     <label class="toggle"><input type="checkbox" data-filter="overBudget" ${filters.overBudget ? 'checked' : ''}> ${t('hide_over_budget')}</label>
     <label class="toggle"><input type="checkbox" data-filter="withdrawn" ${filters.withdrawn ? 'checked' : ''}> ${t('hide_withdrawn')}</label>
-    <span class="spacer"></span><button class="btn ghost sm" type="button" data-csv>⤓ ${t('export_csv')}</button></div>`;
+    <span class="spacer"></span><button class="btn ghost sm" type="button" data-csv>${glyph('⤓')} ${t('export_csv')}</button></div>`;
 }
 function exportCsv() {
   const us = ordered(), cols = [['rank', u => u.rank], ['score', u => u.score], ['make', u => u.make], ['model', u => u.model], ['trim', u => u.trim], ['listing_id', u => u.listing_id],
@@ -208,7 +208,7 @@ function draw() {
   // the one authored motion: markers leave your car's line and settle where they belong (not under reduced motion)
   if (view === 'ruler') requestAnimationFrame(() => root.querySelectorAll('.rmark[data-x]').forEach(m => { m.style.left = m.dataset.x + '%'; }));
   const focus = focusedCtrl();
-  root.innerHTML = `${S.preview ? `<div class="banner">⚠ ${t('preview_banner')} <a class="btn sm" href="#/settings">${t('save_params')}</a></div>` : ''}${requestsPanel()}${versus()}
+  root.innerHTML = `${S.preview ? `<div class="banner">${glyph('⚠')} ${t('preview_banner')} <a class="btn sm" href="#/settings">${t('save_params')}</a></div>` : ''}${requestsPanel()}${versus()}
     <div class="cbar">${selBar(all)}${toolbar()}<nav class="views" aria-label="${t('cv_nav')}">${VIEWS.map(k => `<button type="button" data-view="${k}" aria-pressed="${k === view}">${t('cv_' + k)}</button>`).join('')}</nav></div>${listView || hidden ? orderNote : ''}${body}`;
   restoreFocus(focus);
 }

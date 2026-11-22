@@ -4,7 +4,7 @@
 import { S, go, loadAll, renderShell, current } from '../app.js';
 import { get, post } from '../api.js';
 import { t } from '../i18n.js';
-import { $, esc, num, euro, busy } from '../ui.js';
+import { $, esc, num, euro, busy, unit } from '../ui.js';
 import { quiz, profileHtml } from '../quiz.js';
 
 // Choice preferences store plain English (agents read them as text); the UI shows a translated label per code.
@@ -55,7 +55,7 @@ const VIEWS = {
   search: () => `<div class="fields two">
       ${field('postal_code', t('p_postal'), text('postal_code', P('postal_code'), 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5" autocomplete="postal-code"'), t('h_postal'))}
       ${field('search_center', t('p_search_center'), text('search_center', prefs.search_center ?? '', 'maxlength="100" autocomplete="address-level2"'), t('h_search_center'))}
-      ${field('search_radius', t('p_search_radius'), `<select id="search_radius">${['', '25', '50', '100', '200', '300', 'Any'].map(v => `<option value="${v}" ${String(prefs.search_radius ?? '') === v ? 'selected' : ''}>${v === '' ? '—' : v === 'Any' ? t('o_any_distance') : v + ' km'}</option>`).join('')}${prefs.search_radius && !['25', '50', '100', '200', '300', 'Any'].includes(prefs.search_radius) ? `<option selected value="${esc(prefs.search_radius)}">${esc(prefs.search_radius)}</option>` : ''}</select>`)}</div>
+      ${field('search_radius', t('p_search_radius'), `<select id="search_radius">${['', '25', '50', '100', '200', '300', 'Any'].map(v => `<option value="${v}" ${String(prefs.search_radius ?? '') === v ? 'selected' : ''}>${v === '' ? '—' : v === 'Any' ? t('o_any_distance') : unit(+v, 'km')}</option>`).join('')}${prefs.search_radius && !['25', '50', '100', '200', '300', 'Any'].includes(prefs.search_radius) ? `<option selected value="${esc(prefs.search_radius)}">${esc(prefs.search_radius)}</option>` : ''}</select>`)}</div>
     ${prefChoice('preferred_fuel', t('p_pref_fuel'))}${prefChoice('preferred_transmission', t('p_pref_gearbox'))}
     ${prefs.preferred_engine ? `<p class="hint">${t('kept_note', { v: esc(prefs.preferred_engine) })}</p>` : ''}`,
   workshop: () => { const have = prefs.diy_jobs != null ? prefs.diy_jobs.split(',').map(s => s.trim()) : DIY_DEFAULT.map(k => DIY[k]);
@@ -117,11 +117,11 @@ const shown = k => { const v = prefs[k]; if (v == null) return null;  // stored 
 const diyShown = () => prefs.diy_jobs == null ? null : prefs.diy_jobs.split(',').map(s => s.trim()).map(v => { const k = Object.keys(DIY).find(k => DIY[k] === v); return k ? t('diy_' + k) : v; }).join(', ');
 function summary() {
   const p = S.saved, yes = v => v == null || v === '' ? `<span class="pending">${t('pending')}</span>` : esc(v);
-  const rows = [[t('step_drive'), [[t('p_annual_km'), p.annual_km && num(p.annual_km, 0) + ' km'], [t('p_ownership_years'), p.ownership_years], [t('p_driving_mix'), shown('driving_mix')], [t('p_current_car'), prefs.current_car]]],
+  const rows = [[t('step_drive'), [[t('p_annual_km'), p.annual_km && unit(p.annual_km, 'km')], [t('p_ownership_years'), p.ownership_years], [t('p_driving_mix'), shown('driving_mix')], [t('p_current_car'), prefs.current_car]]],
     [t('step_money'), [[t('p_budget_ideal'), p.budget_ideal_eur && euro(p.budget_ideal_eur)], [t('p_budget_max'), p.budget_max_eur && euro(p.budget_max_eur)], [t('p_purchase'), p.purchase_mode && t('pm_' + p.purchase_mode)]]],
-    [t('step_search'), [[t('p_search_center'), prefs.search_center], [t('p_search_radius'), /^\d+$/.test(prefs.search_radius ?? '') ? prefs.search_radius + ' km' : prefs.search_radius === 'Any' ? t('o_any_distance') : prefs.search_radius], [t('p_pref_fuel'), shown('preferred_fuel')], [t('p_pref_gearbox'), shown('preferred_transmission')], [t('p_postal'), p.postal_code]]],
+    [t('step_search'), [[t('p_search_center'), prefs.search_center], [t('p_search_radius'), /^\d+$/.test(prefs.search_radius ?? '') ? unit(+prefs.search_radius, 'km') : prefs.search_radius === 'Any' ? t('o_any_distance') : prefs.search_radius], [t('p_pref_fuel'), shown('preferred_fuel')], [t('p_pref_gearbox'), shown('preferred_transmission')], [t('p_postal'), p.postal_code]]],
     [t('step_workshop'), [[t('p_diy'), diyShown()]]],
-    [t('step_charging'), [[t('p_home_charging'), p.home_charging && t('hc_' + p.home_charging)], [t('p_home_pct'), p.home_charging_pct != null ? p.home_charging_pct + ' %' : null],
+    [t('step_charging'), [[t('p_home_charging'), p.home_charging && t('hc_' + p.home_charging)], [t('p_home_pct'), p.home_charging_pct != null ? unit(p.home_charging_pct, 'pct') : null],
       [t('p_elec_home'), p.electricity_home_eur_kwh && num(p.electricity_home_eur_kwh, 2) + '\u00a0' + t('unit_eur_kwh')], [t('p_elec_public'), p.electricity_public_eur_kwh && num(p.electricity_public_eur_kwh, 2) + '\u00a0' + t('unit_eur_kwh')]]]];
   return `<div class="sum">${rows.map(([h, kv]) => `<section><h3>${h}</h3><dl class="facts">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${yes(v)}</dd>`).join('')}</dl></section>`).join('')}</div>`;
 }
