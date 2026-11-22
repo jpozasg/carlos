@@ -94,7 +94,7 @@ function unitCard(u) {
     <div class="unit-head"><div><div class="unit-name">${carLink(u, unitName(u))}</div><div class="unit-sub">${[esc(u.trim ?? ''), unitSub(u)].filter(Boolean).join(' · ')}</div></div></div>
     <div class="kv">${u.is_reference ? `<span>${t('owned')}</span>` : `<span>${t('asking_price')} <b>${eP(u.price_eur)}</b></span>`}<span>${t('km')} <b>${u.mileage_km == null ? PEND() : num(u.mileage_km, 0)}</b></span><span>${t('age')} <b>${u.metrics.age == null ? PEND() : yrs(u.metrics.age)}</b></span>${u.metrics.km_per_year != null ? `<span>${t('km_per_year')} <b>${num(u.metrics.km_per_year, 0)}</b></span>` : ''}</div>
     <div><div class="small muted">${u.tco_complete ? t('tco_complete') : t('subtotal_partial')}</div><div class="big">${eP(u.known_cost_subtotal)}</div>
-      <div class="small muted">${u.known_cost_per_month == null ? '' : perMonth(u, t('per_month')) + (u.known_cost_per_km == null ? '' : ' · ' + num(u.known_cost_per_km, 3) + ' €/km')}</div></div>
+      <div class="small muted">${u.known_cost_per_month == null ? '' : perMonth(u, t('per_month')) + (u.known_cost_per_km == null ? '' : ' · ' + num(u.known_cost_per_km, 3) + '\u00a0' + t('unit_eur_km'))}</div></div>
     <div><div class="small" style="display:flex;justify-content:space-between"><span>${t('cost_data')}</span><b>${known}/${n}</b></div>
       <div class="meter${known === n ? ' good' : ''}" role="meter" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${known}" aria-label="${t('cost_known_aria')}"><i style="width:${known / n * 100}%"></i></div>
       ${u.missing_components.length ? `<div class="tags" style="margin-top:6px">${u.missing_components.map(m => `<span class="tag">${esc(tv(m))}</span>`).join('')}</div>` : ''}</div>
