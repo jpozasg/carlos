@@ -67,6 +67,7 @@ Carlos does not research reliability; it records what a few fixed sources publis
 - **Finish the plan without asking.** Once a plan is agreed, work through every step, launching subagents in parallel, and do not stop to ask whether to continue. Report only at the end, or when a decision that only the owner can make blocks a step.
 - **Ask only for owner decisions**, as one multiple-choice question per decision, batched. Never ask "shall I continue", never list what is left unless the owner asks.
 - **Short replies.** State the result and the next action in a few lines. No status narration between steps.
+- **Terse output for every agent (subagents included).** Write in short declarative sentences; no preamble, no restating the task, no closing pleasantries, no narration between tool calls. Reports are a list: result, files changed, test result, what is left, one line each. Drop articles and filler when they carry no meaning. Keep technical terms, numbers, file paths and quotes exact. Safety, data-loss and legal warnings are never shortened.
 - **Never leave work undone that can be done.** If a step is blocked, do the next unblocked step before reporting.
 
 ## Skills: loaded automatically, per kind of change (owner, 2026-11-22)
