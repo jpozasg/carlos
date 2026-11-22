@@ -810,6 +810,7 @@ def listing_detail(c, listing_id, p, ranked, know=None):
              events=q('SELECT * FROM listing_events WHERE listing_id=? ORDER BY event_date, id'),
              snapshots=q('SELECT * FROM listing_snapshots WHERE listing_id=? ORDER BY captured_at, id'),
              media=q('SELECT * FROM listing_media WHERE listing_id=? ORDER BY id'),
+             removed_media=q('SELECT id, captured_at FROM listing_media_all WHERE listing_id=? AND archived=1 ORDER BY id'),
              reliability=know.of('reliability_items', v, reg), maintenance=know.of('maintenance_items', v, reg),
              insurance=know.of('insurance_data', v), tax=know.of('tax_data', v), observations=know.of('observations', v),
              tyres=know.of('tyre_data', v),
