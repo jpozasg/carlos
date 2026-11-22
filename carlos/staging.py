@@ -209,9 +209,7 @@ def check_unit_write(c, req, table, row_id, data):
             levels = [_level(data)]
     else:
         base = c.execute(f'SELECT * FROM main.{table} WHERE id=?', (row_id,)).fetchone()  # table is one of the fixed names above
-        if base is not None and 'owner_id' in base.keys() and base['owner_id'] not in (None, req['owner_id']):
-            raise NotAllowed(f'{table} id={row_id} belongs to another account')
-        if base is not None and 'owner_id' in base.keys() and base['owner_id'] is None:  # a shared catalogue row
+        if base is not None and 'owner_id' in base.keys() and base['owner_id'] is None:  # a shared catalogue row (another account's row is hidden by the scope: 404)
             if unit == 'CAPTURE':
                 raise NotAllowed(f'CAPTURE does not change shared catalogue rows ({table} id={row_id}); the research run does')
             levels = [_level(dict(base)), _level({**dict(base), **data})]

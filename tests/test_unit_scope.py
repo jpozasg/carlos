@@ -113,7 +113,7 @@ class UnitScopeTest(unittest.TestCase):
     def test_another_accounts_row_is_refused(self):
         self.sql("INSERT INTO sources (id, owner_id, title, source_type, accessed_date) VALUES (60, 99, 'Her listing', 'listing', ?)", (fx.TODAY,))
         st, e = self.api('LISTING', 'PATCH', 'agent/sources/60', {'limitations': 'mine now'})
-        self.assertEqual(st, 403, e); self.assertIn('another account', e['error'])
+        self.assertEqual(st, 404, e)                                              # hidden by the account scope, as before: no existence leak
         self.assertEqual(self.sql('SELECT limitations FROM sources WHERE id=60'), [(None,)])
 
     def test_check_unit_write_directly(self):
