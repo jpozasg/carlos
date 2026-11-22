@@ -29,7 +29,7 @@ def table(rows, cols):
 
 def filename(u):
     part = lambda s: re.sub(r'[^A-Za-z0-9]+', '', s or '') or 'X'
-    return f"{part(u['make'])}-{part(u['model'])}-{part(u['platform'])}-{part(u['listing_id']) if u['listing_id'] else 'u' + str(u['id'])}.md"
+    return f"{part(u['make'])}-{part(u['model'])}-{part(u['platform'])}-{part(u['listing_id']) if u['listing_id'] else 'u'}-{u['id']}.md"
 
 
 def render(u, p):

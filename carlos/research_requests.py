@@ -76,7 +76,9 @@ def create(c, uid, data, by=None):
     if m and not c.execute('SELECT 1 FROM main.listings WHERE id=? AND owner_id=?', (int(m[1]), uid)).fetchone():
         raise ValueError(f'{raw}: no such listing in this account')
     url, note = raw if m else clean_url(raw), (str(data.get('note') or '').strip()[:1000] or None)
-    with c:
+    c.isolation_level = None  # the check and the insert in one write transaction: two POSTs cannot both pass (as claim())
+    try:
+        c.execute('BEGIN IMMEDIATE')
         open_urls = [r[0] for r in c.execute("SELECT url FROM main.research_requests WHERE owner_id=? AND parent_id IS NULL "
                                              "AND status IN ('QUEUED','RUNNING','WAITING')", (uid,))]
         if url in open_urls:
@@ -85,6 +87,11 @@ def create(c, uid, data, by=None):
             raise ValueError(f'At most {MAX_OPEN} requests can wait at a time; cancel one or wait until the worker finishes one')
         rid = c.execute("INSERT INTO main.research_requests (owner_id, url, note, requested_by, unit) VALUES (?,?,?,?,'CAPTURE')",
                         (uid, url, note, by)).lastrowid
+        c.execute('COMMIT')
+    except BaseException:
+        c.execute('ROLLBACK'); raise
+    finally:
+        c.isolation_level = ''
     return rid
 
 

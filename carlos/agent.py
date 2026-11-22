@@ -177,6 +177,10 @@ def rating_checks(c, table, out, row_id):
     missing = [k for k in rule['required'] if row.get(k) is None]
     if missing:
         raise ValueError(f"{row['source_key']} ratings need {', '.join(missing)}")
+    if row['source_key'] == 'TUEV_REPORT' and not row['class_average'] > 0:  # the defect share is measured against it
+        raise ValueError('TUEV_REPORT class_average must be above 0')
+    if row['source_key'] == 'ADAC_PANNENSTATISTIK' and row['band'] not in (1, 2, 3, 4, 5):
+        raise ValueError('ADAC_PANNENSTATISTIK band must be 1-5')
     lo, hi = rule.get('scale', (0, None))
     if row.get('value_num') is not None and (row['value_num'] < lo or hi is not None and row['value_num'] > hi):
         raise ValueError(f"value_num must be within {lo}-{hi} for {row['source_key']}")
@@ -304,8 +308,8 @@ def resolve_level(c, table, data):
         return None
     if table == 'generations' and data.get('make') and data.get('model'):
         r = c.execute('SELECT min(id) FROM main.generations WHERE owner_id IS NULL AND upper(trim(make))=upper(trim(?)) AND upper(trim(model))=upper(trim(?)) '
-                      'AND (start_year IS NOT NULL AND start_year=? OR upper(trim(name))=upper(trim(?)))',
-                      (data['make'], data['model'], data.get('start_year'), data.get('name') or '')).fetchone()
+                      "AND (start_year IS NOT NULL AND start_year=? OR ? <> '' AND upper(trim(name))=upper(trim(?)))",
+                      (data['make'], data['model'], data.get('start_year'), data.get('name') or '', data.get('name') or '')).fetchone()
         return r[0]
     if table == 'engines' and data.get('code') and data.get('fuel_type') and data.get('displacement_cc') and (data.get('power_kw') or data.get('power_ps')):
         r = c.execute("SELECT min(id) FROM main.engines WHERE owner_id IS NULL AND fuel_type=? AND displacement_cc=? "
@@ -421,8 +425,8 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, reques
             if table in OWNED:
                 catalogue = admin and (table in MODEL or table == 'sources' and any(data.get(k) is not None for k in config.LEVEL_COLUMNS))
                 data['owner_id'] = None if catalogue else user_id
-            elif table in _KNOW and ('USER DATA' in (data.get('status'), data.get('premium_status')) or data.get('annual_premium_eur') is not None):
-                data['owner_id'] = user_id
+            elif table == 'insurance_data' or table in _KNOW and ('USER DATA' in (data.get('status'), data.get('premium_status')) or data.get('annual_premium_eur') is not None):
+                data['owner_id'] = user_id  # N6: an insurance row is the account's own, even one without a premium (a NULL owner is shared)
             cur = c.execute(f'INSERT INTO main.{table} ({",".join(data)}) VALUES ({",".join("?" * len(data))})', list(data.values()))
             row_id, old = cur.lastrowid, None
         else:
@@ -439,8 +443,8 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, reques
 
 
 # A listing is deleted together with its own rows, children first (photos before captures, resets before costs).
-LISTING_CHILDREN_DELETE_ORDER = ('maintenance_resets', 'inspection_items', 'unit_costs', 'valuations', 'listing_events',
-                                 'listing_media', 'listing_snapshots')
+LISTING_CHILDREN_DELETE_ORDER = ('listing_options', 'listing_quotes', 'listing_history', 'maintenance_resets', 'inspection_items',
+                                 'unit_costs', 'valuations', 'listing_events', 'listing_media', 'listing_snapshots')
 
 
 def references(c, table, row_id):
@@ -477,10 +481,13 @@ def agent_delete(c, table, row_id, user_id, request_id=None):
         c.execute(f'DELETE FROM main.{table} WHERE id=?', (row_id,))
         log_change(c, table, row_id, 'delete', json.dumps(dict(old), ensure_ascii=False),
                    json.dumps({'deleted': True, 'removed_children': {k: v for k, v in removed.items() if v}}), user_id, request_id)
-    for f in files:  # after the commit: a failed delete keeps its photos
-        path = config.MEDIA_DIR / f
+    media = config.MEDIA_DIR.resolve()
+    for f in files:  # after the commit: a failed delete keeps its photos; a path outside the media folder is never unlinked
+        path = (config.MEDIA_DIR / f).resolve()
+        if not path.is_relative_to(media):
+            continue
         path.unlink(missing_ok=True)
-        if path.parent != config.MEDIA_DIR and path.parent.is_dir() and not any(path.parent.iterdir()):
+        if path.parent != media and path.parent.is_dir() and not any(path.parent.iterdir()):
             path.parent.rmdir()
     return removed
 

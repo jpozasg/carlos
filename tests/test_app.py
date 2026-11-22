@@ -1,6 +1,6 @@
 """API, calculation and migration tests on a synthetic database (tests/fixture.py), never on real data.
 Run: python -m unittest -v"""
-import datetime, json, math, os, re, shutil, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
+import datetime, json, math, os, re, shutil, sqlite3, tempfile, threading, time, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -11,6 +11,11 @@ from tests.fixture import REF, CAR_A, CAR_B, V_A, V_B, V_REF, V_B2, E_A, E_B, G1
 
 TOKEN, PASSWORD = fx.TOKEN, fx.PASSWORD
 REAL_DB = config.ROOT / 'data' / 'cars.sqlite'
+
+
+def dossier_path(name):
+    """A dossier file of account 1: <make>-<model>-<platform>-<listing id>-<row id>.md (the row id makes every name unique)."""
+    return next((config.MD_DIR / '1').glob(name + '-*.md'), config.MD_DIR / '1' / (name + '.md'))
 
 
 class AppTest(unittest.TestCase):
@@ -1412,7 +1417,10 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.units()[CAR_A]['annual_insurance'], 850)        # the latest quote wins
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'quote_profile': 'x'})[0], 400)
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'quote_date': '03.11.2026'})[0], 400)
-        self.assertEqual(self.agent('POST', 'insurance_data', {'vehicle_id': V_A, 'insurer': 'Test AG', 'source_id': SRC_QUOTE})[0], 201)
+        st, row = self.agent('POST', 'insurance_data', {'vehicle_id': V_A, 'insurer': 'Test AG', 'source_id': SRC_QUOTE})
+        self.assertEqual(st, 201)
+        self.assertEqual(self.sql('SELECT owner_id FROM insurance_data WHERE id=?', (row['id'],))[0][0],
+                         self.sql("SELECT id FROM users WHERE username='admin'")[0][0])  # N6: never a shared (NULL) owner
         self.assertEqual(self.units()[CAR_A]['annual_insurance'], 850)        # a Typklasse-only row is not a premium
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'vehicle_id': V_REF, 'annual_premium_eur': 500})[0], 201)
         self.assertEqual(self.units()[REF]['annual_insurance'], 900)          # the reference keeps what the user pays
@@ -1782,11 +1790,24 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('DELETE', 'listings')[0], 405)
         self.assertEqual(self.agent('DELETE', 'listings/99999')[0], 404)
         n_children = self.sql('SELECT count(*) FROM inspection_items WHERE listing_id=?', (CAR_A,))[0][0]
-        st, r = self.agent('DELETE', f'listings/{CAR_A}')
+        self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'job': 'BRAKES_FRONT', 'item': 'Front brake pads worn', 'status': 'PRESENT', 'category': 'repairs', 'evidence': 'OBSERVED'})[0], 201)
+        self.assertEqual(self.agent('POST', 'listing_quotes', {'listing_id': CAR_A, 'annual_premium_eur': 777, 'premium_status': 'QUOTE',
+                                                               'quote_date': fx.TODAY, 'source_id': SRC_QUOTE})[0], 201)
+        st, r = self.agent('DELETE', f'listings/{CAR_A}')  # its history and quotes go with it (review D-06)
         self.assertEqual((st, r['deleted'], r['removed_children']['inspection_items']), (200, True, n_children))
+        self.assertEqual((r['removed_children']['listing_history'], r['removed_children']['listing_quotes']), (1, 1))
         self.assertEqual(self.sql('SELECT count(*) FROM listings WHERE id=?', (CAR_A,))[0][0], 0)
         self.assertEqual(self.sql("SELECT action FROM change_log WHERE table_name='listings' AND row_id=? ORDER BY id DESC LIMIT 1", (CAR_A,))[0][0], 'delete')
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[0], 404)
+
+    def test_listing_delete_never_unlinks_a_file_outside_the_media_folder(self):  # review D-07
+        outside = config.DATA_DIR / 'keep.txt'; outside.write_bytes(b'not a photo')
+        c = sqlite3.connect(config.DB)
+        c.execute("INSERT INTO listing_media (listing_id, captured_at, file_path, mime, bytes, sha256) VALUES (?, ?, '../keep.txt', 'image/jpeg', 3, 'x')",
+                  (CAR_A, fx.TODAY)); c.commit(); c.close()
+        st, r = self.agent('DELETE', f'listings/{CAR_A}')
+        self.assertEqual((st, r['deleted']), (200, True), r)
+        self.assertEqual(outside.read_bytes(), b'not a photo')  # refused: the row is gone, the file outside the media folder stays
 
     def test_owner_decision(self):
         ls = self.req('GET', '/api/tco')[1]['listings']
@@ -1902,16 +1923,16 @@ class AppTest(unittest.TestCase):
         old, new = self.sql("SELECT old_json, new_json FROM change_log WHERE table_name='listings' ORDER BY id DESC LIMIT 1")[0]
         self.assertEqual(json.loads(new), {'verdict': 'Strong candidate, inspection pending'})
         self.assertIsNone(json.loads(old)['verdict'])
-        md = (config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').read_text()
+        md = dossier_path('Alpha-Hatch-Test-A1').read_text()
         self.assertIn('Strong candidate, inspection pending', md)
-        self.assertIn('BC12T', (config.MD_DIR / '1' / 'Beta-City-Test-B1.md').read_text())
-        self.assertTrue((config.MD_DIR / '1' / 'Alpha-Hatch-OWNED-u1.md').exists())
+        self.assertIn('BC12T', dossier_path('Beta-City-Test-B1').read_text())
+        self.assertTrue(dossier_path('Alpha-Hatch-OWNED-u').exists())
         self.agent('PATCH', f'listings/{CAR_A}', {'verdict': 'x'})
-        self.assertNotIn('inspection pending', (config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').read_text())
+        self.assertNotIn('inspection pending', dossier_path('Alpha-Hatch-Test-A1').read_text())
         self.assertEqual(self.agent('POST', 'export-md')[0], 200)
 
     def test_dossiers_follow_saved_parameters(self):
-        md = lambda: (config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').read_text()
+        md = lambda: dossier_path('Alpha-Hatch-Test-A1').read_text()
         self.agent('POST', 'export-md')
         self.assertIn('4 years, 60,000 km', md())
         self.req('GET', '/api/tco?ownership_years=2')
@@ -1948,12 +1969,13 @@ class AppTest(unittest.TestCase):
         self.assertEqual(len(d['media']), 1)
         self.assertEqual((d['cover'], d['photo_count']), (d['media'][0]['file_path'], 1))
         r = urllib.request.Request(f"{self.base}/media/{d['media'][0]['file_path']}", headers={'Authorization': f'Bearer {TOKEN}'})
-        self.assertEqual(urllib.request.urlopen(r).read(), jpg)
+        resp = urllib.request.urlopen(r)
+        self.assertEqual((resp.read(), resp.headers['Cache-Control']), (jpg, 'private, no-cache'))  # review D-09: no year-long cache of a photo
         with self.assertRaises(urllib.error.HTTPError):
             urllib.request.urlopen(f"{self.base}/media/{d['media'][0]['file_path']}")   # login required
         timer.assert_called()  # the dossier follows the photo once the deferred export runs
         server.export_deferred(1)
-        md = (config.MD_DIR / '1' / 'Beta-City-Test-T1.md').read_text()
+        md = dossier_path('Beta-City-Test-T1').read_text()
         self.assertIn('> Line 2', md)
         self.assertIn('| Getriebe | Automatik |', md)
         self.assertIn(f'../../media/{L}/', md)
@@ -2115,6 +2137,20 @@ class AppTest(unittest.TestCase):
         auth.FAILS['127.0.0.1'].update(until=0.0, last=0.0)                   # the lock expired long ago: purged on the next call
         self.assertEqual(self.login()[0], 200)
         self.assertNotIn('127.0.0.1', auth.FAILS)
+
+    def test_wrong_passwords_are_capped_per_minute_across_usernames(self):  # N5: a new name and address each time, only the minute cap counts
+        from carlos.db import connect
+        c = connect()
+        self.addCleanup(c.close)
+        self.addCleanup(auth.MINUTE.update, start=0.0, fails=0)
+        auth.MINUTE.update(start=time.time(), fails=0)
+        for i in range(auth.LOGIN_MAX_PER_MINUTE):
+            self.assertIsNone(auth.login(c, f'ghost{i}', 'wrong', client=f'10.9.{i // 250}.{i % 250}'))
+        self.assertTrue(auth.capped())
+        self.assertIsNone(auth.login(c, 'admin', PASSWORD, client='10.8.0.1'))  # the right password waits for the next minute
+        auth.MINUTE.update(start=time.time() - 61)
+        self.assertIsNotNone(auth.login(c, 'admin', PASSWORD, client='10.8.0.2'))
+        self.assertFalse(auth.capped())
 
     def test_json_body_size_is_capped(self):
         r = urllib.request.Request(self.base + '/api/auth/login', b'{}', {'Content-Type': 'application/json', 'Content-Length': str(server.MAX_JSON_BYTES + 1)}, method='POST')
@@ -2492,7 +2528,7 @@ class AppTest(unittest.TestCase):
         self.assertIn('BC12X', ''.join(f.read_text() for f in (config.MD_DIR / '2').glob('*.md')))
         self.assertEqual(self.req('POST', '/api/parameters', {'annual_km': 9000}, token=None, cookie=t2)[1]['annual_km'], 9000)
         self.assertEqual(self.req('GET', '/api/parameters')[1]['annual_km'], 15000)
-        self.assertTrue((config.MD_DIR / '1' / 'Alpha-Hatch-Test-A1.md').exists())
+        self.assertTrue(dossier_path('Alpha-Hatch-Test-A1').exists())
         # deactivation ends the sessions and the token
         self.assertEqual(self.req('PATCH', '/api/admin/users/2', {'is_active': 0}, token=None, cookie=cookie)[1]['is_active'], 0)
         self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=c2)[0], 401)
@@ -2556,6 +2592,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(), [])
         c.close()
         self.assertFalse((config.MEDIA_DIR / 'x' / 'b.jpg').exists())
+        self.assertEqual(len(list((config.DB.parent / 'trash').rglob('x/b.jpg'))), 1)  # moved to the trash, not unlinked
         st, d = self.req('GET', f'/api/listings/{CAR_A}')   # a listing awaiting research stays readable
         self.assertEqual((st, d['vehicle_id'], d['research_levels']['variant']['state']), (200, None, 'incomplete'))
         self.assertEqual(self.req('GET', '/api/tco')[0], 200)
@@ -2616,6 +2653,44 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'source_ratings', R)[0], 201)
         self.assertEqual(self.agent('POST', 'source_keys', K, token='bad')[0], 401)
 
+
+    def test_review_fixes_on_write_and_read(self):
+        """Code review round 1: a rating's values are checked on write, a saved filter is checked on save, a decision keeps an owned
+        car's status, a negative limit is clamped, a refused duplicate request leaves no transaction open, reliability_items are not read."""
+        url = 'https://www.tuev-verband.de/x'
+        self.assertEqual(self.agent('POST', 'source_keys', {'source_key': 'TUEV_REPORT', 'external_key': 'Polo', 'generation_id': G1, 'url': url,
+                                                            'source_id': fx.SRC_HU, 'checked_date': '2026-11-10'})[0], 201)
+        R = {'source_key': 'TUEV_REPORT', 'external_key': 'polo', 'edition': '2026', 'age_from': 6, 'age_to': 7, 'value_num': 5,
+             'class_average': 10, 'url': url, 'source_id': fx.SRC_HU, 'checked_date': '2026-11-10'}
+        self.assertEqual(self.agent('POST', 'source_ratings', {**R, 'class_average': 0})[0], 400)     # no average to measure against
+        self.assertEqual(self.agent('POST', 'source_ratings', R)[0], 201)
+        A = {'source_key': 'ADAC_PANNENSTATISTIK', 'external_key': 'Polo', 'generation_id': G1, 'url': url, 'source_id': fx.SRC_HU,
+             'checked_date': '2026-11-10'}
+        self.assertEqual(self.agent('POST', 'source_keys', A)[0], 201)
+        B = {'source_key': 'ADAC_PANNENSTATISTIK', 'external_key': 'polo', 'edition': '2026', 'reg_year': 2015, 'url': url,
+             'source_id': fx.SRC_HU, 'checked_date': '2026-11-10'}
+        self.assertEqual(self.agent('POST', 'source_ratings', {**B, 'band': 6})[0], 400)              # the bands are 1-5
+        self.assertEqual(self.agent('POST', 'source_ratings', {**B, 'band': 2})[0], 201)
+        # saved filters the ranking can read
+        self.assertEqual(self.req('POST', '/api/preferences', {'filter_hu_months': 'soon'})[0], 400)
+        self.assertEqual(self.req('POST', '/api/preferences', {'filter_seller': 'BOTH'})[0], 400)
+        self.assertEqual(self.req('POST', '/api/preferences', {'filter_hu_months': 12, 'filter_seller': 'DEALER'})[0], 200)
+        self.assertTrue(self.units())
+        # a decision on a bought car leaves its status alone
+        self.sql_write("UPDATE listings SET listing_status='OWNED' WHERE id=?", (CAR_B,))
+        self.assertEqual(self.ui('POST', f'decision/{CAR_B}', {'decision': 'reject', 'reason': 'too far'})[0], 201)
+        self.assertEqual(self.sql('SELECT listing_status, verdict FROM listings WHERE id=?', (CAR_B,))[0][0], 'OWNED')
+        # a negative limit returns one row, not every row
+        st, admin = self.login()
+        self.assertGreater(len(self.req('GET', '/api/admin/changes?limit=1000', token=None, cookie=admin)[1]), 1)
+        self.assertEqual(len(self.req('GET', '/api/admin/changes?limit=-5', token=None, cookie=admin)[1]), 1)
+        # a refused duplicate leaves no transaction open: the next request still gets in
+        uid2, t2 = self.second_account()
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1'}, token=None, cookie=t2)[0], 201)
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/1'}, token=None, cookie=t2)[0], 400)
+        self.assertEqual(self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/2'}, token=None, cookie=t2)[0], 201)
+        # reliability_items (retired) are not read: the listing's reliability is empty
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['reliability'], [])
 
 if __name__ == '__main__':
     unittest.main()

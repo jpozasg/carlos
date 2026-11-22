@@ -11,7 +11,7 @@ const root = process.argv[1];
 globalThis.document = { documentElement: {}, getElementById: () => null };
 globalThis.MutationObserver = class { observe() {} };
 globalThis.localStorage = { getItem: () => null, setItem() {} };
-globalThis.fetch = async url => ({ json: async () => JSON.parse(fs.readFileSync(root + url, 'utf8')) });
+globalThis.fetch = async url => ({ ok: true, json: async () => JSON.parse(fs.readFileSync(root + url, 'utf8')) });
 const i18n = await import(pathToFileURL(root + '/static/js/i18n.js').href);
 const ui = await import(pathToFileURL(root + '/static/js/ui.js').href);
 const out = {};
