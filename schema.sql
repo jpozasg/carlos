@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=45). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=46). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -169,11 +169,6 @@ CREATE TABLE "project_parameters" (
  budget_ideal_eur REAL CHECK (budget_ideal_eur IS NULL OR budget_ideal_eur > 0),
  budget_max_eur REAL CHECK (budget_max_eur IS NULL OR budget_max_eur > 0),
  postal_code TEXT,
- drivers_count INTEGER,
- driver_age INTEGER,
- sf_class TEXT,
- insurance_cover TEXT,
- insurance_deductible_eur REAL,
  purchase_mode TEXT,
  currency TEXT DEFAULT 'EUR',
  ranking_weights TEXT CHECK (ranking_weights IS NULL OR json_type(ranking_weights) = 'object')

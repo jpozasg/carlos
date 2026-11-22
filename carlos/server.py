@@ -21,13 +21,12 @@ VIEW_COOKIE = "carlos_view"  # an admin viewing as another account (issue #142);
 # UI-editable parameters: type and whether they must be > 0 (required) or >= 0 (optional).
 PARAM_NUM = {'annual_km': (int, True), 'ownership_years': (int, True), 'fuel_price_eur_l': (float, True),
              'diesel_price_eur_l': (float, False),
-             'drivers_count': (int, False), 'driver_age': (int, False), 'insurance_deductible_eur': (float, False),
              'budget_ideal_eur': (float, False), 'budget_max_eur': (float, False),
              # electric cars (#121): € per kWh at home and in public, the share charged at home (0–100), a planned wallbox
              'electricity_home_eur_kwh': (float, False), 'electricity_public_eur_kwh': (float, False),
              'home_charging_pct': (int, False), 'wallbox_cost_eur': (float, False),
              'exclude_over_max': (int, False)}  # ranking (#169): 1/NULL = cars over the maximum budget are not ranked
-PARAM_TEXT = {'fuel_price_date', 'diesel_price_date', 'postal_code', 'sf_class', 'insurance_cover', 'purchase_mode',
+PARAM_TEXT = {'fuel_price_date', 'diesel_price_date', 'postal_code', 'purchase_mode',
               'home_charging', 'electricity_home_date', 'electricity_public_date'}
 PARAM_CODES = {'home_charging': config.HOME_CHARGING}
 DATE_PARAMS = ('fuel_price_date', 'diesel_price_date', 'electricity_home_date', 'electricity_public_date')
@@ -57,8 +56,7 @@ SECURITY_HEADERS = (
 RUN_GET = re.compile(r'/api/(agent/(todo|schema|stage|disputes)|todo|models|vehicles(/\d+)?|generations|engines|sources|listings(/\d+)?|tco|preferences)')
 # The profile inside /api/tco and /api/listings and /api/preferences: every other unit gets the calculation settings
 # and the DIY/driving choices it needs (agent_tools.diy_jobs, resale_rule_of_thumb), not the person.
-PROFILE_PARAMS = ('postal_code', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'drivers_count', 'driver_age',
-                  'purchase_mode', 'ranking_weights', 'ranking_answers')
+PROFILE_PARAMS = ('postal_code', 'purchase_mode', 'ranking_weights', 'ranking_answers')
 RUN_PREFERENCES = ('diy_jobs', 'diy_skills', 'driving_mix', 'search_radius', 'preferred_engine', 'current_car', 'onboarding_done')
 
 

@@ -61,8 +61,7 @@ ROWS = {
     'users': [dict(id=ADMIN, username='admin', role='admin', password_hash=auth.hash_password(PASSWORD), api_token_hash=auth.digest(TOKEN))],
     'project_parameters': [dict(id=1, owner_id=ADMIN, annual_km=15000, ownership_years=4, fuel_price_eur_l=1.80, fuel_price_date=TODAY,
                                 diesel_price_eur_l=1.70, diesel_price_date=TODAY, budget_ideal_eur=6500, budget_max_eur=8000,
-                                postal_code=None, drivers_count=1, driver_age=30, sf_class='SF 5', insurance_cover='Teilkasko',
-                                insurance_deductible_eur=150, purchase_mode='cash', currency='EUR', ranking_weights=None)],
+                                postal_code=None, purchase_mode='cash', currency='EUR', ranking_weights=None)],
     'project_preferences': [dict(preference_key='preferred_transmission', preference_value='Manual', unit='text', status='USER_SETTING', notes='Test preference.')],
     'generations': [
         dict(id=G1, make='Alpha', model='Hatch', name='Mk1', start_year=2008, end_year=2014, facelift_year=2011, status='VERIFIED'),
