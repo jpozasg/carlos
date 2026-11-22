@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=46). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=47). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -10,7 +10,7 @@ CREATE TABLE change_log (
  changed_at TEXT NOT NULL DEFAULT (datetime('now')),
  table_name TEXT NOT NULL, row_id INTEGER NOT NULL, action TEXT NOT NULL,
  old_json TEXT, new_json TEXT NOT NULL
-, user_id INTEGER REFERENCES users(id));
+, user_id INTEGER REFERENCES users(id), request_id INTEGER REFERENCES research_requests(id));
 CREATE TABLE listing_snapshots (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -545,3 +545,4 @@ CREATE UNIQUE INDEX ux_source_keys ON source_keys
  (source_key, coalesce(engine_id, -1), coalesce(generation_id, -1), coalesce(fuel_type, '')) WHERE archived = 0;
 CREATE UNIQUE INDEX ux_source_ratings ON source_ratings
  (source_key, upper(external_key), edition, coalesce(age_from, -1), coalesce(reg_year, -1)) WHERE archived = 0;
+CREATE INDEX change_log_request ON change_log(request_id);
