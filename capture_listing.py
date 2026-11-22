@@ -23,7 +23,7 @@ LISTING_FIELDS = ('first_registration', 'seller', 'location', 'seller_address', 
                   # structured facts for the ranking filters, the distance and the dossier (#169)
                   'seller_type', 'warranty', 'hu_until', 'service_history', 'accident_free', 'seller_rating', 'seller_reviews',
                   'postal_code', 'hsn', 'tsn')  # hsn/tsn: when the ad's text or attributes state them (#313)
-# lease columns (#127) stay in the schema for listings captured before #165, but a capture never writes them
+# a lease-only ad is refused (#165); the lease columns stay in the schema but nothing writes or reads them
 LEASE_FIELDS = ('lease_kind', 'lease_monthly_eur', 'lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur',
                 'lease_fees_eur', 'lease_extra_km_eur', 'lease_fewer_km_eur', 'lease_includes')
 # electric cars (#125): the battery is the costliest part; every electric listing gets this checklist item
@@ -254,14 +254,6 @@ def fmt(v, unit):
     return 'unknown' if v is None else f'{v:g} {unit}'
 
 
-def lease_txt(lst):
-    """The lease offer for the log, as the ad states it (#127)."""
-    if lst.get('lease_monthly_eur') is None:
-        return ''
-    return (f"; lease {fmt(lst['lease_monthly_eur'], 'EUR/month')}, {fmt(lst.get('lease_term_months'), 'months')}, "
-            f"{fmt(lst.get('lease_km_per_year'), 'km/year')}, down payment {fmt(lst.get('lease_down_payment_eur'), 'EUR')}")
-
-
 def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
     """Runs the import and returns a summary. With dry_run, only reads and logs the planned writes."""
     validate(cap)
@@ -333,13 +325,13 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
         write('POST', '/api/agent/listing_events', {
             'listing_id': lid, 'event_date': day, 'kind': 'found', 'source_id': source_id,
             'text': f"Listing captured from {cap['platform']} via {method}: asking price {fmt(cap.get('price_eur'), 'EUR')}, "
-                    f"{fmt(cap.get('mileage_km'), 'km')}{lease_txt(cap.get('listing', {}))}; {photo_note}."}, 'found log entry')
+                    f"{fmt(cap.get('mileage_km'), 'km')}; {photo_note}."}, 'found log entry')
     else:
         patch, changes = {'last_checked': day}, []
         if existing.get('vehicle_id') != cap['vehicle_id']:  # re-research after the reset (#194) attaches the new variant
             patch['vehicle_id'] = cap['vehicle_id']
         new = {**cap.get('listing', {}), 'price_eur': cap.get('price_eur'), 'mileage_km': cap.get('mileage_km')}
-        for k, unit in (('price_eur', 'EUR'), ('mileage_km', 'km'), ('lease_monthly_eur', 'EUR/month')):
+        for k, unit in (('price_eur', 'EUR'), ('mileage_km', 'km')):
             if new.get(k) is not None and new[k] != existing.get(k):
                 patch[k] = new[k]; changes.append(f'{k} {fmt(existing.get(k), unit)} → {fmt(new[k], unit)}')
         write('PATCH', f'/api/agent/listings/{lid}', patch, ', '.join(changes) or 'last_checked')

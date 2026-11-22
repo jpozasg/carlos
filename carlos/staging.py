@@ -13,9 +13,9 @@ RUN = {'RESEARCH_A': 'A', 'RESEARCH_B': 'B', 'ARBITER': 'C'}
 # real table -> finding kind (section 2.1); a PATCH of a real row is always kind 'patch', an insert of the three model tables is refused
 KIND = {'sources': 'source', 'engine_families': 'level', 'gearbox_families': 'level', 'gearboxes': 'level', 'body_styles': 'level',
         'options': 'level', 'faults': 'fault', 'recalls': 'recall', 'maintenance_items': 'job', 'research_checks': 'check',
-        'observations': 'observation', 'tyre_data': 'tyres', 'review_flags': 'flag'}
-PATCHABLE = set(KIND) | {'generations', 'engines', 'vehicles', 'repair_risks'}  # never reliability_items (legacy), listing or insurance data
-KIND_ORDER = ('source', 'level', 'patch', 'fault', 'recall', 'job', 'check', 'observation', 'tyres', 'flag')
+        'observations': 'observation', 'tyre_data': 'tyres'}
+PATCHABLE = set(KIND) | {'generations', 'engines', 'vehicles'}  # never the retired tables, listing or insurance data
+KIND_ORDER = ('source', 'level', 'patch', 'fault', 'recall', 'job', 'check', 'observation', 'tyres')
 MODEL_LEVEL = {'generations': 'generation_id', 'engines': 'engine_id', 'vehicles': 'vehicle_id', 'gearboxes': 'gearbox_id',
                'engine_families': 'engine_family_id', 'gearbox_families': 'gearbox_family_id', 'body_styles': 'body_style_id',
                'options': 'option_id'}
@@ -49,10 +49,7 @@ def key_of(kind, table, p, target_id=None):
         return f'check:{p.get("task")}'
     if kind == 'observation':
         return f'obs:{p.get("metric")}'
-    if kind == 'tyres':
-        return f'tyres:{p.get("tyre_type")}'
-    return f'flag:{p.get("kind")}:{next((k for k in config.LEVEL_COLUMNS if p.get(k) is not None), None)}:' \
-           f'{next((p[k] for k in config.LEVEL_COLUMNS if p.get(k) is not None), None)}'
+    return f'tyres:{p.get("tyre_type")}'
 
 
 def _refs(c, table, p):
@@ -92,7 +89,7 @@ def write(c, req, table, row_id, data):
     server maps them: NotAllowed (403), ValueError (400), NotFound (404), Conflict (409)."""
     if table not in PATCHABLE or table not in AGENT_TABLES:
         raise NotAllowed(f'{table} is not part of a research run (staging takes sources, levels, faults, recalls, jobs, checks, '
-                              f'observations, tyres, statistics, flags and patches of real rows)')
+                              f'observations, tyres and patches of real rows)')
     data = dict(data)
     distinct = data.pop('distinct_of', None)
     old = None
@@ -109,8 +106,6 @@ def write(c, req, table, row_id, data):
         if prev:  # later PATCHes of the same real row merge into one finding
             old, data = prev, {**json.loads(prev['payload']), **data}
     else:
-        if table == 'repair_risks':
-            raise NotAllowed('repair_risks cannot be staged: file the failure with fault() (a priced weak point on its level) instead')
         if table not in KIND or table in ('generations', 'engines', 'vehicles'):
             raise NotAllowed(f'{table}: the capture created the shell rows; stage a PATCH of the real row instead')
         op, target, kind = 'insert', None, KIND[table]
@@ -143,7 +138,7 @@ def write(c, req, table, row_id, data):
     mine = old['id'] if old else None
     # within-run duplicates: unique kinds by key (a source answers with the existing id); faults by component (the #221 wording, staged ids)
     same = c.execute('SELECT id FROM main.research_findings WHERE request_id=? AND key=? AND status=? AND id IS NOT ?',
-                     (req['id'], key, 'STAGED', mine)).fetchone() if kind not in ('fault', 'check', 'flag') else None
+                     (req['id'], key, 'STAGED', mine)).fetchone() if kind not in ('fault', 'check') else None
     if same and kind == 'source' and old is None:
         return {'table': table, 'id': -same[0], 'staged': True, 'existing': True}
     if same:
@@ -310,7 +305,7 @@ def stage_view(c, req, grade):
 import difflib
 BANDS = tuple(config.FREQUENCY_BANDS)  # systemic ... rare
 BAD_CONSEQUENCE = ('ENGINE_DAMAGE', 'STRANDS', 'SAFETY')
-COMPARED = ('fault', 'recall', 'job', 'check', 'observation', 'tyres', 'patch', 'level')  # flags and sources are never compared
+COMPARED = ('fault', 'recall', 'job', 'check', 'observation', 'tyres', 'patch', 'level')  # sources are never compared
 DISPUTE_ORDER = ('patch', 'level', 'recall', 'fault', 'job')  # then the rest; faults by price
 
 
@@ -613,7 +608,7 @@ def _plan(c, fs, m):
     """([(finding, note, distinct_of_the_first)], skip reason, needs a flag) for one match."""
     a, b = fs.get(m['a_id']), fs.get(m['b_id'])
     sides, v, kind = [x for x in (a, b) if x], m['verdict'], m['kind']
-    if kind in ('check', 'flag'):  # unions: every distinct one is written
+    if kind == 'check':  # unions: every distinct one is written
         return [(x, None, False) for x in sides], None, False
     if v == 'NEITHER':
         return [], f'rejected by the arbiter: {m["verdict_reason"]}', False
@@ -792,13 +787,13 @@ def merge(c, parent_id, owner_id, actor=None):
             if lost:  # the other run's name for a level written under the winner's name: no second row
                 plan = [x for x in plan if x[0]['id'] not in alias]
                 reason = reason or f'same level as staged row {-alias[lost[0][0]["id"]]} (identity unified)'
-            if a and b and not m['verdict'] and m['kind'] not in ('check', 'flag') and lv:  # runs disagree on the level: the variant's identity wins
+            if a and b and not m['verdict'] and m['kind'] != 'check' and lv:  # runs disagree on the level: the variant's identity wins
                 wa, wb = on_winner(a), on_winner(b)
                 if wa != wb and (wa or wb):
                     plan = [(a if wa else b, plan[0][1] if plan else None, False)]
             for f, note, after_first in plan:
                 try:
-                    if f['kind'] in ('check', 'flag'):
+                    if f['kind'] == 'check':
                         sig = (f['target_table'], json.dumps(subst(f['target_table'], f['p']), sort_keys=True))
                         if sig in seen:
                             continue

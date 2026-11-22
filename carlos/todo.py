@@ -2,7 +2,7 @@
 catalogue level on its own, all from the research contract (carlos/research.py, issue #114)."""
 import datetime
 from . import config, research
-from .costs import Knowledge, days_since, electricity_price, is_new
+from .costs import Knowledge, days_since, electricity_price
 from .db import rows, variant_name, variants
 
 
@@ -29,19 +29,8 @@ def todo(c, p, ranked):
             t.append('plug-in hybrid: energy cost not supported yet, fuel stays unknown (owner decision 2026-11-05)')
         if u['is_reference'] and (u['id'], 'sale_today') not in vals:
             t.append('valuation missing: sale_today')
-        lease = not u['is_reference'] and u.get('lease_monthly_eur') is not None  # a lease offer (#127)
-        if lease:
-            t += [f'lease field not stated: {f} (ask the dealer; null is never 0)' for f in
-                  ('lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur', 'lease_fees_eur') if u.get(f) is None]
-            if u.get('lease_kind') is None:
-                t.append('lease kind not recorded: km, residual or abo')
-            elif u['lease_kind'] == 'residual':
-                t.append('residual-value leasing: recorded, not costed (owner decision 2026-11-05)')
-            # a lease rate rarely includes insurance; lessors require fully comprehensive cover (#129)
-            if u.get('offer') == 'lease' and u['components']['insurance'] is None:
-                t.append('lease without insurance in the rate: get a Vollkasko quote ("geleast", docs/browser-tasks.md)')
-        for field in ('first_registration', 'mileage_km') + (() if u['is_reference'] else (() if lease else ('price_eur',)) + ('url',)):
-            if u[field] is None and not (field == 'first_registration' and is_new(u)):  # a new car has none yet (#162)
+        for field in ('first_registration', 'mileage_km') + (() if u['is_reference'] else ('price_eur', 'url')):
+            if u[field] is None:
                 t.append(f'listing field missing: {field}')
         if not u['is_reference']:
             if u['id'] not in snaps:

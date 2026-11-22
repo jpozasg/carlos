@@ -53,7 +53,7 @@ A total is only called a TCO when no component is missing; otherwise it is a par
 | Plug-in hybrid | recorded and researched; its energy cost stays unknown for now |
 | Electric | ev-database.org consumption + a charging-loss allowance, electricity prices from the Charging setup step, the tax exemption, battery warranty and health |
 
-Carlos compares **second-hand purchases only** (issue #165): new cars and leases / car subscriptions are not researched or costed (in the owner's sample they cost more per month than used cars, and a new model's reliability cannot be researched yet). The new-car and lease costing code from #150/#129 stays dormant for listings captured before.
+Carlos compares **second-hand purchases only** (issue #165): new cars and leases / car subscriptions are not researched or costed (in the owner's sample they cost more per month than used cars, and a new model's reliability cannot be researched yet). The new-car and lease costing code was removed.
 
 Details: `docs/cost-research-protocol.md` and the research prompts in `docs/prompts/`.
 

@@ -88,13 +88,6 @@ ROWS = {
         dict(id=6, job='TIMING_DRIVE', engine_id=E_B, item='Timing belt with water pump (workshop)', interval_km=120000, interval_months=72, schedule='ITEM', diy=0, reference_cost_eur=600, status='VERIFIED', source_id=SRC_GUIDE),
         dict(id=7, job='HU', generation_id=G2, item='HU/AU inspection', interval_months=24, schedule='ITEM', diy=0, reference_cost_eur=163, status='OFFICIAL FEE LEVEL', source_id=SRC_HU),
         dict(id=8, job='OIL_SERVICE', engine_id=E_REF, item='Engine oil and filter (DIY)', interval_km=15000, interval_months=12, schedule='ITEM', diy=1, diy_parts_cost_eur=60, diy_hours=1, status='VERIFIED', source_id=SRC_GUIDE),
-        dict(id=9, engine_id=E_A, item='Minor service', interval_km=15000, interval_months=12, schedule='PACKAGE', reference_cost_eur=130, status='ADAC REFERENCE', active=0, source_id=SRC_GUIDE),
-    ],
-    'repair_risks': [
-        dict(id=1, engine_id=E_A, component='Water pump', km_from=100000, km_to=160000, probability=0.3, parts_eur=120, labor_eur=250, status='ESTIMATED', evidence='Typical life', source_id=SRC_GUIDE),
-        dict(id=2, engine_id=E_B, component='Turbocharger', km_from=120000, km_to=200000, probability=0.2, parts_eur=900, labor_eur=400, status='ESTIMATED', evidence='Forum reports', source_id=SRC_GUIDE),
-        dict(id=3, generation_id=G1, component='Rear axle bushings', km_from=80000, km_to=150000, probability=0.4, parts_eur=60, labor_eur=150, diy=1, diy_hours=2, status='ESTIMATED', evidence='Common wear item', source_id=SRC_GUIDE),
-        dict(id=4, engine_id=E_REF, component='Timing chain', km_from=150000, km_to=250000, probability=0.5, parts_eur=400, labor_eur=700, status='ESTIMATED', evidence='Known weakness', source_id=SRC_GUIDE),
     ],
     'tyre_data': [
         dict(generation_id=G1, tyre_type='ALL-SEASON', size='185/65 R15', price_per_tyre_eur=70, tyres_per_set=4, life_km=45000, fitting_per_set_eur=125, status='ESTIMATED', source_id=SRC_GUIDE),
@@ -136,13 +129,21 @@ ROWS = {
 }
 
 
-def build(path):
-    """Creates the fixture database at `path` (schema.sql baseline + the rows above)."""
+COST_FAULTS = [  # priced weak points the cost tests (test_app) expect; a km curve rises 0 -> p across the window, then stays flat
+    dict(id=1, engine_id=E_A, component='Water pump', part='ENGINE', consequence='COST', existence='REPORTED', probability_basis='ESTIMATE', curve_km=json.dumps([[100000, 0], [160000, 0.3], [160001, 0.3]]), parts_eur=120, labor_eur=250, source_id=SRC_GUIDE),
+    dict(id=2, engine_id=E_B, component='Turbocharger', part='ENGINE', consequence='COST', existence='REPORTED', probability_basis='ESTIMATE', curve_km=json.dumps([[120000, 0], [200000, 0.2], [200001, 0.2]]), parts_eur=900, labor_eur=400, source_id=SRC_GUIDE),
+    dict(id=3, generation_id=G1, component='Rear axle bushings', part='CHASSIS', consequence='COST', existence='REPORTED', probability_basis='ESTIMATE', curve_km=json.dumps([[80000, 0], [150000, 0.4], [150001, 0.4]]), parts_eur=60, labor_eur=150, source_id=SRC_GUIDE),
+    dict(id=4, engine_id=E_REF, component='Timing chain', part='ENGINE', consequence='ENGINE_DAMAGE', existence='REPORTED', probability_basis='ESTIMATE', curve_km=json.dumps([[150000, 0], [250000, 0.5], [250001, 0.5]]), parts_eur=400, labor_eur=700, source_id=SRC_GUIDE),
+]
+
+
+def build(path, cost_faults=False):
+    """Creates the fixture database at `path` (schema.sql baseline + the rows above; `cost_faults`: also COST_FAULTS)."""
     migrate.create(path)
     c = sqlite3.connect(path)
     c.execute('PRAGMA foreign_keys=ON')
     with c:
-        for table, rows in ROWS.items():
+        for table, rows in {**ROWS, **({'faults': COST_FAULTS} if cost_faults else {})}.items():
             for r in rows:
                 c.execute(f'INSERT INTO {table} ({",".join(r)}) VALUES ({",".join("?" * len(r))})', list(r.values()))
     assert not c.execute('PRAGMA foreign_key_check').fetchall()
