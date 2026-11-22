@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./data/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.claude/**)",
+      "Read(~/.config/carlos/**)",
+      "Read(~/.config/carlos-worker.env)",
+      "Edit(./.env)",
+      "Edit(./data/**)",
+      "Bash(sqlite3)",
+      "Bash(sqlite3 *)",
+      "Bash(cat .env*)",
+      "Bash(cat data/*)",
+      "Bash(env)",
+      "Bash(printenv)",
+      "Bash(printenv *)"
+    ]
+  }
+}

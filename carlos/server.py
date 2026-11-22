@@ -513,6 +513,8 @@ class Handler(BaseHTTPRequestHandler):
             data = self.read_json()
             if (method == 'PATCH') != bool(agent[2]):
                 self.send_json({'error': 'POST /api/agent/<table> inserts; PATCH /api/agent/<table>/<id> updates'}, 405); return
+            if self.request is not None:  # a non-staged unit (the staged runs went to staging above): its own tables and its car's levels (#386)
+                staging.check_unit_write(c, self.request, agent[1], int(agent[2]) if agent[2] else None, data)
             if not self.admin:
                 check_writable(c, agent[1], int(agent[2]) if agent[2] else None, data)
             existing = resolve_variant(c, data, uid) if agent[1] == 'vehicles' and method == 'POST' else \

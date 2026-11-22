@@ -7,15 +7,28 @@ admin on the Accounts page; issue #141), WORKER_NAME (default: the host name; wi
 counts), POLL_SECONDS (60), CLAUDE_CMD ('claude -p'), WORKER_MODEL ('haiku': the research runs on Haiku; added as
 --model unless CLAUDE_CMD has one), WORKER_TIMEOUT_MIN (120), WORKER_RESEARCH_TIMEOUT_MIN (150, the RESEARCH_A/B runs), WORKER_LOGS (worker-logs/, one log per request).
 The headless run gets only the per-request token of the request it works on (the requester's account and the shared
-catalogue, dead when the request ends). Without WORKER_TOKEN the worker falls back to AGENT_TOKEN (an admin token) and
-the X-Carlos-Account header, the way it worked before #141.
+catalogue, dead when the request ends) and an allow-listed environment (RUN_ENV; WORKER_PASS_ENV adds names), never
+WORKER_TOKEN or an admin token. Without WORKER_TOKEN the worker refuses to start, unless WORKER_ALLOW_ADMIN=1 (a pilot): then
+AGENT_TOKEN (an admin token) and the X-Carlos-Account header reach the run, the way it worked before #141. It also refuses to
+start from a checkout that holds .env or data/ (the server's secrets and database) unless WORKER_ALLOW_SHARED_CHECKOUT=1;
+run it as another OS user from a code-only checkout (docs/deployment.md). A `claude` run gets docs/worker-settings.json
+(deny rules for .env, data/, sqlite3: speed bumps, the OS user is the control) and no skills (--disable-slash-commands).
 Run: python worker.py [--once]   (--once: handle at most one request, then exit)"""
 import datetime, json, os, re, shlex, socket, subprocess, sys, time
 from pathlib import Path
 from capture_listing import Api, ApiError, load_token
-from carlos import research_units as ru
+from carlos import research_units as ru, urlcheck
 
 ROOT = Path(__file__).resolve().parent
+SETTINGS = ROOT / 'docs' / 'worker-settings.json'  # deny rules of the headless claude (tracked: .claude/ is git-ignored)
+# the run's environment is an allow-list (#386): Claude Code itself and Chrome need these; nothing of the worker's own secrets
+RUN_ENV = ('PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'TERM', 'TMPDIR', 'DISPLAY', 'WAYLAND_DISPLAY',
+           'DBUS_SESSION_BUS_ADDRESS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY',
+           'https_proxy', 'http_proxy', 'no_proxy')
+RUN_ENV_PREFIXES = ('LC_', 'XDG_', 'ANTHROPIC_', 'CLAUDE_')  # locale, desktop session, Claude's own settings and login
+NEVER_PASSED = {'WORKER_TOKEN', 'AGENT_TOKEN', 'CARLOS_ACCOUNT'}
+NO_ADMIN_FALLBACK = ('no WORKER_TOKEN: the admin fallback is off (set WORKER_TOKEN, docs/deployment.md; WORKER_ALLOW_ADMIN=1 only for '
+                     'a pilot: the run then gets an admin token)')
 RESULT = re.compile(r'CARLOS_RESULT (?:listing_id=(\d+)|failed: (.*)|done: (.*))')  # done: a follow-up without a listing (#168)
 
 
@@ -50,6 +63,15 @@ def parse_usage(out):
     return out, None
 
 
+FENCE_MARKERS = re.compile(r'<{3,}|>{3,}')
+
+
+def fenced(value):
+    """Text of a requester, a web page or an earlier run, made safe to sit between the UNTRUSTED markers of a prompt: it cannot
+    carry a marker of its own (<<< or >>>), so it cannot end the fence and write instructions outside it (#386)."""
+    return FENCE_MARKERS.sub('...', str(value))
+
+
 def unit_prompt(req):
     """The short prompt of one research unit (#218 phase 2): shared rules + docs/prompts/units/<unit>.md."""
     d = ROOT / 'docs' / 'prompts' / 'units'
@@ -60,8 +82,8 @@ def unit_prompt(req):
     for k, v in {'{SCOPE}': ', '.join(f'{col.removesuffix("_id").replace("_", " ")} {i}' for col, i in scope or []) or '(see the to-do)',
                  '{UNIT}': req['unit'], '{LISTING_ID}': req.get('listing_id') or '(none yet)', '{LEVEL_ID}': req.get('level_id') or '(none)',
                  '{PARENT_ID}': req.get('parent_id') or req['id'], '{MISSING}': ', '.join(map(str, req.get('missing') or [])) or '(all items of the unit)',
-                 '{ATTEMPT}': (req.get('attempts') or 0) + 1, '{PREVIOUS_RESULT}': req.get('result') or '(none)',
-                 '{URL}': req.get('url') or '(see the listing)', '{NOTE}': req.get('note') or '(none)', '{ACCOUNT}': req['owner_id'],
+                 '{ATTEMPT}': (req.get('attempts') or 0) + 1, '{PREVIOUS_RESULT}': fenced(req.get('result') or '(none)'),
+                 '{URL}': fenced(req.get('url') or '(see the listing)'), '{NOTE}': fenced(req.get('note') or '(none)'), '{ACCOUNT}': req['owner_id'],
                  '{REQUEST_ID}': req['id'], '{REPO}': ROOT}.items():
         text = text.replace(k, str(v))
     return text.strip()
@@ -71,7 +93,7 @@ def prompt_for(req):
     if req.get('unit'):
         return unit_prompt(req)
     text =(ROOT / 'docs' / 'prompts' / 'research-request.md').read_text(encoding='utf-8').split('\n---\n', 1)[1]
-    for k, v in {'{URL}': req['url'], '{NOTE}': req['note'] or '(none)', '{ACCOUNT}': req['owner_id'],
+    for k, v in {'{URL}': fenced(req['url']), '{NOTE}': fenced(req['note'] or '(none)'), '{ACCOUNT}': req['owner_id'],
                  '{REQUEST_ID}': req['id'], '{REPO}': ROOT}.items():
         text = text.replace(k, str(v))
     if req.get('listing_id') and req.get('missing'):  # continuation after the server's grading (#218)
@@ -80,6 +102,34 @@ def prompt_for(req):
                  "these ids, and for every source that cannot be reached record a `NONE FOUND` or `N/A` check with the reason. "
                  f"End with CARLOS_RESULT listing_id={req['listing_id']}.")
     return text.strip()
+
+
+def run_env(api, req):
+    """The environment of the headless run (#386): an allow-list, so WORKER_TOKEN, the admin token and the rest of the worker's
+    environment never reach it; the per-request token is its AGENT_TOKEN. The admin token acting for the requester only with
+    WORKER_ALLOW_ADMIN=1 (a pilot without a registered worker). CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0: print mode stops background
+    tasks 10 min after the last turn, which left request 4 hanging (issue #137), so it waits for them."""
+    extra = {x.strip() for x in os.environ.get('WORKER_PASS_ENV', '').split(',')} - NEVER_PASSED
+    env = {k: v for k, v in os.environ.items() if k in RUN_ENV or k.startswith(RUN_ENV_PREFIXES) or k in extra}
+    env.update(CAR_API=api.base, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS='0')
+    if req.get('request_token') and is_worker(api):  # the run only ever sees the per-request token (#141)
+        env['AGENT_TOKEN'] = req['request_token']
+    elif os.environ.get('WORKER_ALLOW_ADMIN') == '1':  # admin fallback: the admin token acting for the requester
+        env.update(AGENT_TOKEN=api.token, CARLOS_ACCOUNT=str(req['owner_id']))
+    else:
+        raise ApiError(NO_ADMIN_FALLBACK)
+    return env
+
+
+def refuse_shared_checkout():
+    """The worker must not run from the server's checkout (#386): its run could read .env (the admin token) and data/. An explicit
+    WORKER_ALLOW_SHARED_CHECKOUT=1 (a development machine, e.g. the owner's pilot) lets it start with a warning."""
+    held = ' and '.join(n for n in ('.env', 'data') if (ROOT / n).exists())
+    if held and os.environ.get('WORKER_ALLOW_SHARED_CHECKOUT') != '1':
+        raise SystemExit(f'worker: {ROOT} holds {held}: run the worker from a code-only checkout as another OS user (docs/deployment.md); '
+                         'WORKER_ALLOW_SHARED_CHECKOUT=1 overrides this on a development machine')
+    if held:
+        print(f'worker: WARNING: this checkout holds {held}; the headless run can read them', file=sys.stderr, flush=True)
 
 
 def command(cmd, model):
@@ -116,6 +166,8 @@ def pause_seconds(text, now=None, fallback=1800):
 
 def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=None):
     """Claims and handles one request; False when the queue is empty."""
+    if not is_worker(api) and os.environ.get('WORKER_ALLOW_ADMIN') != '1':  # before the claim: a request must not be left RUNNING
+        raise ApiError(NO_ADMIN_FALLBACK)
     req = api.call('POST', '/api/worker/claim', {'worker': name})['request']
     if not req:
         return False
@@ -124,19 +176,22 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=
         report(api, req, merge_outcome(api, req))
         return True
     print(f'request {req["id"]}: picked up {req.get("url")} (model {model})', flush=True)
+    if req.get('url') and not req['url'].startswith('carlos://'):  # checked when it was queued; again now (DNS and rules change)
+        try:
+            urlcheck.public_http_url(req['url'])
+        except ValueError as e:
+            report(api, req, {'status': 'FAILED', 'result': f'{e}. The run was not started.'})
+            return True
     if req.get('unit') in ('RESEARCH_A', 'RESEARCH_B') and research_timeout_s:
         timeout_s = research_timeout_s
-    # print mode stops background tasks 10 min after the last turn, which left request 4 hanging (issue #137): wait for them
-    env = {**os.environ, 'CAR_API': api.base, 'CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS': '0'}
-    if req.get('request_token') and is_worker(api):  # the run only ever sees the per-request token (#141)
-        env.update(AGENT_TOKEN=req['request_token']); env.pop('CARLOS_ACCOUNT', None)
-    else:  # admin fallback: the admin token acting for the requester
-        env.update(AGENT_TOKEN=api.token, CARLOS_ACCOUNT=str(req['owner_id']))
+    env = run_env(api, req)
     log = Path(logs) / f'request-{req["id"]}.log'
     log.parent.mkdir(parents=True, exist_ok=True)
     argv = command(cmd, model)
-    if Path(argv[0]).name == 'claude' and '--output-format' not in argv:  # the JSON result carries the usage (#291)
-        argv[1:1] = ['--output-format', 'json']
+    if Path(argv[0]).name == 'claude':
+        argv[1:1] = [*(['--output-format', 'json'] if '--output-format' not in argv else []),  # the JSON result carries the usage (#291)
+                     *(['--settings', str(SETTINGS)] if '--settings' not in argv else []),  # deny rules for .env and data/ (#386)
+                     *(['--disable-slash-commands'] if '--disable-slash-commands' not in argv else [])]  # a run needs no skills
     p = subprocess.Popen(argv + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, text=True)
     deadline = time.time() + timeout_s
@@ -203,6 +258,9 @@ def beat(api, state, error=None):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     os.environ.pop('CARLOS_ACCOUNT', None)  # the worker itself never acts for an account
+    refuse_shared_checkout()
+    if not os.environ.get('WORKER_TOKEN') and os.environ.get('WORKER_ALLOW_ADMIN') != '1':
+        raise SystemExit(f'worker: {NO_ADMIN_FALLBACK}')
     api = Api(os.environ.get('CAR_API', 'http://127.0.0.1:8000'), os.environ.get('WORKER_TOKEN') or load_token())
     api.worker = bool(os.environ.get('WORKER_TOKEN'))
     name, cmd = os.environ.get('WORKER_NAME') or socket.gethostname(), os.environ.get('CLAUDE_CMD', 'claude -p')
