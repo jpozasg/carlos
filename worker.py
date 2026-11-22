@@ -230,7 +230,7 @@ def merge_outcome(api, req):
     except (ApiError, OSError) as e:
         return {'status': 'FAILED', 'result': f'Merge failed: {e}'}
     return {'status': 'DONE', 'result': f'Merged: {out.get("written", 0)} written, {len(out.get("skipped") or [])} skipped, '
-                                         f'{len(out.get("flags") or [])} flags'}
+                                         f'{len(out.get("disagreements") or [])} disagreements'}
 
 
 def report(api, req, result, log=None):

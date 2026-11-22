@@ -23,7 +23,7 @@ LISTING_FIELDS = ('first_registration', 'seller', 'location', 'seller_address', 
                   # structured facts for the ranking filters, the distance and the dossier (#169)
                   'seller_type', 'warranty', 'hu_until', 'service_history', 'accident_free', 'seller_rating', 'seller_reviews',
                   'postal_code', 'hsn', 'tsn')  # hsn/tsn: when the ad's text or attributes state them (#313)
-# lease columns (#127) stay in the schema for listings captured before #165, but a capture never writes them
+# a capture never writes the lease columns (#165): a used ad that also shows a lease is captured as a purchase, a lease-only ad is refused
 LEASE_FIELDS = ('lease_kind', 'lease_monthly_eur', 'lease_term_months', 'lease_km_per_year', 'lease_down_payment_eur',
                 'lease_fees_eur', 'lease_extra_km_eur', 'lease_fewer_km_eur', 'lease_includes')
 # electric cars (#125): the battery is the costliest part; every electric listing gets this checklist item
@@ -217,9 +217,9 @@ LINK_COLUMNS = ('reliability_item_id', 'fault_id', 'recall_id')
 
 
 def checklist_items(detail, existing):
-    """(item text, link) for the weak points that have no checklist item yet; link = {column: id} (reliability_item_id,
-    fault_id or recall_id). `detail` is the listing detail: its reliability items, faults (fault_plan) and recalls (#223).
-    A reliability item and a fault get their `inspection_action` (none, no item); a recall row always gets an item naming
+    """(item text, link) for the weak points that have no checklist item yet; link = {column: id} (fault_id or recall_id;
+    reliability_item_id only for an old row of the retired table). `detail` is the listing detail: its faults (fault_plan) and recalls (#223).
+    A fault gets its `inspection_action` (none, no item); a recall row always gets an item naming
     the recall (issue #54); one item per weak point; the same check text is not listed twice. The VIN recall check
     (config.VIN_RECALL_CHECK, with the KBA link) is added once to every list (#357)."""
     linked = {(c, i[c]) for i in existing if not i.get('archived') for c in LINK_COLUMNS if i.get(c) is not None}
@@ -252,14 +252,6 @@ def checklist_items(detail, existing):
 
 def fmt(v, unit):
     return 'unknown' if v is None else f'{v:g} {unit}'
-
-
-def lease_txt(lst):
-    """The lease offer for the log, as the ad states it (#127)."""
-    if lst.get('lease_monthly_eur') is None:
-        return ''
-    return (f"; lease {fmt(lst['lease_monthly_eur'], 'EUR/month')}, {fmt(lst.get('lease_term_months'), 'months')}, "
-            f"{fmt(lst.get('lease_km_per_year'), 'km/year')}, down payment {fmt(lst.get('lease_down_payment_eur'), 'EUR')}")
 
 
 def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
@@ -319,13 +311,13 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
         r = api.call('POST', f'/api/agent/media/{lid}?{q}', raw=body, ctype=info)
         archived += r['created']
 
-    # checklist from the model's reliability items (new listings only; re-captures keep the user's ticks)
+    # checklist from the model's faults and recalls (new listings only; re-captures keep the user's ticks)
     if existing is None:
         d = {} if dry_run else api.call('GET', f'/api/listings/{lid}')
         for item, link in checklist_items(d, []) + ([(SOH_CHECK, {})] if d.get('fuel_type') == 'Electric' else []):
             write('POST', '/api/agent/inspection_items', {'listing_id': lid, 'item': item, 'status': 'PENDING', **link}, 'checklist item')
         if dry_run:
-            log('[dry-run] checklist items from the model reliability_items.inspection_action')
+            log('[dry-run] checklist items from the faults (inspection_action) and recalls of the model')
 
     # log; price/mileage changes update the listing and get their own entry
     photo_note = f'{archived} new photo(s) archived' + (f', {len(skipped)} skipped' if skipped else '')
@@ -333,13 +325,13 @@ def import_capture(api, cap, base_dir=Path('.'), dry_run=False, log=print):
         write('POST', '/api/agent/listing_events', {
             'listing_id': lid, 'event_date': day, 'kind': 'found', 'source_id': source_id,
             'text': f"Listing captured from {cap['platform']} via {method}: asking price {fmt(cap.get('price_eur'), 'EUR')}, "
-                    f"{fmt(cap.get('mileage_km'), 'km')}{lease_txt(cap.get('listing', {}))}; {photo_note}."}, 'found log entry')
+                    f"{fmt(cap.get('mileage_km'), 'km')}; {photo_note}."}, 'found log entry')
     else:
         patch, changes = {'last_checked': day}, []
         if existing.get('vehicle_id') != cap['vehicle_id']:  # re-research after the reset (#194) attaches the new variant
             patch['vehicle_id'] = cap['vehicle_id']
         new = {**cap.get('listing', {}), 'price_eur': cap.get('price_eur'), 'mileage_km': cap.get('mileage_km')}
-        for k, unit in (('price_eur', 'EUR'), ('mileage_km', 'km'), ('lease_monthly_eur', 'EUR/month')):
+        for k, unit in (('price_eur', 'EUR'), ('mileage_km', 'km')):
             if new.get(k) is not None and new[k] != existing.get(k):
                 patch[k] = new[k]; changes.append(f'{k} {fmt(existing.get(k), unit)} → {fmt(new[k], unit)}')
         write('PATCH', f'/api/agent/listings/{lid}', patch, ', '.join(changes) or 'last_checked')

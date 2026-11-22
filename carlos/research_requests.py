@@ -47,7 +47,7 @@ def _detail(c, d):
         ms = [json.loads(r[0]) for r in c.execute('SELECT merged FROM main.research_matches WHERE parent_id=? AND merged IS NOT NULL', (d['parent_id'],))]
         return {'agreement': staging.agreement(c, d['parent_id'])['agreement'], 'written': sum(len(m.get('ids') or []) for m in ms),
                 'skipped': sum(1 for m in ms if m.get('skipped')),
-                'flags': c.execute('SELECT count(*) FROM main.research_matches WHERE parent_id=? AND flag_id IS NOT NULL', (d['parent_id'],)).fetchone()[0]}
+                'disagreements': sum(1 for m in ms if m.get('disagrees'))}
     return None
 
 

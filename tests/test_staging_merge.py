@@ -37,7 +37,7 @@ class MergeTest(ts.StagingTest):
         self.match('fault', 'fault:ENGINE:ENGINE_INTERNALS', a, b)
         before = self.sql('SELECT count(*) FROM faults')[0][0]
         r = self.merge()
-        self.assertEqual((r['written'], r['skipped'], r['flags']), (1, [], []))
+        self.assertEqual((r['written'], r['skipped'], r['disagreements']), (1, [], []))
         row = self.sql("SELECT frequency_band, notes, source_id FROM faults ORDER BY id DESC LIMIT 1")[0]
         self.assertEqual(self.sql('SELECT count(*) FROM faults')[0][0], before + 1)
         self.assertEqual(row[0], 'widespread')
@@ -79,7 +79,7 @@ class MergeTest(ts.StagingTest):
         self.assertEqual(self.sql('SELECT count(*) FROM faults WHERE component LIKE \'Water pump%\'')[0][0], 0)
         self.assertEqual(self.sql('SELECT component FROM faults ORDER BY id DESC LIMIT 1'), [('Oil pump drive',)])
 
-    def test_unresolved_material_disputes_flag_and_identity_stays_unwritten(self):
+    def test_unresolved_material_disputes_are_reported_and_identity_stays_unwritten(self):
         a = self.f('a', 'faults', FAULT)
         st, pa = self.api('PATCH', f'agent/engines/{E_A}', {'power_kw': 99}, 'RESEARCH_A')
         st, pb = self.api('PATCH', f'agent/engines/{E_A}', {'power_kw': 77}, 'RESEARCH_B')
@@ -87,13 +87,12 @@ class MergeTest(ts.StagingTest):
         self.match('patch', f'patch:engines:{E_A}', -pa['id'], -pb['id'], 'DISPUTED', material=1,
                    diffs=json.dumps([{'field': 'power_kw', 'a': 99, 'b': 77, 'rule': 'equal'}]))
         r = self.merge()
-        self.assertEqual(len(r['flags']), 2)
+        self.assertEqual(len(r['disagreements']), 2)
+        self.assertEqual(self.sql("SELECT count(*) FROM research_matches WHERE parent_id=100 AND merged LIKE '%disagrees%'"), [(2,)])
         self.assertEqual(self.sql('SELECT power_kw FROM engines WHERE id=?', (E_A,)), [(74,)])      # identity left alone
-        flags = self.sql("SELECT kind, what, why, created_by, engine_id FROM review_flags ORDER BY id")
-        self.assertEqual({x[0] for x in flags}, {'SOURCES_DISAGREE'})
-        pf = next(x for x in flags if 'power_kw' in x[1])
-        self.assertIn('power_kw 99', pf[1]); self.assertIn('power_kw 77', pf[1])
-        self.assertEqual(pf[3], 'merge of request #100'); self.assertEqual(pf[4], E_A)
+        self.assertEqual(self.sql('SELECT count(*) FROM review_flags'), [(0,)])                    # review flags are retired (#397)
+        pf = next(x for x in r['disagreements'] if 'power_kw' in x['what'])
+        self.assertIn('power_kw 99', pf['what']); self.assertIn('power_kw 77', pf['what'])
         self.assertEqual([s['key'] for s in r['skipped']], [f'patch:engines:{E_A}'])
 
     def test_guard_conflict_with_a_real_row_is_skipped(self):
@@ -172,8 +171,21 @@ class MergeTest(ts.StagingTest):
         self.assertEqual(self.sql('SELECT count(*) FROM gearboxes')[0][0], boxes + 1)               # no orphan shell
         self.assertEqual(self.sql("SELECT task FROM research_checks WHERE gearbox_id=? ORDER BY task", (gid,)), [('gbx.risks',), ('gbx.service',)])
         self.assertEqual(self.sql("SELECT count(*) FROM faults WHERE gearbox_id=? AND component='Clutch'", (gid,)), [(1,)])
-        self.assertTrue(r['flags'] or self.sql("SELECT 1 FROM review_flags WHERE vehicle_id=? AND kind='SOURCES_DISAGREE'", (V_A,)))
+        self.assertTrue(r['disagreements'])
+        self.assertEqual(len({d['match'] for d in r['disagreements']}), len(r['disagreements']))     # one entry per match
+        self.assertEqual(len(r['disagreements']), self.sql("SELECT count(*) FROM research_matches WHERE parent_id=100 AND merged LIKE '%disagrees%'")[0][0])
         self.assertIn('identity unified', [d['reason'] for d in r['dropped'] if 'lvl:gearboxes' in d['key']][0])
+
+    def test_an_old_flag_match_is_skipped_not_a_crash_397(self):
+        """A match of the retired 'flag' kind (staged before #397) is reported as skipped; the rest of the merge still runs."""
+        a = self.f('a', 'faults', FAULT)
+        self.match('fault', 'fault:ENGINE:ENGINE_INTERNALS', a, None, 'ONLY_A')
+        old = self.f('a', 'faults', {**FAULT, 'component': 'Oil pump drive', 'component_code': 'OIL_LEAK'})
+        self.match('flag', 'flag:SOURCES_DISAGREE:engine_id:1', old, None, 'ONLY_A')
+        r = self.merge()
+        self.assertEqual(r['written'], 1)
+        self.assertEqual([s['reason'] for s in r['skipped']], ["retired finding kind 'flag'"])
+        self.assertEqual(r['disagreements'], [])
 
     def test_the_arbiters_gearbox_wins_and_the_other_run_adds_its_findings_to_it(self):
         self._gearbox_runs(verdict='B')

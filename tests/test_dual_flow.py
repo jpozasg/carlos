@@ -217,7 +217,7 @@ class FlowTest(unittest.TestCase):
                                (ADMIN, pid, unit, CAR_A))
         kids = {p['unit']: p['detail'] for p in rq.mine(self.c, ADMIN)[0]['parts']}
         self.assertEqual(kids['ARBITER'], {'disputes': 0, 'answered': 0})
-        self.assertEqual(set(kids['MERGE']), {'agreement', 'written', 'skipped', 'flags'})
+        self.assertEqual(set(kids['MERGE']), {'agreement', 'written', 'skipped', 'disagreements'})
 
 
 class FinishOverHttpTest(unittest.TestCase):

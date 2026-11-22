@@ -73,7 +73,7 @@ SHARED_SOURCES = [  # public reference sources every account needs once (fees, H
     {"title": "Number plates (uamr.de) — Was kostet ein Autokennzeichen", "url": "https://www.uamr.de/was-kostet-ein-autokennzeichen/", "quality": "C", "source_type": "fees_secondary", "supports": "Plate makers next to the registration office: up to 35–40 € per pair; online much cheaper.", "limitations": "Undated guide.", "accessed_date": "2026-11-03"},
     {"title": "Pre-purchase check (fahrzeugschein.de) — Gebrauchtwagencheck Kosten", "url": "https://www.fahrzeugschein.de/blog/artikel/gebrauchtwagencheck-kosten", "quality": "C", "source_type": "fees_secondary", "supports": "ADAC Nordbayern Premium check 159 € members / 189 € non-members; TÜV SÜD about 79 €; DEKRA 90–150 €.", "limitations": "Seller of its own checks; May 2026. Confirm at the ADAC Nordbayern test centre.", "accessed_date": "2026-11-03"},
     {"title": "Allianz — Wertverlust Auto; AUTO BILD — Händler oder privat", "url": "https://www.allianz.de/auto/kfz-versicherung/wertverlust-auto/", "quality": "C", "source_type": "depreciation_reference", "supports": "Old cars lose about 5–6% of their value per year (Allianz, 07/2026). For cars around 3,000 € dealers often offer about 50% of market value (AUTO BILD 2016, https://www.autobild.de/artikel/gebrauchtwagenverkauf-haendler-oder-privat--8504551.html).", "limitations": "General rules of thumb, no model data; Allianz cites no study. Used only for estimates.", "accessed_date": "2026-11-03"},
-    {"title": "DAT residual values of 3-year-old cars (autohaus.de, August 2026)", "url": "https://www.autohaus.de/nachrichten/gw-trends/dat-spritpreise-machen-gebrauchte-e-autos-teurer-3909599", "quality": "B", "source_type": "depreciation_reference", "supports": "DAT market data, August 2026: 3-year-old cars keep on average 59.4 % (petrol), 58.0 % (diesel) and 51.5 % (electric) of their list price; November 2025: 62.6 / 61.2 / 48.4 %. Basis of the new-car resale rule (issue #150).", "limitations": "Averages over all models and the list price, not the transaction price; trade press reporting DAT figures. Model-specific residuals (DAT/Schwacke) or comparables replace it.", "accessed_date": "2026-11-06"},
+    {"title": "DAT residual values of 3-year-old cars (autohaus.de, August 2026)", "url": "https://www.autohaus.de/nachrichten/gw-trends/dat-spritpreise-machen-gebrauchte-e-autos-teurer-3909599", "quality": "B", "source_type": "depreciation_reference", "supports": "DAT market data, August 2026: 3-year-old cars keep on average 59.4 % (petrol), 58.0 % (diesel) and 51.5 % (electric) of their list price; November 2025: 62.6 / 61.2 / 48.4 %. Basis of the electric-car low case in the resale rule (owner decision 2026-11-05).", "limitations": "Averages over all models and the list price, not the transaction price; trade press reporting DAT figures. Model-specific residuals (DAT/Schwacke) or comparables replace it.", "accessed_date": "2026-11-06"},
     {"title": "HU/AU price TÜV SÜD Bavaria 2026 (AutoScout24 guide; ADAC average)", "url": "https://www.autoscout24.de/informieren/ratgeber/autorecht/hauptuntersuchung-fristen-informatives/", "quality": "C", "source_type": "fees_secondary", "supports": "HU incl. AU 163.00 € at TÜV SÜD in Bavaria (01–12/2026), same for petrol and diesel; ADAC: national average 163 € (2026). Every 24 months for cars older than 3 years.", "limitations": "Official TÜV SÜD fee page not reachable (403); prices at partner stations may differ.", "accessed_date": "2026-11-03"},
     {"title": "ADAC all-season tyre test 2025 (tread life) via motor1; fitting prices (repareo)", "url": "https://www.motor1.com/", "quality": "B", "source_type": "tyres_reference", "supports": "ADAC 2025 all-season test predicted tread life 34,700–68,000 km, average ~48,000 km; fitting and balancing about 55–60 € per set (repareo city tables, up to 17\").", "limitations": "Test size 225/45 R17, not the sizes of these cars; motor1 article URL not recorded precisely; fitting price from search snippets.", "accessed_date": "2026-11-03"},
 ]
@@ -193,8 +193,8 @@ def check(level, level_id, task, source_id, result, notes=None, codes=None):
 
 
 def checklist_from_reliability(listing_id):
-    """One checklist item per weak point of the model (reliability item, fault with an inspection_action, recall row; #223), linked by
-    reliability_item_id / fault_id / recall_id; idempotent, so run it again after adding faults or recalls (capture_listing does this at
+    """One checklist item per weak point of the model (fault with an inspection_action, recall row; #223), linked by
+    fault_id / recall_id; idempotent, so run it again after adding faults or recalls (capture_listing does this at
     capture time). A recall gets its own item naming the recall, because its result decides whether it counts."""
     u = listing(listing_id)
     added = 0
@@ -205,34 +205,21 @@ def checklist_from_reliability(listing_id):
 
 
 def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, notes, level='variant', job=None,
-         applies_from=None, applies_to=None):
+         applies_from=None, applies_to=None, kind='JOB'):
     """Maintenance item: `parts` = DIY parts price (+ `hours`), `workshop` = total workshop price; give both for a job an
     owner may do themselves (`job` in config.DIYABLE_JOBS): each account's DIY choice picks one at calculation time, and the
-    research contract matches jobs by `job` (config.JOBS). `diy` is only the default for rows without a job.
+    research contract matches jobs by `job` (config.JOBS). `diy` is only the default for rows without a job. `kind='WEAR'` for generic wear (clutch, brakes, battery, bulbs, wipers).
     Engine jobs (oil, plugs, timing drive, coolant) belong on the engine; brakes, HU, wipers on the generation."""
     return post('maintenance_items', {**scope(v, level), 'item': name, 'job': job, 'interval_km': km, 'interval_months': months,
                                       'schedule': 'ITEM', 'diy': 1 if diy else 0, 'diy_parts_cost_eur': parts,
                                       'reference_cost_eur': workshop, 'diy_hours': hours, 'labor_included': 0 if diy else 1,
                                       'status': status, 'source_id': source_id, 'notes': notes, 'active': 1,
-                                      'applies_from': applies_from, 'applies_to': applies_to})
+                                      'applies_from': applies_from, 'applies_to': applies_to, 'kind': kind})
 
 
 def hu(v, level='generation'):
     return item(v, 'HU/AU inspection', None, 24, False, None, HU_FEE_EUR, None, shared_source('HU/AU price'),
                 'OFFICIAL FEE LEVEL', 'Every 24 months; 2 inspections in a 4-year period. Timing depends on the HU date of the car.', level, job='HU')
-
-
-def risk(v, component, km_from, km_to, probability, parts, labor, diy, hours, source_id, evidence, notes='', level='variant', job=None,
-         applies_from=None, applies_to=None):
-    """Expected repair: probability of failure somewhere in [km_from, km_to]. Every risk needs a price: estimate one when
-    none is found (user decision 2026-11-03) and say how in `notes`. A plain replacement job (clutch, battery, timing
-    drive) takes its `job` code and both parts and labour, since each account's DIY choice decides whether labour counts."""
-    if parts is None and labor is None:
-        raise ValueError(f'{component}: every risk needs a price; estimate one and say how in notes')
-    return post('repair_risks', {**scope(v, level), 'component': component, 'job': job, 'km_from': km_from, 'km_to': km_to,
-                                 'probability': probability, 'parts_eur': parts, 'labor_eur': labor, 'diy': 1 if diy else 0,
-                                 'diy_hours': hours, 'status': 'ESTIMATED', 'evidence': evidence, 'source_id': source_id, 'notes': notes,
-                                 'applies_from': applies_from, 'applies_to': applies_to})
 
 
 class DuplicateFault(ApiError):
@@ -291,18 +278,12 @@ def restart(listing_id, maintenance_item_id, basis, source_id, unit_cost_id=None
                                        'unit_cost_id': unit_cost_id, 'source_id': source_id, 'notes': notes})
 
 
-def is_new(u):
-    """A new car (issue #150): never registered and only delivery kilometres (carlos.costs.is_new)."""
-    return not u.get('first_registration') and u.get('mileage_km') is not None and u['mileage_km'] < 100
-
-
 def purchase_sale_defaults(listing_id):
-    """Registration, plates and pre-purchase check: the same three items for every used car for sale; a new car from a
-    dealer has no pre-purchase check (factory warranty, nothing to inspect; issue #150)."""
+    """Registration, plates and pre-purchase check: the same three items for every used car for sale."""
     u = listing(listing_id)
     have = {c['item'] for c in u.get('unit_costs', []) if c['category'] == 'purchase_sale'}
     for name, amount, prefix, note in (REFERENCE_SALE_DEFAULTS if u.get('is_reference') else PURCHASE_SALE_DEFAULTS):
-        if name not in have and not (prefix == 'Pre-purchase check' and is_new(u)):
+        if name not in have:
             post('unit_costs', {'listing_id': listing_id, 'category': 'purchase_sale', 'item': name, 'parts_eur': amount,
                                 'labor_eur': None, 'status': 'ESTIMATED', 'source_id': shared_source(prefix), 'notes': note})
 
@@ -314,8 +295,6 @@ def resale_rule_of_thumb(listing_id, years=None, electric=False):
     u = listing(listing_id)
     price = u['price_eur']
     years = years or get('/api/listings')['parameters']['ownership_years']
-    if is_new(u):
-        return new_car_resale(u, years)
     r = lambda rate, disc: round(price * (1 - rate) ** years * (1 - disc), -1)
     return post('valuations', {'listing_id': listing_id, 'kind': 'resale_end', 'horizon_years': years,
                                'low_eur': r(0.10, 0.20), 'expected_eur': r(0.10, 0.20) if electric else r(0.06, 0.10), 'high_eur': r(0.03, 0.05),
@@ -324,25 +303,6 @@ def resale_rule_of_thumb(listing_id, years=None, electric=False):
                                         'private-sale discount; low 10%/year and 20%; high 3%/year and 5%. Not model-specific; '
                                         'refine with comparable listings.' + (' Electric car: the low case is the expected value '
                                         '(owner decision 2026-11-05).' if electric else '')})
-
-
-# DAT, August 2026: share of the list price a 3-year-old car keeps (shared source 'DAT residual values')
-NEW_CAR_RESIDUAL_3Y = {'Petrol': 0.594, 'Hybrid': 0.594, 'Plug-in hybrid': 0.594, 'Diesel': 0.580, 'Electric': 0.515}
-
-
-def new_car_resale(u, years):
-    """resale_end of a new car (issue #150): the DAT average residual after 3 years for its fuel, spread geometrically over
-    the ownership years, minus the same private-sale discounts as the used-car rule; low −10 points, high +5 points around
-    the average (the model-to-model spread is not published: an assumption, replaced by model-specific residuals)."""
-    r3 = NEW_CAR_RESIDUAL_3Y.get(u.get('fuel_type'), NEW_CAR_RESIDUAL_3Y['Petrol'])
-    v = lambda share, disc: round(u['price_eur'] * share ** (years / 3) * (1 - disc), -1)
-    return post('valuations', {'listing_id': u['id'], 'kind': 'resale_end', 'horizon_years': years,
-                               'low_eur': v(r3 - 0.10, 0.20), 'expected_eur': v(r3, 0.10), 'high_eur': v(r3 + 0.05, 0.05),
-                               'status': 'ESTIMATED', 'valued_date': DAY, 'source_id': shared_source('DAT residual values'),
-                               'notes': f'New car: DAT average residual after 3 years {r3:.1%} of the price ({u.get("fuel_type")}), '
-                                        f'over {years} years, 10 % private-sale discount; low −10 points and 20 %, high +5 '
-                                        'points and 5 %. Applied to the asking price, not the list price. Refine with '
-                                        'model-specific residuals or comparables.'})
 
 
 def todo(listing_id=None, vehicle_id=None):

@@ -28,12 +28,12 @@ def _job(*jobs):
 
 
 def _risks(ctx):
-    """Priced faults (with a curve, or a band and a shape, #168) and old priced risks; one incomplete row makes the item
-    missing (every fault gets a price and a probability)."""
-    rs, fs = ctx['rows']('repair_risks'), ctx['rows']('faults')
-    bad = any(r['parts_eur'] is None and r['labor_eur'] is None for r in rs + fs) or \
+    """Priced faults (with a curve, or a band and a shape, #168); one incomplete row makes the item missing (every fault
+    gets a price and a probability)."""
+    fs = ctx['rows']('faults')
+    bad = any(f['parts_eur'] is None and f['labor_eur'] is None for f in fs) or \
         any(not (f['curve_km'] or f['curve_age'] or f['frequency_band'] and f['shape']) for f in fs)
-    return [] if bad else rs + fs
+    return [] if bad else fs
 
 
 def _consumption(ctx):

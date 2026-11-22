@@ -44,11 +44,11 @@ class WorkerDualTest(unittest.TestCase):
         api = FakeApi({**req(unit='MERGE'), 'id': 9})
         merged = []
         with mock.patch.object(worker, 'Api') as A, mock.patch.object(worker.subprocess, 'Popen', side_effect=AssertionError('Claude was launched')):
-            A.return_value.call.side_effect = lambda m, path, body=None: merged.append((m, path)) or {'written': 41, 'skipped': [1, 2, 3], 'flags': [4, 5]}
+            A.return_value.call.side_effect = lambda m, path, body=None: merged.append((m, path)) or {'written': 41, 'skipped': [1, 2, 3], 'disagreements': [4, 5]}
             self.assertTrue(worker.work_one(api, 'w', 'false', tempfile.mkdtemp(), 30))
         self.assertEqual(A.call_args[0][1], 'tok')                              # the merge uses the request's own token
         self.assertEqual(merged, [('POST', '/api/agent/merge')])
-        self.assertEqual(api.calls[-1], ('POST', '/api/worker/requests/9', {'status': 'DONE', 'result': 'Merged: 41 written, 3 skipped, 2 flags'}))
+        self.assertEqual(api.calls[-1], ('POST', '/api/worker/requests/9', {'status': 'DONE', 'result': 'Merged: 41 written, 3 skipped, 2 disagreements'}))
 
     def test_merge_error_is_a_failed_finish(self):
         api = FakeApi({**req(unit='MERGE'), 'id': 9})

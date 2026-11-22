@@ -10,8 +10,7 @@ CODE_FORMATS = {('listings', 'listing_status'): r'[A-Z][A-Z /-]*', ('listing_eve
                 ('engines', 'status'): r'[A-Z][A-Z /-]*',
                 # KBA reference ('KBA-14729R') or '<MAKE>-<YYYY-MM>-<COMPONENT_CODE>'; never 'UNKNOWN-...' or prose (#333)
                 ('recalls', 'code'): r'\s*(?!(?i:unknown))[A-Za-z0-9][A-Za-z0-9_./-]*\s*',
-                ('reliability_items', 'severity'): r'[A-Z][A-Z /-]*', ('reliability_items', 'frequency_status'): r'[A-Z][A-Z /-]*',
-                ('insurance_data', 'premium_status'): r'[A-Z][A-Z /-]*', ('repair_risks', 'status'): r'[A-Z][A-Z /-]*',
+                ('insurance_data', 'premium_status'): r'[A-Z][A-Z /-]*',
                 ('tyre_data', 'status'): r'[A-Z][A-Z /-]*', ('tyre_data', 'tyre_type'): r'[A-Z][A-Z /-]*',
                 **{(t, col): r'\d{4}(-(0[1-9]|1[0-2]))?' for t in config.WINDOWED_TABLES for col in ('applies_from', 'applies_to')},
                 ('listings', 'build_date'): r'\d{4}(-(0[1-9]|1[0-2]))?', ('faults', 'usage_flags'): r'[A-Z_]+(,[A-Z_]+)*',
@@ -23,28 +22,28 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'engines.injection': ['PORT', 'DIRECT', 'DUAL', 'CARBURETTOR'],
                'engines.timing_drive': ['CHAIN', 'BELT', 'WET BELT', 'GEAR'], 'engines.fuel_type': config.FUEL_TYPES,
                'maintenance_resets.basis': ['CERTAIN REPAIR', 'SELLER CLAIM', 'DOCUMENTED'],
-               'reliability_items.part': config.RELIABILITY_PARTS,
-               'maintenance_items.job': config.JOBS, 'repair_risks.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A'],
+               'maintenance_items.job': config.JOBS, 'research_checks.result': ['FOUND', 'NONE FOUND', 'N/A'],
                'listings.lease_kind': config.LEASE_KINDS, 'gearboxes.type': config.GEARBOX_TYPES,
                'faults.part': config.RELIABILITY_PARTS, 'faults.consequence': config.FAULT_CONSEQUENCES,
                'faults.existence': ['CONFIRMED', 'REPORTED'], 'faults.frequency_band': list(config.FREQUENCY_BANDS),
                'faults.shape': config.FAULT_SHAPES, 'faults.component_code': config.FAULT_COMPONENT_CODES,
-               'review_flags.kind': ['STATS_MISMATCH', 'SOURCES_DISAGREE', 'FIX_UNCERTAIN', 'OTHER'],
-               'review_flags.status': ['OPEN', 'CLEARED'], 'flag_reviews.outcome': ['CONFIRMED', 'RESOLVED'], 'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
+               'faults.probability_basis': ['STATISTIC', 'EXPERT', 'ESTIMATE'],
                'recalls.part': config.RELIABILITY_PARTS,
                'maintenance_items.kind': ['JOB', 'WEAR'], 'listing_history.status': ['DONE', 'PRESENT', 'OPEN', 'NOT AFFECTED'],
                'listing_history.evidence': ['DOCUMENTED', 'SELLER CLAIM', 'OBSERVED', 'VIN CHECK'],
                'listing_history.category': ['maintenance', 'repairs'], 'listing_history.job': config.JOBS}
 # Tables the agent may write. Those in the second set require source_id on insert.
 AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
-                'maintenance_items', 'reliability_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',
-                'listing_snapshots', 'repair_risks', 'tyre_data', 'maintenance_resets', 'research_checks',
+                'maintenance_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',
+                'listing_snapshots', 'tyre_data', 'maintenance_resets', 'research_checks',
                 # target design (#174): levels, knowledge, listing facts
                 'engine_families', 'gearbox_families', 'gearboxes', 'body_styles', 'options', 'faults', 'recalls',
                 'market_models', 'listing_history', 'listing_quotes', 'listing_options',
-                'review_flags', 'flag_reviews', 'source_keys', 'source_ratings'}
+                'source_keys', 'source_ratings'}
+# Retired with #351 and #397: still read (old rows, foreign keys, the dossiers), never written through the API
+RETIRED_TABLES = {'reliability_items', 'repair_risks', 'review_flags', 'flag_reviews'}
 SOURCE_REQUIRED = {'source_keys', 'source_ratings', 'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
-                   'reliability_items', 'valuations', 'unit_costs', 'listing_snapshots', 'repair_risks', 'tyre_data',
+                   'valuations', 'unit_costs', 'listing_snapshots', 'tyre_data',
                    'maintenance_resets', 'research_checks', 'faults', 'recalls', 'market_models', 'listing_quotes'}
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'), ('listing_quotes', 'quote_profile'),
                 ('faults', 'curve_km'), ('faults', 'curve_age'), ('research_checks', 'named_codes'), ('market_models', 'band_counts'), ('market_models', 'sample_json'))
@@ -102,15 +101,6 @@ def curve_points(raw):
             any(b[0] <= a[0] or b[1] < a[1] for a, b in zip(pts, pts[1:])):
         raise ValueError('a curve is [[x, share], …]: x (km or years) rising, share between 0 and 1 and never falling')
     return pts
-
-
-def clear_if_agreed(c, flag_id):
-    """A flag is cleared only when two independent reviews (different workers or runs) resolve it with the same conclusion
-    (owner, 2026-11-06, #168); a CONFIRMED review or a lone resolution keeps it open."""
-    rows_ = c.execute("SELECT conclusion, count(DISTINCT worker) FROM main.flag_reviews WHERE flag_id=? AND outcome='RESOLVED' "
-                      "GROUP BY conclusion", (flag_id,)).fetchall()
-    if any(n >= 2 for _, n in rows_):
-        c.execute("UPDATE main.review_flags SET status='CLEARED', cleared_at=datetime('now') WHERE id=? AND status='OPEN'", (flag_id,))
 
 
 def fault_checks(c, out):
@@ -241,8 +231,6 @@ def clean_row(c, table, data, insert, row_id=None):
             raise ValueError(f"named_codes {bad or ''} must be fault_components codes of the part of a rel.<PART>.<source> task: {valid} (GET /api/agent/schema)")
     if insert and table == 'research_checks' and out.get('contract_version') is None:
         out['contract_version'] = research.CONTRACT_VERSION
-    if insert and table == 'reliability_items' and out.get('part') is None:
-        raise ValueError(f"reliability_items requires part: one of {config.RELIABILITY_PARTS} (docs/cost-research-protocol.md, step 2)")
     levels = sum(out.get(k) is not None for k in config.LEVEL_COLUMNS)
     if insert and table in config.SCOPED_TABLES and (levels > 1 or levels == 0 and table not in config.GLOBAL_LEVEL_TABLES):
         raise ValueError(f'{table} must attach to exactly one level: {", ".join(config.LEVEL_COLUMNS)}'
@@ -256,7 +244,7 @@ def clean_row(c, table, data, insert, row_id=None):
     return out
 
 
-ADMIN_TABLES = set(MODEL) | set(_KNOW) | {'listings', 'flag_reviews', *SOURCE_TABLES}  # research and listings: the shared worker (admin) only (#109)
+ADMIN_TABLES = set(MODEL) | set(_KNOW) | RETIRED_TABLES | {'listings', *SOURCE_TABLES}  # research and listings: the shared worker (admin) only (#109)
 
 
 def check_writable(c, table, row_id, data):
@@ -348,7 +336,7 @@ def linked_accounts(c, table, row_id):
     return [o for (o,) in c.execute(_LISTING_LEVELS, lv)]
 
 
-DUPLICATE_GUARDED = ('faults', 'recalls', 'maintenance_items', 'reliability_items')  # the same row filed twice on levels one car carries (#221)
+DUPLICATE_GUARDED = ('faults', 'recalls', 'maintenance_items')  # the same row filed twice on levels one car carries (#221)
 GUARD_KEYS = (*config.LEVEL_COLUMNS, 'part', 'component', 'component_code', 'code', 'job', 'applies_from', 'applies_to', 'archived')
 
 
@@ -383,28 +371,11 @@ def guard_duplicate(c, table, data, row_id, distinct):
     data['notes'] = f"Distinct from {table[:-1].replace('_', ' ')} {', '.join('#%d' % i for i in ids)}: {reason}"
 
 
-def open_flag(c, data):
-    """Id of the OPEN review flag of the same kind on the same level as `data`, or None (one open flag per level and kind, #337)."""
-    cols = [k for k in config.LEVEL_COLUMNS if isinstance(data, dict) and data.get(k) is not None]
-    if len(cols) != 1 or not data.get('kind'):
-        return None
-    r = c.execute(f"SELECT id FROM main.review_flags WHERE {cols[0]}=? AND kind=? AND status='OPEN' ORDER BY id LIMIT 1", (data[cols[0]], data['kind'])).fetchone()
-    return r[0] if r else None
-
-
 def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
     """Inserts (row_id None) or updates a row of this account in one transaction and records it in change_log.
     Admin inserts of generations, engines, variants and level sources go to the shared catalogue (owner_id NULL);
     knowledge rows follow their level, except an account's own premium or USER DATA figure, which stays private.
     `actor` is who wrote it (the admin acting for the account), for the change log."""
-    if table == 'review_flags' and row_id is None and (fid := open_flag(c, data)):  # a second flag of the kind joins the open one
-        old = c.execute('SELECT what, why FROM main.review_flags WHERE id=?', (fid,)).fetchone()
-        new = {k: '; '.join(dict.fromkeys([old[k], str(data.get(k) or '')]))[:1500] for k in ('what', 'why')}
-        with c:
-            c.execute('UPDATE main.review_flags SET what=?, why=? WHERE id=?', (new['what'], new['why'], fid))
-            c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
-                      ('review_flags', fid, 'update', json.dumps(dict(old)), json.dumps(new), actor or user_id))
-        return fid
     distinct = data.pop('distinct_of', None) if table in DUPLICATE_GUARDED and isinstance(data, dict) else None
     data = clean_row(c, table, data, insert=row_id is None, row_id=row_id)
     check_parents(c, table, data)
@@ -432,10 +403,6 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
             link(c, user_id, data['vehicle_id'])
         c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
                   (table, row_id, 'update' if old else 'insert', old, json.dumps(data, ensure_ascii=False), actor or user_id))
-        if table == 'flag_reviews':
-            clear_if_agreed(c, c.execute('SELECT flag_id FROM main.flag_reviews WHERE id=?', (row_id,)).fetchone()[0])
-        if table == 'review_flags' and data.get('status') == 'CLEARED':
-            raise ValueError('a flag is cleared only by two independent reviews reaching the same conclusion (flag_reviews)')
     return row_id
 
 
