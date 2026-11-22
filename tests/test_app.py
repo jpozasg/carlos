@@ -416,6 +416,28 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(sum(x['cost_eur'] for x in d['maintenance_plan']), d['components']['maintenance'])
         self.assertAlmostEqual(sum(x['expected_eur'] for x in d['repair_risks']) + 0, d['cost_detail']['repairs_expected'])
 
+    def test_figures_the_ui_totals_rely_on(self):
+        """The UI never recomputes: per month = subtotal / period_months, and the repairs component = certain + risks + weak points
+        (the dossier's Repairs total shows exactly these parts); an unpriced weak point makes the component unknown, never smaller."""
+        for u in self.units().values():
+            if u['known_cost_per_month'] is not None:
+                self.assertAlmostEqual(u['known_cost_per_month'] * u['period_months'], u['known_cost_subtotal'])
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        fault = {'engine_id': d['engine_id'], 'component': 'Timing chain', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE',
+                 'existence': 'REPORTED', 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'source_id': SRC_GUIDE}
+        st, f = self.agent('POST', 'faults', {**fault, 'parts_eur': 400, 'labor_eur': 600})
+        self.assertEqual(st, 201, f)
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        cd = d['cost_detail']
+        self.assertTrue(d['fault_plan'])
+        self.assertAlmostEqual(cd['repairs_expected'], sum(x['expected_eur'] for x in d['repair_risks']) + sum(x['expected_eur'] for x in d['fault_plan']))
+        self.assertAlmostEqual(d['components']['repairs'], (cd['repairs_certain'] or 0) + cd['repairs_expected'])
+        self.agent('PATCH', f"faults/{f['id']}", {'parts_eur': None, 'labor_eur': None})
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        self.assertIsNone(d['components']['repairs'])                         # unpriced weak point: unknown, so the UI shows "+n pending"
+        self.assertIsNone(d['cost_detail']['repairs_expected'])
+
     def test_certain_maintenance(self):
         """A scheduled job due at purchase is a certain maintenance cost: it adds to maintenance, never to repairs."""
         before = self.req('GET', f'/api/listings/{CAR_B}')[1]

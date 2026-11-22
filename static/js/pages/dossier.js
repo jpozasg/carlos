@@ -2,7 +2,7 @@
 import { S, refreshTco, go } from '../app.js';
 import { get, send } from '../api.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, safeUrl, statusTags, gaps, intervalTxt, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, sumKnown, totalP, perMonth, pct, rangeTxt, consumptionTxt, consumptionSpread, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, safeUrl, statusTags, gaps, intervalTxt, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
 let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
@@ -88,7 +88,7 @@ function relBox(d) {
   return `<div class="relbox">${head}<div class="rb-rows">${rows}</div><p class="small muted" style="margin:6px 0 0">${t('rel_coverage', { n: rs.present, m: rs.of })} · ${goTab('reliability', t('dt_reliability'))}</p></div>`;
 }
 // the cost per month, the other key figure, as a strip at the top of the plate (issue #80)
-const costStrip = d => `<div class="plate-cost"><span>${t('plate_cost_short')}</span><b>${d.known_cost_per_month == null ? PEND() : `${euro(d.known_cost_per_month)}<small>${t('per_month')}</small>`}</b></div>`;  // total cost of ownership per month
+const costStrip = d => `<div class="plate-cost"><span>${t(d.tco_complete ? 'plate_cost_short' : 'plate_cost_partial')}</span><b>${perMonth(d, `<small>${t('per_month')}</small>`)}</b></div>`;  // total cost of ownership per month
 function plate(d) {
   const row = (k, v, cls = '') => `<dt class="${cls}">${k}</dt><dd class="${cls}">${v}</dd>`;
   return `<aside class="plate" aria-label="${esc(t('plate_title'))}">${costStrip(d)}<details class="plate-more"${matchMedia('(max-width:640px)').matches ? '' : ' open'}><summary>${t('plate_more')}</summary><dl>
@@ -98,14 +98,14 @@ function plate(d) {
     ${row(t('age'), (d.metrics || {}).age == null ? PEND() : yrs(d.metrics.age))}
     ${row(t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a>`)}
     ${row(t('power'), d.power_ps == null ? PEND() : num(d.power_ps, 0) + ' PS')}
-    ${row(t('consumption'), d.consumption == null ? PEND() : num(d.consumption) + ' ' + esc(d.consumption_unit || 'l/100 km'))}
+    ${row(t('consumption'), consumptionTxt(d))}
     ${row(t('plate_position'), d.rank ? `#${d.rank}` : `<span class="pending">${t(d.is_reference ? 'ref_not_ranked' : 'not_ranked')}</span>`)}
     ${row(t('tco_complete'), d.tco_complete ? `<span class="tag good">${t('yes')}</span>` : `<span class="tag warn">${t('subtotal_partial')}</span>`)}</dl>${relBox(d)}</details>
     ${d.verdict ? `<div class="stamp">${t('plate_stamp')}: ${esc(d.verdict)}</div>` : ''}</aside>`;
 }
-function valuationRow(v) {
-  const r = v.low_eur != null && v.high_eur != null && v.high_eur > v.low_eur ? `<div class="range" aria-hidden="true"><i style="left:${(v.expected_eur - v.low_eur) / (v.high_eur - v.low_eur) * 100}%"></i></div><div class="small muted" style="display:flex;justify-content:space-between"><span>${euro(v.low_eur)}</span><span>${euro(v.high_eur)}</span></div>` : '';
-  return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px"><b class="small">${v.kind === 'sale_today' ? t('sale_today') : t('resale_end')}${v.horizon_years ? ` (${yrs(v.horizon_years)})` : ''}</b><b>${euro(v.expected_eur)}</b></div>${r}<div class="small muted">${esc(tv(v.status))} · ${t('source')} ${esc(v.source_id)}${v.notes ? ' · ' + esc(v.notes) : ''}</div></div>`;
+function valuationRow(d, v) {
+  const r = v.expected_eur != null && v.low_eur != null && v.high_eur != null && v.high_eur > v.low_eur ? `<div class="range" aria-hidden="true"><i style="left:${(v.expected_eur - v.low_eur) / (v.high_eur - v.low_eur) * 100}%"></i></div><div class="small muted" style="display:flex;justify-content:space-between"><span>${euro(v.low_eur)}</span><span>${euro(v.high_eur)}</span></div>` : '';
+  return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px"><b class="small">${v.kind === 'sale_today' ? t('sale_today') : t('resale_end')}${v.horizon_years ? ` (${yrs(v.horizon_years)})` : ''}</b><b>${eP(v.expected_eur)}</b></div>${r}<div class="small muted">${esc(tv(v.status))} · ${srcName(d, v.source_id)}${v.notes ? ' · ' + esc(v.notes) : ''}</div></div>`;
 }
 // the seller's rating as the platform publishes it (issue #135): read from the newest capture that has one (mobile.de
 // "Händlerbewertung": "3.2 Sterne (28 Bewertungen)"); private sellers have none, so no row
@@ -149,9 +149,11 @@ function rankCard(d) {  // the reference car is scored too (issue #72), only not
     <details style="margin-top:10px"><summary class="small" style="cursor:pointer">${t('research_title')}: ${t('c_confidence')} ${d.metrics.confidence == null ? '–' : num(d.metrics.confidence, 0) + ' %'}</summary><p class="small muted" style="margin:6px 0 0">${t('research_lead')}</p>${researchLevels(d.research_levels)}</details>
     <p class="small muted" style="margin:8px 0 0"><a href="#/ranking">${t('ranking_edit')}</a></p></div>`;
 }
+// the source as a visible link (title, quality letter), not a bare id
+const srcName = (d, id) => { const x = id == null ? null : d.sources.find(s => s.id === id); return !x ? PEND() : `${x.url ? `<a href="${safeUrl(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title)} ${qTag(x.quality)}`; };
 const srcLink = (d, id) => { const x = d.sources.find(s => s.id === id); return x ? qTag(x.quality, x.title + (x.limitations ? ' — ' + x.limitations : '')) : ''; };
 // one row per certain one-off cost of this car (unit_costs of a category), named, so a total never hides what it includes
-const certainOf = (d, cat) => d.unit_costs.filter(x => x.category === cat).map(x => ({ ...x, eur: (x.parts_eur || 0) + (x.labor_eur || 0) }));
+const certainOf = (d, cat) => d.unit_costs.filter(x => x.category === cat).map(x => ({ ...x, eur: x.parts_eur == null && x.labor_eur == null ? null : (x.parts_eur || 0) + (x.labor_eur || 0) }));  // no price = pending, never 0
 // row notes open on click/tap (a title tooltip is hover-only and never shows on a phone); an SVG renders in every theme font
 const INFO_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.6v.1" stroke-linecap="round"/></svg>';
 const noteBox = text => text ? `<details class="rownote"><summary aria-label="${esc(t('notes'))}" title="${esc(t('notes'))}">${INFO_SVG}</summary><p>${esc(text)}</p></details>` : '';
@@ -162,50 +164,48 @@ function resetTag(d, itemId) {
   const [key, cls] = RESET[r.basis] || ['rs_documented', 'good'];
   return `<details class="rownote reset"><summary><span class="tag ${cls}">${t(key)}</span></summary><p>${t(key + '_x')} ${t('rs_effect')}${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ''}</p></details>`;
 }
-const certainRows = (d, rows) => rows.map(x => `<tr><td colspan="6">${esc(x.item)} <span class="tag">${t('certain_tag')}</span> ${noteBox(x.notes)}</td><td class="n">${euro(x.eur)}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('');
+const certainRows = (d, rows) => rows.map(x => `<tr><td colspan="6">${esc(x.item)} <span class="tag">${t('certain_tag')}</span> ${noteBox(x.notes)}</td><td class="n">${eP(x.eur)}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('');
 function maintenanceCard(d) {
   const rows = d.maintenance_plan || [], cm = certainOf(d, 'maintenance'); if (!rows.length && !cm.length) return `<div class="card span2"><h3>${t('mp_title')}</h3>${empty(t('mp_none'))}</div>`;
-  const tot = rows.reduce((a, r) => a + (r.cost_eur || 0), 0) + cm.reduce((a, x) => a + x.eur, 0), hrs = rows.reduce((a, r) => a + (r.diy_hours || 0), 0);
-  return `<div class="card span2"><h3>${t('mp_title')}</h3><p class="small muted" style="margin-top:0">${t('mp_lead', { km: num(d.period_km, 0), m: num(S.p.ownership_years * 12, 0) })}</p>
+  const tot = sumKnown([...rows.map(r => r.cost_eur), ...cm.map(x => x.eur)], v => v), hrs = rows.reduce((a, r) => a + (r.diy_hours || 0), 0);
+  return `<div class="card span2"><h3>${t('mp_title')}</h3><p class="small muted" style="margin-top:0">${t('mp_lead', { km: num(d.period_km, 0), m: d.period_months == null ? '…' : num(d.period_months, 0) })}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('mp_job')}</th><th>${t('level')}</th><th>${t('mp_interval')}</th><th>${t('mp_who')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('mp_times')}</th><th class="n">${t('mp_cost')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${esc(r.item)}${r.restarted ? ` ${resetTag(d, r.id)}` : ''}<div class="small muted">${esc(tv(r.status) ?? '')} ${noteBox(r.notes)}</div></td><td>${lvlTag(r.level, r)}</td>
       <td>${intervalTxt(r.interval_km, r.interval_months)}</td><td>${r.diy ? t('mp_diy') : t('mp_ws')}</td><td class="n">${eP(r.price_eur)}</td>
       <td class="n">×${num(r.occurrences, 2)}</td><td class="n">${eP(r.cost_eur)}${r.diy_hours ? `<div class="small muted">${num(r.diy_hours, 1)} h</div>` : ''}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
     ${certainRows(d, cm)}
-    <tr><td colspan="6"><b>${t('mp_total')}</b></td><td class="n"><b>${euro(tot)}</b>${hrs ? `<div class="small muted">${num(hrs, 1)} h</div>` : ''}</td><td></td></tr></tbody></table></div></div>`;
+    <tr><td colspan="6"><b>${t('mp_total')}</b></td><td class="n"><b>${totalP(tot)}</b>${hrs ? `<div class="small muted">${num(hrs, 1)} h</div>` : ''}</td><td></td></tr></tbody></table></div></div>`;
 }
 function risksCard(d) {
-  const rows = (d.repair_risks || []).slice().sort((a, b) => (b.expected_eur || 0) - (a.expected_eur || 0));
-  if (!rows.length) return `<div class="card span2"><h3>${t('rk_title')}</h3>${empty(t('rk_none'))}</div>`;
-  const tot = rows.reduce((a, r) => a + (r.expected_eur || 0), 0), cr = certainOf(d, 'repairs'), cert = cr.reduce((a, x) => a + x.eur, 0);
+  const rows = (d.repair_risks || []).slice().sort((a, b) => (b.expected_eur || 0) - (a.expected_eur || 0)), fp = d.fault_plan || [], cr = certainOf(d, 'repairs');
+  if (!rows.length && !fp.length && !cr.length) return `<div class="card span2"><h3>${t('rk_title')}</h3>${empty(t('rk_none'))}</div>`;
+  // the repairs component = certain + risks + weak points (carlos/costs.py), one total with the same parts as the Costs tab
+  const risks = sumKnown(rows, r => r.expected_eur), faults = sumKnown(fp, f => f.expected_eur), all = sumKnown([...rows.map(r => r.expected_eur), ...fp.map(f => f.expected_eur), ...cr.map(x => x.eur)], v => v);
   return `<div class="card span2"><h3>${t('rk_title')}</h3><p class="small muted" style="margin-top:0">${t('rk_lead')}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('rk_comp')}</th><th>${t('level')}</th><th>${t('rk_window')}</th><th class="n">${t('rk_prob')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('rk_share')}</th><th class="n">${t('rk_exp')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
-    ${rows.map(r => `<tr${r.share ? '' : ' class="muted"'}><td><span title="${esc(r.evidence ?? '')}${r.notes ? ' — ' + esc(r.notes) : ''}">${esc(r.component)}</span>${r.diy ? ` <span class="tag">DIY</span>` : ''}</td><td>${lvlTag(r.level, r)}</td>
-      <td>${num(r.km_from, 0)}–${num(r.km_to, 0)}</td><td class="n">${num(r.probability * 100, 0)} %</td><td class="n">${eP(r.price_eur)}</td>
-      <td class="n">${num(r.share * 100, 0)} %</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
-    <tr><td colspan="6"><b>${t('rk_total')}</b></td><td class="n"><b>${euro(tot)}</b></td><td></td></tr>
-    ${cert ? `<tr><td colspan="8" class="small muted">${t('rk_certain')}</td></tr>${certainRows(d, cr)}<tr><td colspan="6"><b>${esc(comp('repairs'))}</b></td><td class="n"><b>${euro(tot + cert)}</b></td><td></td></tr>` : ''}</tbody></table></div></div>`;
+    ${rows.map(r => `<tr${r.share ? '' : ' class="muted"'}><td><span title="${esc(r.evidence ?? '')}${r.notes ? ' — ' + esc(r.notes) : ''}">${esc(r.component)}</span>${r.diy ? ` <span class="tag">${t('mp_diy')}</span>` : ''}</td><td>${lvlTag(r.level, r)}</td>
+      <td>${rangeTxt(r.km_from, r.km_to)}</td><td class="n">${pct(r.probability)}</td><td class="n">${eP(r.price_eur)}</td>
+      <td class="n">${pct(r.share)}</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
+    ${rows.length ? `<tr><td colspan="6"><b>${t('rk_total')}</b></td><td class="n"><b>${totalP(risks)}</b></td><td></td></tr>` : ''}
+    ${fp.length ? `<tr><td colspan="6"><b>${t('rk_faults_total', { n: fp.length })}</b> ${goTab('reliability', t('dt_reliability'))}</td><td class="n"><b>${totalP(faults)}</b></td><td></td></tr>` : ''}
+    ${cr.length ? `<tr><td colspan="8" class="small muted">${t('rk_certain')}</td></tr>${certainRows(d, cr)}` : ''}
+    <tr><td colspan="6"><b>${t('rk_repairs_total')}</b></td><td class="n"><b>${totalP(all)}</b></td><td></td></tr></tbody></table></div></div>`;
 }
 // what is known about this car (#174): jobs done, faults present or ruled out, recalls checked; and its insurance quotes
 function historyCard(d) {
   const h = d.history || [], q = [];  // insurance quotes moved to the Costs tab (#340)
   if (!h.length) return '';
-  return `<div class="card"><h3>${t('history_title')}</h3>${h.length ? `<ul class="check">${h.map(x => `<li><span class="ico ${x.status === 'PRESENT' || x.status === 'OPEN' ? 'bad' : 'ok'}" aria-hidden="true">${x.status === 'PRESENT' || x.status === 'OPEN' ? '!' : '✓'}</span><div><b>${esc(x.item)}</b> <span class="tag">${esc(tv(x.status))}</span> <span class="tag">${esc(tv(x.evidence))}</span><div class="small muted">${[x.event_date, x.km == null ? null : num(x.km, 0) + ' km', x.parts_eur || x.labor_eur ? euro((x.parts_eur || 0) + (x.labor_eur || 0)) : null].filter(Boolean).map(esc).join(' · ')}</div></div></li>`).join('')}</ul>` : empty(t('no_rows'))}
+  return `<div class="card"><h3>${t('history_title')}</h3>${h.length ? `<ul class="check">${h.map(x => `<li><span class="ico ${x.status === 'PRESENT' || x.status === 'OPEN' ? 'bad' : 'ok'}" aria-hidden="true">${x.status === 'PRESENT' || x.status === 'OPEN' ? '!' : '✓'}</span><div><b>${esc(x.item)}</b> <span class="tag">${esc(tv(x.status))}</span> <span class="tag">${esc(tv(x.evidence))}</span><div class="small muted">${[x.event_date, x.km == null ? null : num(x.km, 0) + ' km', x.parts_eur == null && x.labor_eur == null ? null : euro((x.parts_eur || 0) + (x.labor_eur || 0)) + (x.parts_eur == null || x.labor_eur == null ? ' ' + t('partial_short') : '')].filter(Boolean).map(esc).join(' · ')}</div></div></li>`).join('')}</ul>` : empty(t('no_rows'))}
     ${q.length ? `<h3 style="margin-top:16px">${t('quotes_title')}</h3><div class="tablewrap"><table><thead><tr><th>${t('date')}</th><th class="n">${t('premium')}</th><th>${t('status')}</th><th>${t('mp_src')}</th></tr></thead><tbody>${q.map(x => `<tr><td>${esc(x.quote_date ?? '')}</td><td class="n">${eP(x.annual_premium_eur)}</td><td>${esc(tv(x.premium_status))}${x.insurer ? ' · ' + esc(x.insurer) : ''}</td><td>${srcLink(d, x.source_id)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
 }
 // the TÜV / ADAC figures of the model by age (#289), as published; the class average (when the report gives one) feeds the score
 // Reliability tab (#340): per part, its score out of 9, weak points (faults with chance, price, expected cost, what to check), recalls
 // with their checklist state, and any older weak-point rows; then TÜV/ADAC figures and the known history of this car
-const faultsTotal = d => (d.fault_plan || []).reduce((a, r) => a + (r.expected_eur || 0), 0);
-function faultsLine(d) {  // the fault table lives in the Reliability tab; its expected cost is part of the repairs component
-  const n = (d.fault_plan || []).length; if (!n) return '';
-  return `<div class="card span2"><h3>${t('faults_title')}</h3><p class="small muted" style="margin:0">${t('faults_line', { n, e: euro(faultsTotal(d)) })} ${goTab('reliability', t('dt_reliability'))}</p></div>`;
-}
 function partCard(d, part) {
   const faults = (d.fault_plan || []).filter(f => (f.part ?? null) === part).sort((a, b) => (b.expected_eur || 0) - (a.expected_eur || 0));
   const recalls = (d.recalls || []).filter(r => (r.part ?? null) === part);
   const legacy = (d.reliability || []).filter(r => (r.part ?? null) === part);
-  const fRows = faults.map(r => `<tr${r.expected_eur ? '' : ' class="muted"'}><td><b>${esc(r.component)}</b> ${esc(r.issue ?? '')}${r.repaired_at_km != null ? ` <span class="tag good">${t('f_fixed')}</span>` : ''}${r.window_uncertain ? ` <span class="tag warn">${t('f_window_uncertain')}</span>` : ''}${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}${r.notes ? noteBox(r.notes) : ''}</td><td>${lvlTag(r.level, r)}</td><td>${faultProb(r)}</td><td>${sevTag(r.severity)} </td><td class="n">${r.probability == null ? PEND() : num(r.probability * 100, 1) + ' %'}</td><td class="n">${eP(r.price_eur)}</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`);
+  const fRows = faults.map(r => `<tr${r.expected_eur ? '' : ' class="muted"'}><td><b>${esc(r.component)}</b> ${esc(r.issue ?? '')}${r.repaired_at_km != null ? ` <span class="tag good">${t('f_fixed')}</span>` : ''}${r.window_uncertain ? ` <span class="tag warn">${t('f_window_uncertain')}</span>` : ''}${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}${r.notes ? noteBox(r.notes) : ''}</td><td>${lvlTag(r.level, r)}</td><td>${faultProb(r)}</td><td>${sevTag(r.severity)} </td><td class="n">${pct(r.probability, 1)}</td><td class="n">${eP(r.price_eur)}</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`);
   const rcRows = recalls.map(r => `<li><span class="ico ${'bad'}" aria-hidden="true">${'!'}</span><div><b>${esc(r.code)}</b> <span class="tag warn">${t('rel_recall')}</span> ${lvlTag(r.level, r)}  ${srcLink(d, r.source_id)}<div class="small">${esc(r.defect ?? '')}</div>${r.remedy ? `<div class="small muted">${t('rel_remedy')}: ${esc(r.remedy)}</div>` : ''}${r.notes ? noteBox(r.notes) : ''}</div></li>`).join('');
   const lgRows = legacy.map(r => `<li><span class="ico pend" aria-hidden="true">i</span><div><b>${esc(r.component)}</b> · ${esc(r.issue ?? '')}<div class="small" style="margin:4px 0">${sevTag(r.severity)} ${lvlTag(r.level, r)}${r.is_recall ? ` <span class="tag warn">${t('rel_recall')}</span>` : ''} </div>${r.inspection_action ? `<div class="small muted">→ ${esc(r.inspection_action)}</div>` : ''}</div></li>`).join('');
   return `<div class="card span2"><h3>${esc(t('part_' + part))} <span class="muted small num"></span></h3>
@@ -291,7 +291,7 @@ function costBlocks(d) {
   const cons = (d.observations || []).filter(o => o.category === 'consumption');
   const split = (a, b) => [a, b].filter(x => x && x[1] != null).map(([l, v]) => `${l} ${euro(v)}`).join(' · ');
   const B = {};
-  B.fuel = facts([[t('co_consumption'), d.consumption == null ? PEND() : `${num(d.consumption)} ${esc(d.consumption_unit || 'l/100 km')}${d.consumption_metric ? ` · ${esc(d.consumption_metric)}` : ''}${d.consumption_sample ? ` · n=${num(d.consumption_sample, 0)}` : ''}${d.consumption_min != null ? ` · ${num(d.consumption_min)}–${num(d.consumption_max)}` : ''} ${srcLink(d, d.consumption_source_id)}`],
+  B.fuel = facts([[t('co_consumption'), d.consumption == null ? PEND() : `${consumptionTxt(d)}${d.consumption_metric ? ` · ${esc(d.consumption_metric)}` : ''}${consumptionSpread(d) ? ` · ${consumptionSpread(d)}` : ''} ${srcLink(d, d.consumption_source_id)}`],
     ...(cd.fuel_price_eur_l != null ? [[t('co_fuel_price'), `${num(cd.fuel_price_eur_l, 2)} €/l`]] : []), ...(cd.electricity_eur_kwh != null ? [[t('co_elec_price'), `${num(cd.electricity_eur_kwh, 2)} €/kWh`]] : []),
     [t('co_period'), `${num(d.period_km, 0)} km · ${num(d.period_months, 0)} ${t('co_months')}`]])
     + (cons.length ? `<div class="small muted">${cons.map(o => `${esc(o.metric)}${stTag(o.status)} ${qTag(o.evidence_quality)} ${noteBox(o.notes)}`).join('<br>')}</div>` : '');
@@ -300,18 +300,18 @@ function costBlocks(d) {
   B.tax = (d.tax || []).length ? d.tax.map(x => `${facts([[t('co_tax_year'), eP(x.annual_tax_eur) + stTag(x.status) + ' ' + srcLink(d, x.source_id)], ...(x.registered_from || x.registered_to ? [[t('co_window'), `${esc(x.registered_from ?? '…')} – ${esc(x.registered_to ?? '…')}`]] : []), ...(d.tax_exempt_months ? [[t('co_exempt'), `${num(d.tax_exempt_months, 0)} ${t('co_months')}`]] : [])])}${x.basis ? `<div class="small muted">${esc(x.basis)}</div>` : ''}`).join('') : (d.annual_tax != null ? facts([[t('co_tax_year'), euro(d.annual_tax)]]) : none());
   B.maintenance = facts([[t('co_scheduled'), eP(cd.maintenance_scheduled)], [t('co_certain'), eP(cd.maintenance_certain)], ...(cd.maintenance_diy_hours ? [[t('co_hours'), num(cd.maintenance_diy_hours, 1) + ' h']] : [])]) + certainTbl(d, 'maintenance') + goTab('maintenance', t('dt_maintenance'));
   B.repairs = facts([[t('co_certain'), eP(cd.repairs_certain)], [t('co_expected'), eP(cd.repairs_expected)], ...(cd.repairs_diy_hours ? [[t('co_hours'), num(cd.repairs_diy_hours, 1) + ' h']] : [])]) + certainTbl(d, 'repairs') + goTab('maintenance', t('dt_maintenance')) + ' ' + goTab('reliability', t('dt_reliability'));
-  B.tyres = (d.tyres || []).length ? d.tyres.map(x => facts([[t('co_tyre_size'), `${esc(x.size ?? '')} ${esc(tv(x.tyre_type) ?? '')}${stTag(x.status)} ${srcLink(d, x.source_id)}`], [t('co_tyre_price'), `${eP(x.price_per_tyre_eur)} × ${x.tyres_per_set ?? 4}`], [t('co_tyre_life'), x.life_km == null ? PEND() : num(x.life_km, 0) + ' km'], [t('co_fitting'), eP(x.fitting_per_set_eur)]]) + (x.notes ? `<div class="small muted">${esc(x.notes)}</div>` : '')).join('') + certainTbl(d, 'tyres') : none();
+  B.tyres = (d.tyres || []).length ? d.tyres.map(x => facts([[t('co_tyre_size'), `${esc(x.size ?? '')} ${esc(tv(x.tyre_type) ?? '')}${stTag(x.status)} ${srcLink(d, x.source_id)}`], [t('co_tyre_price'), `${eP(x.price_per_tyre_eur)} × ${x.tyres_per_set == null ? PEND() : x.tyres_per_set}`], [t('co_tyre_life'), x.life_km == null ? PEND() : num(x.life_km, 0) + ' km'], [t('co_fitting'), eP(x.fitting_per_set_eur)]]) + (x.notes ? `<div class="small muted">${esc(x.notes)}</div>` : '')).join('') + certainTbl(d, 'tyres') : none();
   const ps = certainOf(d, 'purchase_sale');
   B.purchase_sale = (d.is_reference ? '' : facts([[t('asking_price'), eP(d.price_eur)]])) + (ps.length ? certainTbl(d, 'purchase_sale') : none());
-  B.depreciation = (d.is_reference ? '' : facts([[t('asking_price'), eP(d.price_eur)]])) + (d.valuations.length ? d.valuations.map(valuationRow).join('') : none());
+  B.depreciation = (d.is_reference ? '' : facts([[t('asking_price'), eP(d.price_eur)]])) + (d.valuations.length ? d.valuations.map(v => valuationRow(d, v)).join('') : none());
   return COMP_KEYS.map(k => `<div class="card" id="co-${k}"><h3>${comp(k)} <span class="muted small num">${C[k] == null ? t('co_unknown') : euro(C[k])}</span></h3>${B[k]}</div>`).join('');
 }
 function costsTab(d) {
-  const C = d.components || {}, mo = d.period_months || S.p.ownership_years * 12, known = COMP_KEYS.reduce((a, k) => a + (C[k] || 0), 0), miss = d.missing_components || [];
-  const rows = COMP_KEYS.map(k => `<tr><td><a href="#co-${k}" data-jump="co-${k}">${comp(k)}</a></td><td class="n">${eP(C[k])}</td><td class="n">${C[k] == null ? PEND() : euro(C[k] / mo) + t('per_month')}</td><td style="min-width:90px">${C[k] == null || !known ? '' : `<div class="scorebar" aria-hidden="true"><i style="width:${Math.max(2, C[k] / known * 100)}%"></i></div>`}</td></tr>`);
+  const C = d.components || {}, mo = d.period_months, known = d.known_cost_subtotal, miss = d.missing_components || [];
+  const rows = COMP_KEYS.map(k => `<tr><td><a href="#co-${k}" data-jump="co-${k}">${comp(k)}</a></td><td class="n">${eP(C[k])}</td><td class="n">${C[k] == null || !mo ? PEND() : euro(C[k] / mo) + t('per_month')}</td><td style="min-width:90px">${C[k] == null || !known ? '' : `<div class="scorebar" aria-hidden="true"><i style="width:${Math.max(2, C[k] / known * 100)}%"></i></div>`}</td></tr>`);
   const own = '';
-  return `<div class="card span2"><h3>${t('co_title')}</h3><p class="small muted" style="margin-top:0">${t('co_lead', { m: num(mo, 0), km: num(d.period_km, 0) })}</p>
-    ${tbl([[t('concept')], [t('co_total'), 1], [t('co_month'), 1], ['']], [...rows, `<tr><td><b>${miss.length ? t('co_subtotal') : t('plate_cost_short')}</b></td><td class="n"><b>${euro(known)}</b></td><td class="n"><b>${euro(known / mo)}${t('per_month')}</b></td><td></td></tr>`]).replace('<table>', '<table class="co-sum">')}
+  return `<div class="card span2"><h3>${t('co_title')}</h3><p class="small muted" style="margin-top:0">${t('co_lead', { m: mo == null ? '…' : num(mo, 0), km: num(d.period_km, 0) })}</p>
+    ${tbl([[t('concept')], [t('co_total'), 1], [t('co_month'), 1], ['']], [...rows, `<tr><td><b>${miss.length ? t('co_subtotal') : t('plate_cost_short')}</b></td><td class="n"><b>${eP(known)}</b></td><td class="n"><b>${d.known_cost_per_month == null ? PEND() : euro(d.known_cost_per_month) + t('per_month')}</b></td><td></td></tr>`]).replace('<table>', '<table class="co-sum">')}
     ${miss.length ? `<p class="small muted">${t('co_missing')}: ${miss.map(k => comp(k)).join(', ')}</p>` : ''}${own}</div>${costBlocks(d)}`;
 }
 // tabs under a fixed top (issue #178): photos, score and spec plate always shown; the tab is kept in the URL (?tab=)
@@ -343,7 +343,7 @@ async function draw(id, quiet = false) {
         ...(d.is_reference ? [] : [[t('seller'), d.seller ? esc(d.seller) + (d.location ? ', ' + esc(d.location) : '') : PEND()], ...(sellerRating(d) ? [[t('seller_rating'), sellerRating(d)]] : []), [t('accident_free'), d.accident_free_claim == null ? PEND() : claim(d.accident_free_claim ? t('yes') : t('no'))], [t('owners'), claim(d.owners_claim)],
         [t('hu'), claim(d.hu_claim)], [t('history'), claim(d.service_history_claim)], [t('equipment'), d.equipment ? esc(d.equipment) : PEND()], [t('verdict'), d.verdict ? `<b>${esc(d.verdict)}</b>` : PEND()]]), [t('notes'), d.notes ? esc(d.notes) : PEND()]])}</div></div>
     ${flagsCard(d.review_flags)}${rankCard(d)}</div>
-    <div class="grid dtab" data-tab="maintenance"${hid('maintenance')}>${maintenanceCard(d)}${risksCard(d)}${faultsLine(d)}</div>
+    <div class="grid dtab" data-tab="maintenance"${hid('maintenance')}>${maintenanceCard(d)}${risksCard(d)}</div>
     <div class="grid dtab" data-tab="viewing"${hid('viewing')}>${viewingPanel()}${inspectionCard(d)}</div>
     <div class="grid dtab" data-tab="costs"${hid('costs')}>${costsTab(d)}</div>
     <div class="grid dtab" data-tab="reliability"${hid('reliability')}>${reliabilityTab(d)}</div>
