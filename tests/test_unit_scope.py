@@ -57,6 +57,25 @@ class UnitScopeTest(unittest.TestCase):
     def shared_tax(self, vehicle_id):
         return self.sql('SELECT id FROM tax_data WHERE vehicle_id=?', (vehicle_id,))[0][0]
 
+    def reuse_chain(self):
+        """The run's own reuse of the fixture's generation and engine, as a capture makes it: POST answers existing and the run logs it (SEC-E)."""
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/generations', {'make': 'Alpha', 'model': 'Hatch', 'name': 'Mk1', 'start_year': 2008})[1]['id'], G1)
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/engines', {'code': 'AM14', 'fuel_type': 'Petrol', 'displacement_cc': 1400,
+                                                                       'power_kw': 74, 'power_ps': 100})[1]['id'], E_A)
+
+    def claim(self, hsn='1111'):
+        """A capture's own listing, made the way a run makes it: its reused generation and engine, a new variant, then the listing (SEC-A)."""
+        self.reuse_chain()
+        st, v = self.api('CAPTURE', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Claim 1.4', 'transmission': 'Manual',
+                                                               'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                               'hsn': hsn, 'tsn': 'CLM', 'technical_status': 'VERIFIED'})
+        self.assertEqual(st, 201, v)
+        st, l = self.api('CAPTURE', 'POST', 'agent/listings', {'listing_id': f'CLAIM{hsn}', 'url': f'https://example.test/{hsn}', 'platform': 'Test',
+                                                               'source_id': SRC_LISTING, 'listing_status': 'UNDER REVIEW', 'is_reference': 0,
+                                                               'last_checked': fx.TODAY, 'price_eur': 100, 'vehicle_id': v['id']})
+        self.assertEqual(st, 201, l)
+        return l['id'], v['id']
+
     # ---------------------------------------------------------------- non-staged units
     def test_tax_unit_writes_tax_on_its_variant_only(self):
         self.assertEqual(self.api('TAX', 'POST', 'agent/tax_data', {**TAX, 'vehicle_id': V_A})[0], 201)
@@ -96,9 +115,12 @@ class UnitScopeTest(unittest.TestCase):
 
     def test_capture_creates_but_never_changes_the_catalogue(self):
         self.assertEqual(self.api('CAPTURE', 'POST', 'agent/generations', {'make': 'Gamma', 'model': 'Van', 'name': 'Mk1', 'start_year': 2010})[0], 201)
-        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/sources', {'vehicle_id': V_A, 'title': 'Listing', 'url': 'https://example.test/x', 'source_type': 'listing',
-                                                                        'quality': 'A', 'accessed_date': fx.TODAY})[0], 201)
-        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 200)          # the account's own listing
+        own, v = self.claim()
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/sources', {'vehicle_id': v, 'title': 'Listing', 'url': 'https://example.test/x', 'source_type': 'listing',
+                                                                       'quality': 'A', 'accessed_date': fx.TODAY})[0], 201)
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/sources', {'vehicle_id': V_A, 'title': 'Foreign', 'url': 'https://example.test/f', 'source_type': 'listing',
+                                                                       'quality': 'A', 'accessed_date': fx.TODAY})[0], 403)
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{own}', {'price_eur': 5900})[0], 200)          # the listing it inserted
         for table, rid in (('engines', E_A), ('generations', G2), ('vehicles', V_B), ('sources', SRC_GUIDE)):
             st, e = self.api('CAPTURE', 'PATCH', f'agent/{table}/{rid}', {'status': 'PARTIAL'} if table != 'sources' else {'quality': 'A'})
             self.assertEqual(st, 403, (table, e)); self.assertIn('CAPTURE does not change', e['error'])
@@ -112,27 +134,30 @@ class UnitScopeTest(unittest.TestCase):
 
     def test_capture_reattaches_its_listing_to_its_own_variant_only(self):  # #194: a re-run attaches the variant it found or created
         self.tokens['ADMIN'] = TOKEN
+        own, _ = self.claim()
         found = self.api('ADMIN', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Found 1.4', 'transmission': 'Manual',
                                                              'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
                                                              'hsn': '7777', 'tsn': 'CCC', 'technical_status': 'VERIFIED'})[1]['id']
-        st, e = self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': V_B})
+        st, e = self.api('CAPTURE', 'PATCH', f'agent/listings/{own}', {'vehicle_id': V_B})
         self.assertEqual(st, 403, e); self.assertIn('outside the variant', e['error'])                           # a foreign variant (another generation)
         self.assertEqual(self.api('LISTING', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': found})[0], 403)  # LISTING does not re-attach
-        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': found})[0], 200)  # the variant of its own generation
-        self.assertEqual(self.sql('SELECT vehicle_id FROM listings WHERE id=?', (CAR_A,)), [(found,)])
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{own}', {'vehicle_id': found})[0], 200)  # the variant of its own generation
+        self.assertEqual(self.sql('SELECT vehicle_id FROM listings WHERE id=?', (own,)), [(found,)])
         made = self.api('CAPTURE', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Made 1.4', 'transmission': 'Manual',
                                                               'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
                                                               'hsn': '8888', 'tsn': 'DDD', 'technical_status': 'VERIFIED'})
         self.assertEqual(made[0], 201, made)
-        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': made[1]['id']})[0], 200)  # a variant this run created
-        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': V_B})[0], 403)           # and back to a foreign one: refused
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{own}', {'vehicle_id': made[1]['id']})[0], 200)  # a variant this run created
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{own}', {'vehicle_id': V_B})[0], 403)           # and back to a foreign one: refused
 
     def test_a_unit_writes_only_its_own_listings_rows(self):  # SEC-1: a request token patches its own car's rows, never another car's
-        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 200)   # its listing: the first it writes
+        own, _ = self.claim()
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{own}', {'price_eur': 5900})[0], 200)   # its listing: the one it inserted
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 403)  # an existing listing is not claimed (SEC-A)
         self.assertEqual(self.api('CAPTURE', 'PATCH', 'agent/inspection_items/3', {'status': 'PROBLEM'})[0], 403)  # the checklist of CAR_B
         self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listing_events', {'listing_id': CAR_B, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'x'})[0], 403)
         self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_B}', {'price_eur': 1})[0], 403)
-        self.assertEqual(self.api('CAPTURE', 'PATCH', 'agent/inspection_items/1', {'status': 'PROBLEM'})[0], 200)  # its own checklist
+        self.assertEqual(self.api('CAPTURE', 'PATCH', 'agent/inspection_items/1', {'status': 'PROBLEM'})[0], 403)  # CAR_A's checklist, not claimed
         self.assertEqual(self.sql('SELECT status FROM inspection_items WHERE id=3'), [('OK',)])
         self.assertEqual(self.sql('SELECT price_eur FROM listings WHERE id=?', (CAR_B,)), [(7500,)])
         self.assertEqual(self.api('LISTING', 'PATCH', 'agent/inspection_items/3', {'status': 'PROBLEM'})[0], 403)  # a request with its listing set
@@ -146,13 +171,16 @@ class UnitScopeTest(unittest.TestCase):
         self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'vehicle_id': V_A})[0], 403)   # an existing variant it did not create
         self.assertEqual(self.sql("SELECT count(*) FROM listings WHERE listing_id='N1'"), [(0,)])
         self.tokens['ADMIN'] = TOKEN
+        self.reuse_chain()
         made = self.api('CAPTURE', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Made 1.4', 'transmission': 'Manual',
                                                               'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
                                                               'hsn': '9999', 'tsn': 'EEE', 'technical_status': 'VERIFIED'})[1]['id']
         self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'vehicle_id': made})[0], 201)   # the variant this run created
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/listings', {**new, 'listing_id': 'N2', 'vehicle_id': V_A})[0], 201)  # its own listing now: its generation's variant
 
     def test_a_capture_reusing_a_known_variant_is_logged_and_may_list_on_it(self):  # SEC-2: a reuse by HSN/TSN is the run's own link
         self.tokens['ADMIN'] = TOKEN
+        self.reuse_chain()
         known = self.api('ADMIN', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Known 1.4', 'transmission': 'Manual',
                                                              'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
                                                              'hsn': '6161', 'tsn': 'KKK', 'technical_status': 'VERIFIED'})[1]['id']
@@ -191,10 +219,11 @@ class UnitScopeTest(unittest.TestCase):
 
     def test_photos_only_for_the_requests_own_listing(self):  # review H2 point 4
         self.assertEqual(self.media('CAPTURE', CAR_A), 403)     # the capture has not created or touched it yet
-        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 200)
-        self.assertEqual(self.media('CAPTURE', CAR_A), 201)     # the listing this run wrote
+        own, _ = self.claim()
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{own}', {'price_eur': 5900})[0], 200)
+        self.assertEqual(self.media('CAPTURE', own), 201)     # the listing this run wrote
         self.assertEqual(self.media('CAPTURE', CAR_B), 403)
-        self.assertEqual(self.media('LISTING', CAR_A), 200)     # the request's own listing (the same photo: already stored, 200)
+        self.assertEqual(self.media('LISTING', CAR_A), 201)     # the request's own listing (its photo is stored there too)
         self.assertEqual(self.media('LISTING', CAR_B), 403)
         self.assertEqual(self.sql('SELECT count(*) FROM listing_media WHERE listing_id=?', (CAR_B,)), [(0,)])
 
@@ -224,7 +253,7 @@ class UnitScopeTest(unittest.TestCase):
 
     def test_check_unit_write_directly(self):
         c = sqlite3.connect(config.DB); c.row_factory = sqlite3.Row
-        req = {'unit': 'TAX', 'listing_id': CAR_A}
+        req = {'id': 101, 'unit': 'TAX', 'listing_id': CAR_A}
         self.assertEqual(staging.variant_chain(c, CAR_A), [['vehicle_id', V_A], ['generation_id', G1], ['engine_id', E_A]])
         self.assertEqual(staging.variant_chain(c, 9999), [])
         staging.check_unit_write(c, req, 'tax_data', None, {**TAX, 'vehicle_id': V_A})
@@ -245,6 +274,43 @@ class UnitScopeTest(unittest.TestCase):
         self.assertEqual(c.execute('SELECT count(*) FROM tax_data WHERE id=?', (self.shared_tax(V_B),)).fetchone()[0], 0)
         staging.check_unit_write(c, {'unit': 'TAX', 'listing_id': CAR_A}, 'tax_data', self.shared_tax(V_B), {'annual_tax_eur': 1})  # no 403 from the hidden row
         c.close()
+
+    def test_capture_source_on_a_foreign_variant_is_403(self):  # SEC-B: a level-bearing source is a shared row, so its levels must be the run's
+        for body in ({'vehicle_id': V_B}, {'engine_id': E_B}, {'generation_id': G2}):
+            st, e = self.api('CAPTURE', 'POST', 'agent/sources', {'title': 'Guide', 'url': 'https://example.test/g', 'source_type': 'buying_guide',
+                                                                  'quality': 'A', 'accessed_date': fx.TODAY, **body})
+            self.assertEqual(st, 403, (body, e)); self.assertIn('outside the variant', e['error'])
+        self.assertEqual(self.sql("SELECT count(*) FROM sources WHERE title='Guide'"), [(0,)])
+        _, v = self.claim()
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/sources', {'title': 'Guide', 'url': 'https://example.test/g', 'source_type': 'buying_guide',
+                                                                        'quality': 'A', 'accessed_date': fx.TODAY, 'vehicle_id': v})[0], 201)  # its own variant
+
+    def test_a_capture_claims_only_the_listing_it_inserted(self):  # SEC-A: a PATCH never claims an existing listing
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 403)
+        own, _ = self.claim()
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 403)   # still not its listing
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{own}', {'price_eur': 5900})[0], 200)
+        self.assertNotEqual(self.sql('SELECT price_eur FROM listings WHERE id=?', (CAR_A,))[0][0], 5900)
+
+    def test_every_level_column_of_a_row_is_on_the_cars_chain(self):  # SEC-C: a foreign level in any column is refused, on insert and edit
+        self.sql("INSERT INTO gearboxes (id, code, type) VALUES (77, 'FOREIGN', 'MANUAL')")
+        st, e = self.api('LISTING', 'POST', 'agent/sources', {'vehicle_id': V_A, 'gearbox_id': 77, 'title': 'Mixed', 'url': 'https://example.test/m',
+                                                              'source_type': 'buying_guide', 'quality': 'B', 'accessed_date': fx.TODAY})
+        self.assertEqual(st, 403, e)
+        st, e = self.api('LISTING', 'PATCH', f'agent/sources/{SRC_GUIDE}', {'gearbox_id': 77})   # a shared row on the car's engine, moved to a foreign gearbox
+        self.assertEqual(st, 403, e)
+        self.assertEqual(self.sql('SELECT gearbox_id FROM sources WHERE id=?', (SRC_GUIDE,)), [(None,)])
+
+    def test_an_own_row_already_on_another_car_is_not_edited(self):  # SEC-D: the stored level counts, not only the body's
+        self.sql('UPDATE sources SET engine_id=? WHERE id=?', (E_B, SRC_LISTING))
+        st, e = self.api('LISTING', 'PATCH', f'agent/sources/{SRC_LISTING}', {'limitations': 'x'})
+        self.assertEqual(st, 403, e)
+        self.assertEqual(self.sql('SELECT limitations FROM sources WHERE id=?', (SRC_LISTING,)), [(None,)])
+
+    def test_a_reuse_of_a_generation_or_an_engine_is_logged(self):  # SEC-E: the run's reuse of any catalogue level is in change_log
+        self.reuse_chain()
+        self.assertEqual(self.sql("SELECT table_name, row_id, action FROM change_log WHERE request_id=101 AND table_name IN ('generations','engines') "
+                                  "ORDER BY id"), [('generations', G1, 'reuse'), ('engines', E_A, 'reuse')])
 
     # ---------------------------------------------------------------- staged runs: rows without a level
     def test_staged_run_cannot_patch_a_row_without_a_level(self):

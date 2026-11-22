@@ -1268,6 +1268,9 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}', token=rt)[0], 404)
         self.assertEqual(self.agent('PATCH', f'listings/{CAR_A}', {'notes': 'x'}, token=rt)[0], 404)
         st, src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, token=rt)
+        # the capture's shell as the helpers make it: a known generation and engine are POSTed (answered existing, logged as the run's reuse; SEC-B/E)
+        self.assertEqual(self.agent('POST', 'generations', {'make': 'Alpha', 'model': 'Hatch', 'name': 'Mk1', 'start_year': 2008}, token=rt)[1]['id'], G1)
+        self.assertEqual(self.agent('POST', 'engines', {'code': 'AM14', 'fuel_type': 'Petrol', 'displacement_cc': 1400, 'power_kw': 74, 'power_ps': 100}, token=rt)[1]['id'], E_A)
         st, v = self.agent('POST', 'vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Her 1.4', 'transmission': 'Manual', 'body_style': 'Hatchback, 5 doors',
                                                 'emissions_standard': 'Euro 5', 'co2_g_km': 140, 'hsn': '5151', 'tsn': 'WWW', 'technical_status': 'VERIFIED'}, token=rt)
         self.assertEqual(st, 201, v)  # SEC-2: a capture lists on a variant it created (a known variant is not its to name)

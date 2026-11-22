@@ -755,9 +755,9 @@ class Handler(BaseHTTPRequestHandler):
             existing = resolve_variant(c, data, uid) if agent[1] == 'vehicles' and method == 'POST' else \
                 resolve_level(c, agent[1], data) if agent[1] in ('generations', 'engines') and method == 'POST' else None
             if existing:  # the shared catalogue already has this HSN/TSN, generation or engine: reuse it (issues #109, #293)
-                if self.request is not None and agent[1] == 'vehicles':  # a request reusing a known variant owns the link (SEC-2)
+                if self.request is not None:  # a request reusing a known row owns the link (SEC-2), and the run's levels are its own (SEC-E)
                     with c:
-                        log_change(c, 'vehicles', existing, 'reuse', None, json.dumps({'note': 'variant reused by HSN/TSN'}), uid, self.request_id())
+                        log_change(c, agent[1], existing, 'reuse', None, json.dumps({'note': 'reused from the catalogue'}), uid, self.request_id())
                 self.export_all(c, uid)
                 self.send_json({'table': agent[1], 'id': existing, 'existing': True}); return
             row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.curator, user['id'], self.request_id())
