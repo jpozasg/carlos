@@ -4,7 +4,6 @@ Every query names main.research_requests and filters by owner itself: the table 
 import json, re, secrets
 from .auth import digest
 from . import research, research_units as ru, urlcheck
-from .todo import quote_profile_gaps
 
 MAX_ATTEMPTS = 3         # a listing still incomplete after this many DONE reports is FAILED with the missing items (#218)
 MAX_OPEN = 5             # QUEUED + RUNNING per account: keeps one account from flooding the shared worker
@@ -143,14 +142,14 @@ def claim(c, worker, worker_id=None, missing=None):
     if not row:
         return None
     r = dict(c.execute(f'SELECT {COLS} FROM main.research_requests WHERE id=?', (row[0],)).fetchone())
-    if r['unit'] == 'INSURANCE' and not owner_is_admin(c, r['owner_id']):  # queued before the pause (#399): skipped, never run
+    if r['unit'] == 'INSURANCE':  # the unit was removed (2026-11-22): a row queued before that is skipped, never run
         with c:
             c.execute("UPDATE main.research_requests SET status='SKIPPED', result=?, finished_at=datetime('now'), request_token_hash=NULL WHERE id=?",
-                      (WORKER_QUOTES_PAUSED, r['id']))
+                      (INSURANCE_REMOVED, r['id']))
             if worker_id is not None:
                 c.execute("UPDATE main.workers SET state='idle', request_id=NULL WHERE id=?", (worker_id,))
         if r['parent_id'] is not None:
-            _closed(c, r['id'], missing)  # lets the parent finish (INSURANCE is the last stage)
+            _closed(c, r['id'], missing)  # lets the parent finish
         return claim(c, worker, worker_id, missing)
     r['missing'] = json.loads(r['missing']) if r['missing'] else []
     r['scope'] = json.loads(r['scope']) if r['scope'] else None
@@ -218,8 +217,6 @@ def finish(c, rid, data, missing=None, staged=None):
         max_attempts = 1
     elif not follow_up and unit and not capture:
         ids = _unit_ids(missing(req['owner_id'], lid) if missing else sorted(ru.UNIT_OF), unit)  # no grader: fail closed
-        if unit == 'INSURANCE' and status == 'FAILED':
-            ids = None  # a blocked comparison site or withdrawn consent: no retry loop against an anti-bot wall
     elif not follow_up and capture:
         if status == 'DONE':
             ids = _unit_ids(missing(req['owner_id'], lid), 'CAPTURE') if missing else []
@@ -246,8 +243,7 @@ def finish(c, rid, data, missing=None, staged=None):
         if not again:
             _closed(c, rid, missing)
         return _row(c, rid)
-    blocked = unit == 'INSURANCE' and status == 'FAILED'  # reported blocked or consent withdrawn: final, not graded
-    done = status == 'DONE' or bool(unit and not capture and not blocked)  # a unit with nothing missing is done, whatever the agent said
+    done = status == 'DONE' or bool(unit and not capture)  # a unit with nothing missing is done, whatever the agent said
     with c:
         c.execute("UPDATE main.research_requests SET status=?, listing_id=?, result=?, finished_at=datetime('now'), "
                   "request_token_hash=NULL WHERE id=?",
@@ -372,29 +368,9 @@ def release_shared(c, x, missing=None):
             advance(c, w['parent_id'], missing)
 
 
-WORKER_QUOTES_PAUSED = ("Worker insurance quotes run only for the owner's own account until a lawyer has answered "
-                        "(2026-11-22); enter the quote by hand in the dossier's Costs tab")
-
-
-def owner_is_admin(c, owner_id):
-    r = c.execute('SELECT role FROM main.users WHERE id=?', (owner_id,)).fetchone()
-    return bool(r) and r[0] == 'admin'
-
-
-def _insurance_skip(c, parent):
-    """Why the INSURANCE unit does not run for this request (None: it runs). Order: reference car (its premium is the owner's
-    USER DATA), an account that is not the owner's own admin account (paused, #399), the account's consent (Settings,
-    preference insurance_worker_quotes), a complete insurance profile."""
-    if c.execute('SELECT is_reference FROM main.listings WHERE id=?', (parent['listing_id'],)).fetchone()[0]:
-        return "Reference car: the premium is the owner's USER DATA"
-    if not owner_is_admin(c, parent['owner_id']):
-        return WORKER_QUOTES_PAUSED
-    prefs = {r[0]: r[1] for r in c.execute('SELECT preference_key, preference_value FROM main.project_preferences WHERE owner_id=?', (parent['owner_id'],))}
-    if not prefs.get('insurance_worker_quotes'):
-        return 'Insurance quotes not enabled for this account (Settings)'
-    row = c.execute('SELECT * FROM main.project_parameters WHERE owner_id=?', (parent['owner_id'],)).fetchone()
-    gaps = quote_profile_gaps(dict(row) if row else {}, prefs)
-    return f"Insurance profile incomplete: {', '.join(gaps)}" if gaps else None
+# the worker's insurance quotes were removed (owner decision 2026-11-22; CHECK24 bans automated applications): the code is on
+# the branch legacy/insurance-automation. Insurance quotes are entered by hand in the dossier's Costs tab.
+INSURANCE_REMOVED = "Worker insurance quotes were removed (2026-11-22): enter the quote by hand in the dossier's Costs tab"
 
 
 def _unit_row(c, p, u, st, ids, result=None, scope=None, shared=None):
@@ -471,21 +447,18 @@ def advance(c, parent_id, missing):
                 level = v[ru.LEVEL_COLUMN[u]] if v and u in ru.LEVEL_COLUMN else None
                 other = c.execute("SELECT id FROM main.research_requests WHERE unit=? AND level_id=? AND parent_id IS NOT NULL AND parent_id<>? "
                                   "AND status IN ('QUEUED','RUNNING')", (u, level, parent_id)).fetchone() if uids and level is not None else None
-                why = _insurance_skip(c, p) if u == 'INSURANCE' and uids else None
-                st = 'SKIPPED' if not uids or why else 'WAITING' if other else 'QUEUED'
+                st = 'SKIPPED' if not uids else 'WAITING' if other else 'QUEUED'
                 c.execute("INSERT INTO main.research_requests (owner_id, url, note, requested_by, kind, listing_id, parent_id, unit, level_id, "
                           "shared_id, status, missing, result, finished_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (p['owner_id'], p['url'], p['note'], p['requested_by'], p['kind'], p['listing_id'], parent_id, u,
                            level if uids else None, other[0] if other else None, st, json.dumps(uids),
-                           why or ('Already researched' if st == 'SKIPPED' else None), None))
+                           'Already researched' if st == 'SKIPPED' else None, None))
                 opened = opened or st != 'SKIPPED'
         if opened:
             return
     kids = [dict(k) for k in c.execute("SELECT unit, status, missing FROM main.research_requests WHERE parent_id=?", (parent_id,))]
-    failed = [k for k in kids if k['status'] not in ('DONE', 'SKIPPED') and k['unit'] != 'INSURANCE']  # a blocked quote never fails a car
-    ins = next((k for k in c.execute("SELECT status, result FROM main.research_requests WHERE parent_id=? AND unit='INSURANCE'", (parent_id,))), None)
-    open_ins = ' Insurance open: ' + (ins['result'] or ins['status'].lower()) if ins and ins['status'] != 'DONE' else ''
-    text = (('Done.' + open_ins) if not failed else
+    failed = [k for k in kids if k['status'] not in ('DONE', 'SKIPPED')]
+    text = ('Done.' if not failed else
             'Units failed: ' + '; '.join(f"{k['unit']} ({k['status'].lower()}: {', '.join(map(str, json.loads(k['missing'] or '[]')))})" for k in failed))
     with c:
         c.execute("UPDATE main.research_requests SET status=?, result=?, finished_at=datetime('now') WHERE id=?",

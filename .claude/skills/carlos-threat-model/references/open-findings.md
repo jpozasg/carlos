@@ -30,9 +30,10 @@ Copied from the audit and re-checked against the code at 67f98cb (two commits la
 - Fix: `Handler.timeout = 30`; reject `length < 0`; cap threads (semaphore or bounded pool).
 
 ### M3. A per-request (research) token can read the requester's personal profile (CLOSED #392)
+- **Closed again 2026-11-22:** the one exception left, the INSURANCE unit's profile read (`/api/parameters`, unfiltered `/api/preferences`), went with the removal of the automation (`legacy/insurance-automation`). No request token reads `/api/parameters` now; tests `test_request_token_reads_an_allow_list` and `test_worker_insurance_removed_2026_11_22`.
 - Where: `carlos/server.py` `Handler.require()` allows every GET except `/api/worker/*` for a request token: `/api/parameters` (postal code, driver age, SF class, cover), `/api/preferences`, `/api/tco`, other listings of the account.
-- Exploit: an injected run puts those values into a URL it fetches and leaks the insurance profile; AGENTS.md says the profile must not leave the account except to the insurance unit.
-- Fix: for request tokens allow GET only on research endpoints (schema, todo, stage, models, vehicles, sources, listings of the request); deny `/api/parameters`, `/api/preferences`, `/api/storage`, `/api/health`; give the INSURANCE unit its own narrow profile read.
+- Exploit: an injected run puts those values into a URL it fetches and leaks the insurance profile. (The INSURANCE unit that was the one legitimate reader was removed on 2026-11-22, so the profile must not reach any request token.)
+- Fix: for request tokens allow GET only on research endpoints (schema, todo, stage, models, vehicles, sources, listings of the request); deny `/api/parameters`, `/api/preferences`, `/api/storage`, `/api/health`.
 
 ### M4. Login brute-force controls are weak (CLOSED #392; the 12-character admin password CLOSED #418)
 - Where: `carlos/auth.py` `LOGIN_MAX_FAILS`, `FAILS`, `login()`, `check_new_password()`; `carlos/server.py` `auth_api()` login branch.

@@ -1,12 +1,11 @@
 """Units of a research request (#218 phase 2): which contract items (carlos/research.py ITEMS and the listing items) each
-unit owns, and in which stages the units run after the listing is captured. `lst.insurance` is the INSURANCE unit (browser, only for accounts that opted in, see research_requests.advance)."""
-UNITS = ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING', 'INSURANCE', 'RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE')  # the last four: two-agent research (#253), staged writes in carlos/staging.py
-BROWSER_UNITS = ('CAPTURE', 'TAX', 'INSURANCE')
-# INSURANCE last: the slowest and most often blocked browser step runs after everything else is written
+unit owns, and in which stages the units run after the listing is captured. The insurance quote is not a unit: it is entered by hand per listing (2026-11-22)."""
+UNITS = ('CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'TAX', 'LISTING', 'RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE')  # the last four: two-agent research (#253), staged writes in carlos/staging.py
+BROWSER_UNITS = ('CAPTURE', 'TAX')
 LEGACY_UNITS = ('VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX')  # kept so open legacy requests finish
-LEGACY_STAGES = (('VARIANT',), ('GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX'), ('TAX',), ('LISTING',), ('INSURANCE',))
+LEGACY_STAGES = (('VARIANT',), ('GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX'), ('TAX',), ('LISTING',))
 # #253 P5a: two independent research runs, the server compares, the arbiter settles material disputes, the merge writes; TAX needs the merged identity
-STAGES = (('RESEARCH_A', 'RESEARCH_B'), ('ARBITER',), ('MERGE',), ('TAX',), ('LISTING',), ('INSURANCE',))
+STAGES = (('RESEARCH_A', 'RESEARCH_B'), ('ARBITER',), ('MERGE',), ('TAX',), ('LISTING',))
 SECOND_RUN = False  # #283: one research run per car (RESEARCH_A); True also runs RESEARCH_B and compares/arbitrates the pair (#253)
 FLOW = 'dual'  # rollback switch: 'units' gives new requests the legacy stages again
 SERVER_UNITS = ('MERGE',)  # the worker runs no Claude for these
@@ -25,7 +24,6 @@ UNIT_ITEMS = {
     'GEARBOX': ['gbx.service', 'gbx.clutch', 'gbx.risks'],
     'TAX': ['var.tax', 'lst.tax_covered'],
     'LISTING': ['lst.valuation', 'lst.purchase_sale', 'lst.checklist'],
-    'INSURANCE': ['lst.insurance'],
 }
 UNIT_OF = {i: u for u, ids in UNIT_ITEMS.items() for i in ids}
 # #253: the runs that write to staging (their /api/agent writes never reach the catalogue) and the items they cover (no lst.*)
