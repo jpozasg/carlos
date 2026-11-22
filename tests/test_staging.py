@@ -103,6 +103,29 @@ class StagingTest(unittest.TestCase):
         self.assertEqual(self.stage('faults', {**{k: v for k, v in FAULT.items() if k != 'component_code'}, 'source_id': s['id']})[0], 400)
         self.assertEqual(self.api('POST', 'agent/export-md', {}, 'RESEARCH_A')[0], 403)
 
+    def test_a_staged_run_without_scope_is_refused(self):  # N2: NULL scope would skip the level check
+        self.sql("INSERT INTO research_requests (id, owner_id, url, status, listing_id, unit, claimed_at, request_token_hash) "
+                 "VALUES (104, ?, 'u', 'RUNNING', ?, 'RESEARCH_A', datetime('now'), ?)", (ADMIN, CAR_A, auth.digest('tok-noscope')))
+        self.assertEqual(self.api('POST', 'agent/sources', SRC, token='tok-noscope')[0], 403)
+        self.assertEqual(self.api('POST', 'agent/faults', {**FAULT, 'engine_id': E_B, 'source_id': -1}, token='tok-noscope')[0], 403)
+
+    def test_a_research_run_sees_the_distance_to_the_nearest_10_km(self):  # N9
+        self.sql('UPDATE listings SET distance_km=47.4 WHERE id=?', (CAR_A,))
+        found = []
+        def walk(o):
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    if k in ('distance', 'distance_km') and isinstance(v, (int, float)): found.append(v)
+                    walk(v)
+            elif isinstance(o, list):
+                for v in o: walk(v)
+        st, out = self.api('GET', 'tco', token=self.tokens['RESEARCH_A'])
+        self.assertEqual(st, 200); walk(out)
+        self.assertTrue(found); self.assertTrue(all(v % 10 == 0 for v in found), found)
+        self.assertEqual(server.coarse_distance({'x': True, 'metrics': {'distance_km': 47.4}, 'l': [{'distance_km': 0}]}),
+                         {'x': True, 'metrics': {'distance_km': 50}, 'l': [{'distance_km': 0}]})  # a bool and a list are walked, not rounded
+        self.assertEqual(server.coarse_distance({'distance_km': 47.4, 'distance': 52, 'n': 'a'}), {'distance_km': 50, 'distance': 50, 'n': 'a'})
+
     def test_duplicates(self):
         _, s = self.stage('sources', SRC)
         st, f = self.stage('faults', {**FAULT, 'source_id': s['id']})

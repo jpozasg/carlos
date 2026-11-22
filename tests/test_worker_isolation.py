@@ -143,6 +143,13 @@ class DenyRulesTest(unittest.TestCase):
         argv = self.argv('claude --settings /x.json -p')
         self.assertEqual(argv.count('--settings'), 1)
 
+    def test_a_permission_bypass_flag_in_claude_cmd_is_refused(self):  # N8
+        for cmd in ('claude -p --dangerously-skip-permissions', 'claude -p --permission-mode=bypassPermissions', 'claude -p --add-dir /'):
+            with self.assertRaises(SystemExit, msg=cmd) as cm:
+                worker.check_command(cmd)
+            self.assertIn('allow-list', str(cm.exception))
+        worker.check_command('claude -p --model=haiku --output-format json --settings /x.json --disable-slash-commands')  # the defaults pass
+
     def test_another_command_is_left_alone(self):
         self.assertNotIn('--settings', self.argv("sh -c 'x'"))
 

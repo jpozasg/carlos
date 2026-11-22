@@ -1,6 +1,6 @@
 """API, calculation and migration tests on a synthetic database (tests/fixture.py), never on real data.
 Run: python -m unittest -v"""
-import datetime, json, math, os, re, shutil, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
+import datetime, json, math, os, re, shutil, sqlite3, tempfile, threading, time, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -1412,7 +1412,10 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.units()[CAR_A]['annual_insurance'], 850)        # the latest quote wins
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'quote_profile': 'x'})[0], 400)
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'quote_date': '03.11.2026'})[0], 400)
-        self.assertEqual(self.agent('POST', 'insurance_data', {'vehicle_id': V_A, 'insurer': 'Test AG', 'source_id': SRC_QUOTE})[0], 201)
+        st, row = self.agent('POST', 'insurance_data', {'vehicle_id': V_A, 'insurer': 'Test AG', 'source_id': SRC_QUOTE})
+        self.assertEqual(st, 201)
+        self.assertEqual(self.sql('SELECT owner_id FROM insurance_data WHERE id=?', (row['id'],))[0][0],
+                         self.sql("SELECT id FROM users WHERE username='admin'")[0][0])  # N6: never a shared (NULL) owner
         self.assertEqual(self.units()[CAR_A]['annual_insurance'], 850)        # a Typklasse-only row is not a premium
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'vehicle_id': V_REF, 'annual_premium_eur': 500})[0], 201)
         self.assertEqual(self.units()[REF]['annual_insurance'], 900)          # the reference keeps what the user pays
@@ -2100,6 +2103,20 @@ class AppTest(unittest.TestCase):
         auth.FAILS['127.0.0.1'].update(until=0.0, last=0.0)                   # the lock expired long ago: purged on the next call
         self.assertEqual(self.login()[0], 200)
         self.assertNotIn('127.0.0.1', auth.FAILS)
+
+    def test_wrong_passwords_are_capped_per_minute_across_usernames(self):  # N5: a new name and address each time, only the minute cap counts
+        from carlos.db import connect
+        c = connect()
+        self.addCleanup(c.close)
+        self.addCleanup(auth.MINUTE.update, start=0.0, fails=0)
+        auth.MINUTE.update(start=time.time(), fails=0)
+        for i in range(auth.LOGIN_MAX_PER_MINUTE):
+            self.assertIsNone(auth.login(c, f'ghost{i}', 'wrong', client=f'10.9.{i // 250}.{i % 250}'))
+        self.assertTrue(auth.capped())
+        self.assertIsNone(auth.login(c, 'admin', PASSWORD, client='10.8.0.1'))  # the right password waits for the next minute
+        auth.MINUTE.update(start=time.time() - 61)
+        self.assertIsNotNone(auth.login(c, 'admin', PASSWORD, client='10.8.0.2'))
+        self.assertFalse(auth.capped())
 
     def test_json_body_size_is_capped(self):
         r = urllib.request.Request(self.base + '/api/auth/login', b'{}', {'Content-Type': 'application/json', 'Content-Length': str(server.MAX_JSON_BYTES + 1)}, method='POST')
