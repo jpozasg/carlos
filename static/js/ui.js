@@ -33,9 +33,13 @@ export const store = {
   get(k, d) { try { const v = localStorage.getItem('carlos.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('carlos.' + k, JSON.stringify(v)); } catch (e) {} },
 };
+// an error stays until the reader closes it (role=alert, a close button); a success goes after 3.5 s
 export function toast(msg, bad) {
-  const el = $('toast'); el.textContent = msg; el.className = 'show' + (bad ? ' bad' : '');
-  clearTimeout(el._h); el._h = setTimeout(() => el.className = bad ? 'bad' : '', 3500);
+  const el = $('toast'); clearTimeout(el._h);
+  el.setAttribute('role', bad ? 'alert' : 'status'); el.textContent = msg; el.className = 'show' + (bad ? ' bad' : '');
+  if (!bad) { el._h = setTimeout(() => el.classList.remove('show'), 3500); return; }
+  const x = document.createElement('button'); x.type = 'button'; x.className = 'toast-x'; x.textContent = '×';
+  x.setAttribute('aria-label', t('dismiss')); x.addEventListener('click', () => el.classList.remove('show')); el.append(x);
 }
 // a request-sending control: disabled and aria-busy while `work` runs, restored in finally so a double submit is impossible
 export async function busy(btn, work) {

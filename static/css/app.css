@@ -411,8 +411,9 @@ textarea.vnote{min-height:80px;resize:vertical}
 .skel{border-radius:var(--radius);background:linear-gradient(90deg,var(--surface-2),var(--surface),var(--surface-2));background-size:200% 100%;animation:sh 1.2s infinite;height:160px}
 @keyframes sh{to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){.skel{animation:none}}
-#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(20px);opacity:0;transition:opacity .2s,transform .2s;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
-#toast.show{opacity:1;transform:translateX(-50%)}#toast.bad{background:var(--bad);color:var(--bad-contrast)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(20px);opacity:0;visibility:hidden;transition:opacity .2s,transform .2s,visibility .2s;background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
+#toast.show{opacity:1;visibility:visible;transform:translateX(-50%)}#toast.bad{background:var(--bad);color:var(--bad-contrast)}
+#toast .toast-x{margin-left:12px;background:none;border:0;color:inherit;font:inherit;font-size:18px;line-height:1;padding:0 4px;cursor:pointer}
 code,.mono{font-family:var(--font-mono);font-size:12px}
 .token-box{font-family:var(--font-mono);font-size:13px;word-break:break-all;background:var(--surface-2);padding:10px;border-radius:var(--radius-s)}
 
