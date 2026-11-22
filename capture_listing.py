@@ -352,6 +352,7 @@ def main(argv=None):
     ap.add_argument('--dry-run', action='store_true', help='show the planned writes without writing')
     ap.add_argument('--api', default=os.environ.get('CAR_API', 'http://127.0.0.1:8000'))
     a = ap.parse_args(argv)
+    os.umask(0o077)  # nothing this helper writes is world-readable (issue #414, L5)
     cap = json.loads(a.capture.read_text(encoding='utf-8'))
     try:
         summary = import_capture(Api(a.api, load_token()), cap, a.capture.parent, a.dry_run)

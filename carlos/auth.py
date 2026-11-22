@@ -187,7 +187,7 @@ def new_invite(c, user_id, created_by=None):
 
 
 def invite_user(c, raw):
-    return c.execute('SELECT u.id, u.username, i.id invite_id FROM main.invites i JOIN main.users u ON u.id=i.user_id '
+    return c.execute('SELECT u.id, u.username, u.role, i.id invite_id FROM main.invites i JOIN main.users u ON u.id=i.user_id '
                      'WHERE i.id=? AND i.used_at IS NULL AND i.expires_at>? AND u.is_active=1', (digest(raw), iso(now()))).fetchone()
 
 
@@ -218,9 +218,21 @@ def new_token(c, user_id):
     return raw
 
 
-def check_new_password(password):
-    if not isinstance(password, str) or len(password) < 8 or len(password) > 200:
-        raise ValueError('The password must have at least 8 characters')
+# Common passwords of leaked lists and this app's own name (issue #414, N10): refused at any length.
+COMMON_PASSWORDS = frozenset('password password1 password123 passw0rd passwort hallo123 willkommen geheim 123456 12345678 '
+                             '123456789 1234567890 123123 111111 000000 654321 121212 abc123 1q2w3e4r qwerty qwerty123 qwertyuiop '
+                             'zaq12wsx asdfgh letmein welcome iloveyou admin admin123 administrator monkey dragon sunshine princess '
+                             'football baseball master shadow superman michael login starwars trustno1 flower hello freedom whatever '
+                             'batman computer charlie access lovely secret changeme carlos carlos123 letmein1 changeme123'.split())
+
+
+def check_new_password(password, admin=False):
+    """At least 8 characters, 12 for an admin, not a common one. Only new passwords are checked: existing logins work until changed."""
+    least = 12 if admin else 8
+    if not isinstance(password, str) or len(password) < least or len(password) > 200:
+        raise ValueError(f'The password must have at least {least} characters')
+    if password.lower() in COMMON_PASSWORDS:
+        raise ValueError('That password is too common: choose another')
 
 
 def public(u):

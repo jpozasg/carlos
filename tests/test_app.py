@@ -1954,7 +1954,7 @@ class AppTest(unittest.TestCase):
         self.assertIn("from './i18n.js'", (config.STATIC / 'js' / 'auth.js').read_text())
 
     def test_negative_and_oversized_content_length(self):
-        head = 'POST /api/auth/login HTTP/1.0\r\nContent-Type: application/json\r\nContent-Length: %s\r\n\r\n'
+        head = 'POST /api/auth/login HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: %s\r\n\r\n'
         self.assertIn(' 400 ', self.raw_http(head % '-1'))                              # answered at once, no wait for a body
         self.assertIn(' 400 ', self.raw_http(head % 'abc'))
         self.assertIn(' 413 ', self.raw_http(head % str(server.MAX_JSON_BYTES + 1)))
@@ -1965,11 +1965,120 @@ class AppTest(unittest.TestCase):
         self.assertEqual(server.Handler.timeout, server.SOCKET_TIMEOUT)
         with mock.patch.object(server.Handler, 'timeout', 0.3):
             s = socket.create_connection(('127.0.0.1', self.srv.server_port), timeout=5)
-            s.sendall(b'POST /api/auth/login HTTP/1.0\r\nContent-Type: application/json\r\nContent-Length: 50\r\n\r\n{')   # promises 50 bytes, sends 1
+            s.sendall(b'POST /api/auth/login HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 50\r\n\r\n{')   # promises 50 bytes, sends 1
             t0 = time.time()
             self.assertEqual(s.recv(100), b'')                                         # the server gave up and closed the connection
             self.assertLess(time.time() - t0, 4)
             s.close()
+
+    def test_unknown_host_name_is_refused(self):
+        import socket
+        def status(host_line):
+            s = socket.create_connection(('127.0.0.1', self.srv.server_port), timeout=5)
+            try:
+                s.sendall(f'GET /login HTTP/1.1\r\n{host_line}Connection: close\r\n\r\n'.encode())
+                return s.recv(4096).split(b'\r\n', 1)[0].decode()
+            finally:
+                s.close()
+        self.assertIn(' 200 ', status(f'Host: 127.0.0.1:{self.srv.server_port}\r\n'))
+        self.assertIn(' 200 ', status('Host: localhost\r\n'))
+        self.assertIn(' 400 ', status('Host: evil.example\r\n'))                       # DNS rebinding: another name, same port
+        self.assertIn(' 400 ', status('Host: 127.0.0.1@evil.example\r\n'))
+        self.assertIn(' 400 ', status(''))                                              # HTTP/1.1 without a Host header
+        with mock.patch.object(config, 'ALLOWED_HOSTS', {'127.0.0.1', 'carlos.example.net'}):
+            self.assertIn(' 200 ', status('Host: carlos.example.net\r\n'))             # the name the reverse proxy passes through
+            self.assertTrue(server.host_allowed('Carlos.Example.NET:443'))
+            self.assertFalse(server.host_allowed('localhost'))
+            self.assertFalse(server.host_allowed(None))
+            self.assertFalse(server.host_allowed('[::1]'))
+        h = self.fake_handler()
+        h.headers = {'X-Forwarded-Host': 'evil.example', 'X-Forwarded-Proto': 'https'}
+        self.assertEqual(server.Handler.invite_url(h, 'tok'), f'https://{config.HOST}:{config.PORT}/invite/tok')   # not a link to evil.example
+
+    def test_connections_past_the_thread_cap_get_503(self):
+        import socket, time
+        srv = server.BoundedServer(('127.0.0.1', 0), server.Handler, max_threads=1)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        with mock.patch.object(server.Handler, 'timeout', 5):
+            held = socket.create_connection(('127.0.0.1', srv.server_port), timeout=5)   # its thread waits for the rest of the headers
+            self.addCleanup(held.close)
+            held.sendall(b'GET /login HTTP/1.1\r\nHost: 127.0.0.1\r\n')
+            s = socket.create_connection(('127.0.0.1', srv.server_port), timeout=5)
+            try:
+                s.sendall(b'GET /login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n')
+                reply = s.recv(4096)
+            finally:
+                s.close()
+            self.assertTrue(reply.startswith(b'HTTP/1.1 503 '), reply[:40])
+            self.assertIn(b'{"error": "overloaded"}', reply)
+            held.close()                                                                  # the slot comes back when the thread ends
+            deadline = time.time() + 5
+            while time.time() < deadline and self.raw_status(srv.server_port) != 200:
+                time.sleep(0.05)
+            self.assertEqual(self.raw_status(srv.server_port), 200)
+
+    def raw_status(self, port):
+        import socket
+        s = socket.create_connection(('127.0.0.1', port), timeout=5)
+        try:
+            s.sendall(b'GET /login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n')
+            return int(s.recv(4096).split(b' ')[1])
+        finally:
+            s.close()
+
+    def test_admin_password_minimum_and_common_passwords(self):
+        with self.assertRaises(ValueError):
+            auth.check_new_password('elevenchars', admin=True)                           # 11 characters: an admin needs 12
+        auth.check_new_password('elevenchars')                                          # 11 is fine for a member
+        auth.check_new_password('twelvechars!', admin=True)
+        for common in ('Password', 'changeme', 'Administrator'):                        # refused at any length they reach
+            with self.assertRaises(ValueError):
+                auth.check_new_password(common)
+        with self.assertRaises(ValueError):
+            auth.check_new_password('administrator', admin=True)                       # 13 characters, still on the list
+        _, cookie = self.login()
+        self.assertEqual(self.req('POST', '/api/account/password', {'old': PASSWORD, 'new': 'short-pass1'}, token=None, cookie=cookie)[0], 400)
+        self.assertEqual(self.login()[0], 200)                                          # the old password still works: nothing changed
+
+    def test_data_directory_and_database_are_owner_only(self):
+        import stat
+        old = os.umask(0o022)
+        self.addCleanup(os.umask, old)
+        config.DATA_DIR.chmod(0o755)
+        config.DB.chmod(0o644)
+        server.secure_data_dir()
+        self.assertEqual(stat.S_IMODE(config.DATA_DIR.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(config.DB.stat().st_mode), 0o600)
+        probe = config.DATA_DIR / 'probe.txt'
+        probe.write_text('x')                                                          # a file the process creates later: owner only
+        self.assertEqual(stat.S_IMODE(probe.stat().st_mode), 0o600)
+
+    def test_worker_and_capture_write_owner_only_files(self):
+        import capture_listing, worker
+        with mock.patch('os.umask') as umask, mock.patch.object(worker, 'refuse_shared_checkout', side_effect=SystemExit('stop')):
+            with self.assertRaises(SystemExit):
+                worker.main([])
+        umask.assert_called_with(0o077)
+        cap = config.DATA_DIR / 'capture.json'
+        cap.write_text('{}')
+        with mock.patch('os.umask') as umask, mock.patch.object(capture_listing, 'load_token', return_value='t'), \
+                mock.patch.object(capture_listing, 'import_capture', side_effect=SystemExit('stop')):
+            with self.assertRaises(SystemExit):
+                capture_listing.main([str(cap), '--api', self.base])
+        umask.assert_called_with(0o077)
+
+    def test_quote_profile_keeps_only_the_insurance_keys(self):
+        quote = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 850, 'insurer': 'Test Insurer', 'quote_date': fx.TODAY,
+                 'source_id': SRC_QUOTE,
+                 'quote_profile': {'cover': 'Teilkasko', 'deductible_eur': 150, 'sf_class': 'S', 'start_date': '2027-01-01',
+                                   'holder_name': 'Max Muster', 'birth_date': '1980-01-01', 'postal_code': '10115', 'licence_date': '2000-01-01'}}
+        st, body = self.agent('POST', 'insurance_data', quote)
+        self.assertEqual(st, 201)
+        stored = json.loads(self.sql('SELECT quote_profile FROM insurance_data WHERE id=?', (body['id'],))[0][0])
+        self.assertEqual(stored, {'cover': 'Teilkasko', 'deductible_eur': 150, 'sf_class': 'S', 'start_date': '2027-01-01'})
+        self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'quote_profile': '["Max Muster"]'})[0], 400)   # not an object
 
     def test_log_line_hides_invite_tokens_and_query(self):
         self.assertEqual(server.redact_log('"GET /invite/AbC-123_xyz HTTP/1.1" 200 -'), '"GET /invite/... HTTP/1.1" 200 -')
