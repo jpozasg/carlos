@@ -25,7 +25,7 @@ function results() {
   const rows = ref ? [...cands.filter(u => u.score >= ref.score), ref, ...cands.filter(u => u.score < ref.score)] : cands;
   const list = rows.map(u => { const ex = (u.explain || []).filter(x => x.contribution);
     return `<li${u.is_reference ? ' class="is-ref"' : ''}><span class="rank-pos num">${u.is_reference ? '–' : u.rank}</span><div><a class="rank-car" href="#/listing/${u.id}">${thumb(u, 'sm')}<span>${carLabel(u)}${u.is_reference ? ` <span class="tag ref">${t('your_car')}</span>` : ''}</span></a>
-      <div class="contrib" role="img" aria-label="${esc(ex.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}%`).join(', '))}">${ex.map(x => `<i style="width:${x.contribution}%;background:${critColor(x.criterion)}" data-tip="${esc(t('c_' + x.criterion))}: ${num(x.score, 0)} × ${x.weight} → ${num(x.contribution, 0)}%"></i>`).join('')}</div>
+      <div class="contrib" role="img" aria-label="${esc(ex.map(x => `${t('c_' + x.criterion)} ${num(x.contribution, 0)}%`).join(', '))}">${ex.map(x => `<i data-style="width:${x.contribution}%;background:${critColor(x.criterion)}" data-tip="${esc(t('c_' + x.criterion))}: ${num(x.score, 0)} × ${x.weight} → ${num(x.contribution, 0)}%"></i>`).join('')}</div>
       <p class="why small muted">${esc(whyTxt(u))}</p>
       </div>
       <b class="score num">${num(u.score, 0)}</b></li>`; }).join('');
@@ -33,15 +33,15 @@ function results() {
   const thin = unscored.length > 0;
   return `<h3>${t('rank_result')} <span class="muted small">${t('candidates_n', { n: R.candidates })}</span></h3>
         ${thin ? `<details class="note small"><summary>${t('ns_title', { n: unscored.length })}</summary><ul>${unscored.map(u => `<li><a href="#/listing/${u.id}">${carLabel(u)}</a>: ${esc(notScoredTxt(u))}</li>`).join('')}</ul></details>` : ''}${cands.length ? `<ol class="rank-list">${list}</ol>` : `<p class="empty">${t('need_two')}</p>`}
-        <div class="legend" style="margin-top:12px">${CRIT().map((k, i) => `<span><i class="sw" style="background:${critColor(k)}"></i>${t('c_' + k)}</span>`).join('')}</div>`;
+        <div class="legend mt12">${CRIT().map((k, i) => `<span><i class="sw" data-style="background:${critColor(k)}"></i>${t('c_' + k)}</span>`).join('')}</div>`;
 }
 function prioHead() {
   const R = S.ranking;
   const state = !R.answered ? `<div class="callout"><p><b>${t(R.retired_answers ? 'prio_retired_title' : 'prio_none_title')}</b> ${t(R.retired_answers ? 'prio_retired_text' : 'prio_none_text')}</p><a class="btn" href="#/ranking?quiz=1">${t('quiz_start')}</a></div>`
     : R.manual ? `<div class="callout"><p>${t('prio_manual_text')}</p><button class="btn ghost sm" type="button" data-reset>${t('weights_reset')}</button></div>` : '';
   return `<h3>${t('prio_title')} ${R.manual ? `<span class="tag warn">${t('weights_manual')}</span>` : R.answered ? `<span class="tag good">${t('weights_from_answers')}</span>` : ''}</h3>
-        ${state}<p class="small muted" style="margin-top:0">${t('prio_lead')}</p>${profileHtml(R)}
-        <div class="row" style="margin-top:14px">${R.answered ? `<a class="btn ghost sm" href="#/ranking?quiz=1">${t('quiz_retake')}</a>` : ''}</div>`;
+        ${state}<p class="small muted mt0">${t('prio_lead')}</p>${profileHtml(R)}
+        <div class="row mt14">${R.answered ? `<a class="btn ghost sm" href="#/ranking?quiz=1">${t('quiz_retake')}</a>` : ''}</div>`;
 }
 function draw() {
   const R = S.ranking;

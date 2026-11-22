@@ -12,7 +12,6 @@ from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from carlos import config  # NEW_CAR_MAX_KM: a new car is refused before any write (#165)
 
-ROOT = Path(__file__).resolve().parent
 MAX_IMAGE_BYTES = 1_500_000  # same limit as app.py: capture the ~1024 px version, not the original
 IMAGE_TYPES = {b'\xff\xd8\xff': 'image/jpeg', b'\x89PNG': 'image/png', b'RIFF': 'image/webp'}
 # Honest client name: we do not imitate a browser to get past bot protection.
@@ -80,18 +79,16 @@ class Api:
             except ValueError:
                 msg = e.reason
             if e.code == 401:
-                msg = f'{msg}. The token in .env (or AGENT_TOKEN) is no longer valid: a new token created in Settings replaces it; paste the new one'
+                msg = f'{msg}. The AGENT_TOKEN in the environment is no longer valid: a new token created in Settings replaces it; paste the new one'
             raise ApiError(f'{method} {path}: HTTP {e.code}: {msg}', e.code, body) from None
 
 
 def load_token():
+    """The agent token from the environment only: a .env file is never read here (a stray .env next to the code must not
+    leak a token into an agent's process)."""
     if os.environ.get('AGENT_TOKEN'):
         return os.environ['AGENT_TOKEN']
-    env = ROOT / '.env'
-    for line in env.read_text().splitlines() if env.exists() else []:
-        if line.startswith('AGENT_TOKEN=') and line.split('=', 1)[1].strip():
-            return line.split('=', 1)[1].strip()
-    raise SystemExit('AGENT_TOKEN not found (environment or .env); start app.py once to generate it')
+    raise SystemExit('AGENT_TOKEN is not set in the environment; export it (the token is in Settings, or in .env for the owner)')
 
 
 def validate(cap):

@@ -21,7 +21,7 @@ function form() {
   const sel = k => { const cur = p[k] == null ? '' : String(p[k]).replace(/\.0$/, ''); const vals = [...new Set(['', ...OPTS[k], ...(cur && !OPTS[k].includes(cur) ? [cur] : [])])];
     return `<select id="${k}">${vals.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v === '' ? '—' : k === 'purchase_mode' ? t('pm_' + v) : k === 'home_charging' ? t('hc_' + v) : k === 'exclude_over_max' ? t('eo_' + v) : esc(v)}</option>`).join('')}</select>`; };
   return `<form id="paramForm" novalidate>
-    <fieldset><legend>${t('calc_group')}</legend><p class="small muted" style="margin:0 0 10px">${t('calc_group_hint')}</p><div class="fields">
+    <fieldset><legend>${t('calc_group')}</legend><p class="small muted mt0 mx0 mb10">${t('calc_group_hint')}</p><div class="fields">
       ${f('annual_km', t('p_annual_km'), `<div class="pair"><input id="annual_km_range" type="range" min="5000" max="40000" step="1000" value="${p.annual_km}" aria-hidden="true" tabindex="-1">${inp('annual_km', 'number', 'min="1" step="500" inputmode="numeric"')}</div>`)}
       ${f('ownership_years', t('p_ownership_years'), `<div class="pair"><input id="ownership_years_range" type="range" min="1" max="10" step="1" value="${p.ownership_years}" aria-hidden="true" tabindex="-1">${inp('ownership_years', 'number', 'min="1" max="30" step="1" inputmode="numeric"')}</div>`)}
       ${f('fuel_price_eur_l', t('p_fuel_price'), inp('fuel_price_eur_l', 'number', 'step=".01" min="0.01" inputmode="decimal"'))}
@@ -32,8 +32,8 @@ function form() {
       ${f('budget_max_eur', t('p_budget_max'), inp('budget_max_eur', 'number', 'step="100" min="1" inputmode="numeric"'))}
       ${f('exclude_over_max', t('p_exclude_over_max'), sel('exclude_over_max'))}
       ${f('postal_code', t('p_postal'), inp('postal_code', 'text', 'inputmode="numeric" pattern="[0-9]{5}" maxlength="5"'))}${f('purchase_mode', t('p_purchase'), sel('purchase_mode'))}
-    </div><p class="small" id="derived" style="margin:10px 0 0"></p></fieldset>
-    <fieldset><legend>${t('step_charging')}</legend><p class="small muted" style="margin:0 0 10px">${t('sl_charging')}</p><div class="fields">
+    </div><p class="small mt10 mx0 mb0" id="derived"></p></fieldset>
+    <fieldset><legend>${t('step_charging')}</legend><p class="small muted mt0 mx0 mb10">${t('sl_charging')}</p><div class="fields">
       ${f('home_charging', t('p_home_charging'), sel('home_charging'))}${f('home_charging_pct', t('p_home_pct'), inp('home_charging_pct', 'number', 'min="0" max="100" step="5" inputmode="numeric"'))}
       ${f('electricity_home_eur_kwh', t('p_elec_home'), inp('electricity_home_eur_kwh', 'number', 'step=".01" min="0.01" inputmode="decimal"'))}${f('electricity_home_date', t('p_elec_home_date'), inp('electricity_home_date', 'date'))}
       ${f('electricity_public_eur_kwh', t('p_elec_public'), inp('electricity_public_eur_kwh', 'number', 'step=".01" min="0.01" inputmode="decimal"'))}${f('electricity_public_date', t('p_elec_public_date'), inp('electricity_public_date', 'date'))}
@@ -61,18 +61,18 @@ async function preview() {
 }
 function appearance() {
   const mode = store.get('mode', 'auto');
-  return `<div class="card"><h3>${t('appearance')}</h3><p class="small muted" style="margin-top:0">${t('appearance_hint')}</p>
-    <div class="row" style="margin-top:12px"><span class="small">${t('mode')}:</span><div class="seg" role="group">${['auto', 'light', 'dark'].map(m => `<button type="button" data-mode-pick="${m}" aria-pressed="${m === mode}">${t('mode_' + m)}</button>`).join('')}</div>
-      <span class="small" style="margin-left:12px">${t('language')}:</span><div class="seg" role="group">${Object.keys(i18n.LANGS).map(l => `<button type="button" data-lang="${l}" aria-pressed="${l === i18n.current()}">${l.toUpperCase()}</button>`).join('')}</div></div></div>`;
+  return `<div class="card"><h3>${t('appearance')}</h3><p class="small muted mt0">${t('appearance_hint')}</p>
+    <div class="row mt12"><span class="small">${t('mode')}:</span><div class="seg" role="group">${['auto', 'light', 'dark'].map(m => `<button type="button" data-mode-pick="${m}" aria-pressed="${m === mode}">${t('mode_' + m)}</button>`).join('')}</div>
+      <span class="small ml12">${t('language')}:</span><div class="seg" role="group">${Object.keys(i18n.LANGS).map(l => `<button type="button" data-lang="${l}" aria-pressed="${l === i18n.current()}">${l.toUpperCase()}</button>`).join('')}</div></div></div>`;
 }
 function account() {
   return `<div class="card"><h3>${t('account')} <span class="muted small">${esc(S.me.username)} · ${esc(t('role_' + S.me.role))}</span></h3>
     <form id="pwForm" class="stack"><div class="fields"><div class="field"><label for="pw_old">${t('pw_old')}</label><input id="pw_old" type="password" autocomplete="current-password" required></div>
       <div class="field"><label for="pw_new">${t('pw_new')}</label><input id="pw_new" type="password" autocomplete="new-password" minlength="8" required></div></div>
       <div><button class="btn ghost sm" type="submit">${t('pw_change')}</button></div></form>
-    <h3 style="margin-top:16px">${t('my_data')}</h3><p class="small muted" style="margin-top:0">${t('my_data_hint')}</p>
+    <h3 class="mt16">${t('my_data')}</h3><p class="small muted mt0">${t('my_data_hint')}</p>
     <div class="row"><button class="btn ghost sm" type="button" data-export>${t('export_my_data')}</button></div>
-    ${S.me.role === 'admin' ? `<h3 style="margin-top:16px">${t('agent_token')}</h3><p class="small muted" style="margin-top:0">${t('agent_token_hint')}</p>
+    ${S.me.role === 'admin' ? `<h3 class="mt16">${t('agent_token')}</h3><p class="small muted mt0">${t('agent_token_hint')}</p>
     <div class="row"><button class="btn ghost sm" type="button" data-token>${S.me.has_token ? t('token_renew') : t('token_create')}</button></div><div id="tokenOut"></div>` : ''}</div>`;  // agent tokens: admins only (issue #130)
 }
 // ranking filters (#169): cars that fail one are not ranked; unknown never passes
@@ -80,14 +80,14 @@ const FILTERS = { filter_seller: ['', 'DEALER', 'PRIVATE'], filter_warranty: [''
   filter_accident_free: ['', 'YES', 'YES_OR_CLAIMED'], filter_hu_months: ['', '6', '12', '18'] };
 function filters() {
   const cur = k => S.prefs?.[k] ?? '';
-  return `<div class="card"><h3>${t('filters_title')}</h3><p class="small muted" style="margin-top:0">${t('filters_lead')}</p><div class="fields">
+  return `<div class="card"><h3>${t('filters_title')}</h3><p class="small muted mt0">${t('filters_lead')}</p><div class="fields">
     ${Object.entries(FILTERS).map(([k, vals]) => `<div class="field"><label for="${k}">${t('flt_' + k.slice(7))}</label><select id="${k}" data-filter="${k}">${vals.map(v => `<option value="${v}" ${v === cur(k) ? 'selected' : ''}>${v === '' ? t('flt_any') : t('fv_' + k.slice(7) + '_' + v)}</option>`).join('')}</select></div>`).join('')}</div></div>`;
 }
 function draw() {
   root.innerHTML = `<div class="section"><h2>${t('tab_settings')}</h2><p class="lead">${t('settings_lead')}</p>
     <div class="callout"><p>${t('setup_again_text')}</p><a class="btn ghost sm" href="#/start">${t('setup_again')}</a></div>
-    <div class="grid" style="grid-template-columns:1fr"><div class="card">${form()}</div></div>
-    <div class="grid" style="margin-top:16px">${filters()}${appearance()}${account()}</div></div>`;
+    <div class="grid cols-1"><div class="card">${form()}</div></div>
+    <div class="grid mt16">${filters()}${appearance()}${account()}</div></div>`;
   paramUi();
 }
 function bind() {

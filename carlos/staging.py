@@ -185,13 +185,35 @@ def variant_chain(c, listing_id):
                                 ('gearbox_family_id', v['gearbox_family']), ('body_style_id', v['body_style_id'])) if i]
 
 
+def _shared(c, table, row_id):
+    """True for a shared catalogue row (owner_id NULL) of a table that has owners."""
+    base = c.execute(f'SELECT * FROM main.{table} WHERE id=?', (row_id,)).fetchone()  # table is a fixed name from the callers
+    return base is not None and 'owner_id' in base.keys() and base['owner_id'] is None
+
+
+def check_media(c, req, listing_id):
+    """A request token uploads photos only for its own listing: its request's listing, or a listing this request wrote
+    (a capture run creates or re-captures it; the listing row or one of its snapshots carries the request id in change_log)."""
+    if listing_id == req['listing_id']:
+        return
+    wrote = c.execute("SELECT 1 FROM main.change_log WHERE request_id=? AND ((table_name='listings' AND row_id=?) OR "
+                      "(table_name='listing_snapshots' AND row_id IN (SELECT id FROM main.listing_snapshots WHERE listing_id=?)))",
+                      (req['id'], listing_id, listing_id)).fetchone()
+    if wrote is None:
+        raise NotAllowed(f"request {req['id']} uploads photos only for its own listing (listing {listing_id} is not one of them)")
+
+
 def check_unit_write(c, req, table, row_id, data):
     """The generic /api/agent write of a non-staged unit (CAPTURE, TAX, LISTING; `req` is its research_requests row):
     its own tables only; a new row on a level only on a level of its listing's variant chain; a PATCH of a shared catalogue row
     only on that chain too (CAPTURE never patches one: the research run does). Raises NotAllowed (403)."""
     unit, allowed = req['unit'], UNIT_TABLES.get(req['unit'])
     if allowed is None:
-        if unit is None or unit in ru.LEGACY_UNITS:  # the legacy single run and its units: unrestricted until that prompt is retired
+        if unit is None:  # a request without a unit (an old single run) adds rows but never changes a shared catalogue row
+            if row_id is not None and _shared(c, table, row_id):
+                raise NotAllowed(f'a request without a unit does not change shared catalogue rows ({table} id={row_id})')
+            return
+        if unit in ru.LEGACY_UNITS:  # the legacy units: unrestricted until that prompt is retired
             return
         raise NotAllowed(f'{unit} writes nothing through /api/agent')  # MERGE, and a unit added later stays closed until it is listed above
     if table not in allowed:
@@ -679,7 +701,7 @@ def _summary(m):
     return f'{m["kind"]} {m["key"]}: run 1 {r1}; run 2 {r2}'
 
 
-def merge(c, parent_id, owner_id, actor=None):
+def merge(c, parent_id, owner_id, actor=None, request_id=None):
     """Writes the agreed and arbitrated findings of a listing request through agent_write (validation, change_log, catalogue ownership,
     the #221 duplicate guard). Idempotent: matches already merged are left alone. Returns the report; `accounts` are the accounts whose
     dossiers changed."""
@@ -698,7 +720,7 @@ def merge(c, parent_id, owner_id, actor=None):
     lv = c.execute('SELECT l.vehicle_id FROM main.listings l JOIN main.research_requests r ON r.listing_id=l.id WHERE r.id=?', (parent_id,)).fetchone()
 
     def write(table, rid, p):
-        out = agent_write(c, table, rid, p, owner_id, True, actor)
+        out = agent_write(c, table, rid, p, owner_id, True, actor, request_id)
         touched.append((table, out))
         return out
 

@@ -3,9 +3,9 @@ for rows without a level (#386, finding N2). Synthetic database (tests/fixture.p
 import json, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from carlos import auth, config, server, staging
+from carlos import agent, auth, config, server, staging
 from tests import fixture as fx
-from tests.fixture import ADMIN, CAR_A, E_A, E_B, G1, G2, SRC_GUIDE, SRC_HU, SRC_LISTING, SRC_QUOTE, SRC_TAX_OFFICIAL, V_A, V_B, TOKEN
+from tests.fixture import ADMIN, CAR_A, CAR_B, E_A, E_B, G1, G2, SRC_GUIDE, SRC_HU, SRC_LISTING, SRC_QUOTE, SRC_TAX_OFFICIAL, V_A, V_B, TOKEN
 
 UNITS = ('CAPTURE', 'TAX', 'LISTING', 'RESEARCH_A', 'MERGE', 'VARIANT', 'NONE')
 TAX = {'annual_tax_eur': 99, 'status': 'VERIFIED', 'basis': '1400 cc, 140 g/km', 'source_id': SRC_TAX_OFFICIAL}
@@ -104,10 +104,52 @@ class UnitScopeTest(unittest.TestCase):
             self.assertEqual(st, 403, (table, e)); self.assertIn('CAPTURE does not change', e['error'])
 
     def test_legacy_runs_are_not_limited_and_an_unlisted_unit_is_closed(self):  # the legacy prompts, until they are retired
-        self.assertEqual(self.api('NONE', 'PATCH', f'agent/engines/{E_B}', {'notes': 'legacy run'})[0], 200)
         self.assertEqual(self.api('VARIANT', 'PATCH', f'agent/engines/{E_B}', {'notes': 'legacy unit'})[0], 200)
         st, e = self.api('MERGE', 'POST', 'agent/listing_events', {'listing_id': CAR_A, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'x'})
         self.assertEqual(st, 403, e); self.assertIn('writes nothing', e['error'])
+
+    def test_unit_less_token_cannot_patch_shared_rows(self):  # review H2 point 3: no unit means no catalogue change
+        st, e = self.api('NONE', 'PATCH', f'agent/engines/{E_B}', {'notes': 'no unit'})
+        self.assertEqual(st, 403, e); self.assertIn('does not change shared catalogue rows', e['error'])
+        self.assertEqual(self.api('NONE', 'PATCH', f'agent/sources/{SRC_HU}', {'quality': 'A'})[0], 403)
+        self.assertEqual(self.sql('SELECT notes FROM engines WHERE id=?', (E_B,)), [(None,)])
+        self.assertEqual(self.api('NONE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 200)  # its own listing
+
+    def media(self, unit, listing_id):
+        h = {'Content-Type': 'image/jpeg', 'Authorization': f'Bearer {self.tokens[unit]}'}
+        r = urllib.request.Request(f'{self.base}/api/agent/media/{listing_id}?url=https%3A%2F%2Fexample.test%2Fp.jpg',
+                                   fx.jpeg([(0xE0, b'photo' * 20)]), h, method='POST')
+        try:
+            return urllib.request.urlopen(r).status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_photos_only_for_the_requests_own_listing(self):  # review H2 point 4
+        self.assertEqual(self.media('CAPTURE', CAR_A), 403)     # the capture has not created or touched it yet
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 200)
+        self.assertEqual(self.media('CAPTURE', CAR_A), 201)     # the listing this run wrote
+        self.assertEqual(self.media('CAPTURE', CAR_B), 403)
+        self.assertEqual(self.media('LISTING', CAR_A), 200)     # the request's own listing (the same photo: already stored, 200)
+        self.assertEqual(self.media('LISTING', CAR_B), 403)
+        self.assertEqual(self.sql('SELECT count(*) FROM listing_media WHERE listing_id=?', (CAR_B,)), [(0,)])
+
+    def test_every_token_write_records_its_request(self):
+        self.assertEqual(self.api('LISTING', 'POST', 'agent/listing_events', {'listing_id': CAR_A, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'x'})[0], 201)
+        self.assertEqual(self.sql("SELECT request_id FROM change_log WHERE table_name='listing_events' ORDER BY id DESC LIMIT 1"), [(103,)])
+        self.tokens['ADMIN'] = TOKEN   # the owner's agent token: no request
+        self.assertEqual(self.api('ADMIN', 'POST', 'agent/listing_events', {'listing_id': CAR_A, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'y'})[0], 201)
+        self.assertEqual(self.sql("SELECT request_id FROM change_log WHERE table_name='listing_events' ORDER BY id DESC LIMIT 1"), [(None,)])
+
+    def test_a_run_writing_more_than_fifty_listing_rows_is_flagged_once(self):
+        ev = {'listing_id': CAR_A, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'x'}
+        for _ in range(agent.LISTING_WRITE_ALERT):
+            self.assertEqual(self.api('LISTING', 'POST', 'agent/listing_events', ev)[0], 201)
+        self.assertEqual(self.sql("SELECT count(*) FROM change_log WHERE action='flag'"), [(0,)])      # 50 is not more than 50
+        self.assertEqual(self.api('LISTING', 'POST', 'agent/listing_events', ev)[0], 201)
+        self.assertEqual(self.api('LISTING', 'POST', 'agent/listing_events', ev)[0], 201)
+        flags = self.sql("SELECT row_id, new_json FROM change_log WHERE action='flag'")
+        self.assertEqual(len(flags), 1); self.assertEqual(flags[0][0], 103); self.assertIn('listing-level rows', flags[0][1])
+        self.assertEqual(self.sql("SELECT count(*) FROM change_log WHERE request_id=103 AND table_name='listing_events'"), [(52,)])
 
     def test_another_accounts_row_is_refused(self):
         self.sql("INSERT INTO sources (id, owner_id, title, source_type, accessed_date) VALUES (60, 99, 'Her listing', 'listing', ?)", (fx.TODAY,))
@@ -123,8 +165,10 @@ class UnitScopeTest(unittest.TestCase):
         staging.check_unit_write(c, req, 'tax_data', None, {**TAX, 'vehicle_id': V_A})
         with self.assertRaises(staging.NotAllowed):
             staging.check_unit_write(c, {**req, 'listing_id': None}, 'tax_data', None, {**TAX, 'vehicle_id': V_A})   # no car, no level
-        for unit in (None, 'VARIANT'):                                                                                  # the legacy runs
-            staging.check_unit_write(c, {'unit': unit, 'listing_id': CAR_A}, 'engines', E_B, {})
+        staging.check_unit_write(c, {'unit': 'VARIANT', 'listing_id': CAR_A}, 'engines', E_B, {})                       # the legacy run
+        with self.assertRaises(staging.NotAllowed):                                                                     # a request without a unit: no shared row
+            staging.check_unit_write(c, {'unit': None, 'listing_id': CAR_A}, 'engines', E_B, {})
+        staging.check_unit_write(c, {'unit': None, 'listing_id': CAR_A}, 'listing_events', None, {'listing_id': CAR_A})  # new rows stay allowed
         with self.assertRaises(staging.NotAllowed):                                                                     # a staged run never gets here
             staging.check_unit_write(c, {'unit': 'RESEARCH_A', 'listing_id': CAR_A}, 'engines', E_B, {})
         staging.check_unit_write(c, req, 'tax_data', None, 'not a dict')                                                # agent_write answers 400 for that
