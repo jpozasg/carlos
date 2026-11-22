@@ -13,6 +13,21 @@ export const notScoredTxt = u => u.excluded === 'over_max' ? t('excluded_over_ma
 export const critColor = (k, keys) => { const i = keys.indexOf(k); return i >= 0 && i < 8 ? `var(--s${i + 1})` : 'var(--text-3)'; };
 export const PEND = () => `<span class="pending">${t('pending')}</span>`;
 export const eP = n => n == null ? PEND() : euro(n);
+// totals reduce to {sum, missing, n}: a row without a figure is counted as missing, never added as 0 (docs/frontend.md)
+export const sumKnown = (rows, pick) => rows.reduce((a, r) => { const v = pick(r); if (v == null) a.missing++; else { a.sum += v; a.n++; } return a; }, { sum: 0, missing: 0, n: 0 });
+// a reduced total as text: the amount, then "+n pending" while any row is unknown; nothing known at all = pending
+export const totalP = r => !r.n ? PEND() : r.missing ? `${euro(r.sum)} <span class="tag warn">+${t('pendings', { n: r.missing })}</span>` : euro(r.sum);
+// known cost per month always wears the partial marker (text) unless the car's TCO is complete; suffix = e.g. "/month"
+export const perMonth = (u, suffix = '') => u.known_cost_per_month == null ? PEND() : euro(u.known_cost_per_month) + suffix + (u.tco_complete ? '' : ` <span class="tag warn">${t('partial_short')}</span>`);
+// a share or probability (0-1) as a percentage; null stays pending, never "0 %"
+export const pct = (v, d = 0) => v == null ? PEND() : `${num(v * 100, d)}\u00a0%`;
+// parts + labour as one price: both unknown = pending, one unknown = the known part with the partial marker (never a complete price)
+export const partsLaborP = (a, b) => a == null && b == null ? PEND() : euro((a || 0) + (b || 0)) + (a == null || b == null ? ` <span class="tag warn">${t('partial_short')}</span>` : '');
+// "a–b" where one end may be open; both unknown = pending (never "—–—")
+export const rangeTxt = (a, b, d = 0) => a == null && b == null ? PEND() : `${a == null ? '…' : num(a, d)}–${b == null ? '…' : num(b, d)}`;
+// consumption with its unit as the data gives it (no invented unit) and the spread of the source (min-max, sample size) when known
+export const consumptionTxt = u => u.consumption == null ? PEND() : `${num(u.consumption)}\u00a0${u.consumption_unit ? esc(u.consumption_unit) : PEND()}`;
+export const consumptionSpread = u => [u.consumption_min != null && u.consumption_max != null ? rangeTxt(u.consumption_min, u.consumption_max, 2) : null, u.consumption_sample != null ? `n=${num(u.consumption_sample, 0)}` : null].filter(Boolean).join(' · ');
 export const yrs = n => `${num(n, 1)} ${t('years', { n })}`;
 export const store = {
   get(k, d) { try { const v = localStorage.getItem('carlos.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },

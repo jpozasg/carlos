@@ -112,7 +112,7 @@ const VIEWS = {
       ${field('insurance_start_date', t('p_ins_start'), `<input id="insurance_start_date" type="date" value="${esc(prefs.insurance_start_date ?? '')}">`, t('h_ins_start'))}</div>
     ${group('insurance_cover', t('p_cover'), choice('insurance_cover', PARAM_CHOICE.insurance_cover.map(v => [v, v]), P('insurance_cover'), c => 'cover_' + c), t('h_cover'))}
     <div class="fields two">
-      ${field('insurance_deductible_eur', t('p_deductible'), `<select id="insurance_deductible_eur">${['', '0', '150', '300', '500', '1000'].map(v => `<option value="${v}" ${v === P('insurance_deductible_eur') ? 'selected' : ''}>${v === '' ? '—' : v + ' €'}</option>`).join('')}</select>`)}
+      ${field('insurance_deductible_eur', t('p_deductible'), `<select id="insurance_deductible_eur">${['', '0', '150', '300', '500', '1000'].map(v => `<option value="${v}" ${v === P('insurance_deductible_eur') ? 'selected' : ''}>${v === '' ? '—' : euro(+v)}</option>`).join('')}</select>`)}
       ${prefChoice('insurance_workshop_binding', t('p_workshop_binding'), t('h_workshop_binding'))}</div>
     ${prefChoice('insurance_claims_3y', t('p_claims'))}
     <div class="fields two">
@@ -204,7 +204,7 @@ function summary() {
     [t('step_insurance'), [[t('p_sf'), p.sf_class], [t('p_cover'), p.insurance_cover && t('cover_' + p.insurance_cover)], [t('p_deductible'), p.insurance_deductible_eur != null ? euro(p.insurance_deductible_eur) : null], [t('p_claims'), shown('insurance_claims_3y')], [t('p_usage'), shown('insurance_usage')], [t('p_parking'), shown('insurance_parking')], [t('p_discounts'), prefs.insurance_discounts && prefs.insurance_discounts !== 'none' ? prefs.insurance_discounts.split(',').map(x => t('disc_' + x.trim())).join(', ') : prefs.insurance_discounts && t('none_word')]]],
     [t('step_workshop'), [[t('p_diy'), diyShown()]]],
     [t('step_charging'), [[t('p_home_charging'), p.home_charging && t('hc_' + p.home_charging)], [t('p_home_pct'), p.home_charging_pct != null ? p.home_charging_pct + ' %' : null],
-      [t('p_elec_home'), p.electricity_home_eur_kwh && num(p.electricity_home_eur_kwh, 2) + ' €/kWh'], [t('p_elec_public'), p.electricity_public_eur_kwh && num(p.electricity_public_eur_kwh, 2) + ' €/kWh']]]];
+      [t('p_elec_home'), p.electricity_home_eur_kwh && num(p.electricity_home_eur_kwh, 2) + '\u00a0' + t('unit_eur_kwh')], [t('p_elec_public'), p.electricity_public_eur_kwh && num(p.electricity_public_eur_kwh, 2) + '\u00a0' + t('unit_eur_kwh')]]]];
   return `<div class="sum">${rows.map(([h, kv]) => `<section><h3>${h}</h3><dl class="facts">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${yes(v)}</dd>`).join('')}</dl></section>`).join('')}</div>`;
 }
 function draw() {

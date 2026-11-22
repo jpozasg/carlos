@@ -23,7 +23,6 @@ export function applyTheme(mode = store.get('mode', 'auto')) {  // one theme (is
   const root = document.documentElement;
   root.dataset.theme = 'cluster';
   if (mode === 'auto') root.removeAttribute('data-mode'); else root.dataset.mode = mode;
-  root.classList.toggle('os-dark', matchMedia('(prefers-color-scheme: dark)').matches);
   store.set('mode', mode);
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim() || '#fff');
 }
@@ -50,7 +49,7 @@ export function renderShell() {
   document.querySelector('[data-i18n-skip]').textContent = t('skip_content');
   document.querySelectorAll('[data-aria]').forEach(b => b.setAttribute('aria-label', t(b.dataset.aria)));
   const p = S.p, st = S.storage;
-  const chips = p ? `<a class="chip${S.fuelStale || S.preview ? ' warn' : ''}" href="#/settings" title="${esc(S.fuelStale ? t('fuel_stale') : t('edit_params'))}">${S.preview ? '✎ ' : S.fuelStale ? '⚠ ' : ''}${num(p.annual_km, 0)} ${t('per_year_short')} · ${yrs(p.ownership_years)} · ${num(p.fuel_price_eur_l, 2)} €/l</a>
+  const chips = p ? `<a class="chip${S.fuelStale || S.preview ? ' warn' : ''}" href="#/settings" title="${esc(S.fuelStale ? t('fuel_stale') : t('edit_params'))}">${S.preview ? '✎ ' : S.fuelStale ? '⚠ ' : ''}${num(p.annual_km, 0)} ${t('per_year_short')} · ${yrs(p.ownership_years)} · ${num(p.fuel_price_eur_l, 2)}\u00a0${t('unit_eur_l')}</a>
     ${st ? `<span class="chip chip-store${st.total_bytes / st.limit_bytes >= .9 ? ' bad' : st.total_bytes / st.limit_bytes >= .8 ? ' warn' : ''}" title="${esc(t('storage_hint'))}">${num(st.total_bytes / 1048576, 1)} / ${num(st.limit_bytes / 1048576, 0)} MB</span>` : ''}` : '';  // storage is admin only (403 for an account)
   const langs = `<div class="seg" role="group" aria-label="${esc(t('language'))}">${Object.keys(i18n.LANGS).map(l => `<button type="button" data-lang="${l}" lang="${l}" aria-pressed="${l === i18n.current()}">${l.toUpperCase()}</button>`).join('')}</div>`;
   $('hdr').innerHTML = `<div class="bar"><a class="brand" href="#/compare" aria-label="${esc(t('app_title'))}"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="/static/brand/mark.svg#mark"/></svg><span><b>Carlos</b><small>${esc(t('tagline'))}</small></span></a>${chips}${langs}
