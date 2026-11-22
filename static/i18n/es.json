@@ -73,7 +73,6 @@
  "co_month": "Por mes",
  "co_subtotal": "Subtotal conocido (no es un TCO)",
  "co_missing": "Componentes desconocidos",
- "faults_line": "{n} puntos débiles conocidos con un coste esperado de {e} en el periodo (parte de reparaciones).",
  "rel_weak": "Puntos débiles",
  "rel_recalls": "Llamadas a revisión",
  "rel_remedy": "Remedio",
@@ -664,7 +663,6 @@
  "ruler_title": "Coste al mes, todos los coches en una escala",
  "ruler_lead": "Tu coche es la línea discontinua. Los coches a su izquierda cuestan menos al mes; los de la derecha, más. Un marcador relleno es un coste total completo; uno hueco es un subtotal parcial, colocado donde lo sitúan sus costes conocidos.",
  "ruler_axis": "€ al mes",
- "ruler_partial": "parcial",
  "plate_title": "Placa de características",
  "plate_cost": "Coste al mes",
  "plate_cost_short": "Coste",
@@ -1109,5 +1107,15 @@
  "rel_recall_kba": "Base de datos de llamadas a revisión de la KBA",
  "rel_vin_check": "Pide a un concesionario de la marca que compruebe por VIN si hay llamadas a revisión abiertas.",
  "rel_keys_title": "Fuentes de fiabilidad (enlaces)",
- "rel_ratings_title": "Valoraciones de fiabilidad"
+ "rel_ratings_title": "Valoraciones de fiabilidad",
+ "plate_cost_partial": "Coste conocido",
+ "versus_ref_incomplete": "El coste de tu coche aún está incompleto, así que todavía no hay una comparación justa.",
+ "order_note": "Orden: {s}, {d}.",
+ "order_note_cost": "Orden: {s}, {d}. Los coches con coste parcial van después de los completos.",
+ "hidden_n": {
+  "one": "{n} coche oculto por los filtros de arriba.",
+  "other": "{n} coches ocultos por los filtros de arriba."
+ },
+ "rk_faults_total": "Puntos débiles (esperado, {n})",
+ "rk_repairs_total": "Reparaciones: riesgos + puntos débiles + seguras"
 }

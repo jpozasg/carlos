@@ -73,7 +73,6 @@
  "co_month": "Per month",
  "co_subtotal": "Known subtotal (not a TCO)",
  "co_missing": "Unknown components",
- "faults_line": "{n} known weak points with an expected cost of {e} over the period (part of repairs).",
  "rel_weak": "Weak points",
  "rel_recalls": "Recalls",
  "rel_remedy": "Remedy",
@@ -664,7 +663,6 @@
  "ruler_title": "Cost per month, every car on one scale",
  "ruler_lead": "Your car is the dashed line. Cars left of it cost less per month, cars right of it more. A filled marker is a complete cost of ownership; a hollow one is a partial subtotal and sits where its known costs put it.",
  "ruler_axis": "€ per month",
- "ruler_partial": "partial",
  "plate_title": "Spec plate",
  "plate_cost": "Cost per month",
  "plate_cost_short": "Cost",
@@ -1109,5 +1107,15 @@
  "rel_recall_kba": "KBA recall database",
  "rel_vin_check": "Ask a brand dealer for an open-recall check by VIN.",
  "rel_keys_title": "Reliability sources (links)",
- "rel_ratings_title": "Reliability ratings"
+ "rel_ratings_title": "Reliability ratings",
+ "plate_cost_partial": "Known cost",
+ "versus_ref_incomplete": "Your car's cost is still incomplete, so no fair comparison is possible yet.",
+ "order_note": "Order: {s}, {d}.",
+ "order_note_cost": "Order: {s}, {d}. Cars with a partial cost come after the complete ones.",
+ "hidden_n": {
+  "one": "{n} car is hidden by the toggles above.",
+  "other": "{n} cars are hidden by the toggles above."
+ },
+ "rk_faults_total": "Weak points (expected, {n})",
+ "rk_repairs_total": "Repairs: risks + weak points + certain"
 }

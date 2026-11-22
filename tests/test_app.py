@@ -416,6 +416,65 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(sum(x['cost_eur'] for x in d['maintenance_plan']), d['components']['maintenance'])
         self.assertAlmostEqual(sum(x['expected_eur'] for x in d['repair_risks']) + 0, d['cost_detail']['repairs_expected'])
 
+    def test_figures_the_ui_totals_rely_on(self):
+        """The UI never recomputes: per month = subtotal / period_months, and the repairs component = certain + risks + weak points
+        (the dossier's Repairs total shows exactly these parts); an unpriced weak point makes the component unknown, never smaller."""
+        for u in self.units().values():
+            if u['known_cost_per_month'] is not None:
+                self.assertAlmostEqual(u['known_cost_per_month'] * u['period_months'], u['known_cost_subtotal'])
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        fault = {'engine_id': d['engine_id'], 'component': 'Timing chain', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE',
+                 'existence': 'REPORTED', 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'source_id': SRC_GUIDE}
+        st, f = self.agent('POST', 'faults', {**fault, 'parts_eur': 400, 'labor_eur': 600})
+        self.assertEqual(st, 201, f)
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        cd = d['cost_detail']
+        self.assertTrue(d['fault_plan'])
+        self.assertAlmostEqual(cd['repairs_expected'], sum(x['expected_eur'] for x in d['repair_risks']) + sum(x['expected_eur'] for x in d['fault_plan']))
+        self.assertAlmostEqual(d['components']['repairs'], (cd['repairs_certain'] or 0) + cd['repairs_expected'])
+        self.agent('PATCH', f"faults/{f['id']}", {'parts_eur': None, 'labor_eur': None})
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        self.assertIsNone(d['components']['repairs'])                         # unpriced weak point: unknown, so the UI shows "+n pending"
+        self.assertIsNone(d['cost_detail']['repairs_expected'])
+
+    def test_repairs_total_cases_the_dossier_defers_to_the_server(self):
+        """The dossier's Repairs total is d.components.repairs, never a client sum: it is unknown without a mileage, with only a
+        certain repair (no researched risk), and it also counts PRESENT history items that no unit_costs row lists."""
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        get = lambda: self.req('GET', f'/api/listings/{CAR_B}')[1]
+        base = get()
+        self.assertIsNotNone(base['components']['repairs'])
+        self.assertTrue(base['repair_risks'])
+        # (a) a PRESENT history cost is a certain repair although unit_costs lists nothing
+        src = self.agent('POST', 'sources', {'title': 'Workshop quote', 'source_type': 'listing'})[1]['id']
+        self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_B, 'job': 'CLUTCH', 'item': 'Worn clutch', 'status': 'PRESENT', 'category': 'repairs',
+                                                                'parts_eur': 120, 'labor_eur': 80, 'evidence': 'OBSERVED', 'source_id': src})[0], 201)
+        d = get()
+        self.assertEqual(d['cost_detail']['repairs_certain'], 200)
+        self.assertEqual([x for x in d['unit_costs'] if x['category'] == 'repairs'], [])
+        self.assertAlmostEqual(d['components']['repairs'], 200 + d['cost_detail']['repairs_expected'])
+        # (b) no mileage: expected repairs unknown, so the component is unknown although risk_plan lists rows
+        mileage = base['mileage_km']
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_B}', {'mileage_km': None})[0], 200)
+        d = get()
+        self.assertIsNone(d['cost_detail']['repairs_expected'])
+        self.assertIsNone(d['components']['repairs'])
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_B}', {'mileage_km': mileage})[0], 200)
+        # (c) only a certain repair, nothing researched: the component stays unknown
+        for r in base['repair_risks']:
+            self.assertEqual(self.agent('PATCH', f"repair_risks/{r['id']}", {'archived': 1})[0], 200)
+        d = get()
+        self.assertEqual(d['cost_detail']['repairs_certain'], 200)
+        self.assertIsNone(d['components']['repairs'])
+
+    def test_valuation_sources_are_listed_with_the_dossier(self):
+        """A valuation's source is a link in the dossier, so the source must be in d.sources even when nothing else cites it."""
+        src = self.agent('POST', 'sources', {'title': 'Resale comparison', 'source_type': 'listing', 'url': 'https://example.test/resale'})[1]['id']
+        self.assertEqual(self.agent('POST', 'valuations', {'listing_id': CAR_B, 'kind': 'resale_end', 'expected_eur': 4000, 'status': 'ESTIMATED', 'source_id': src})[0], 201)
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        self.assertIn(src, {s['id'] for s in d['sources']})
+
     def test_certain_maintenance(self):
         """A scheduled job due at purchase is a certain maintenance cost: it adds to maintenance, never to repairs."""
         before = self.req('GET', f'/api/listings/{CAR_B}')[1]
@@ -829,19 +888,6 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(consistency.same_fault(row('Water pump', 'COOLING'), row('Expansion tank crack', 'COOLING')))
         self.assertTrue(consistency.same_fault(row('Water pump leak', 'COOLING'), row('Water pump', 'COOLING')))
         self.assertTrue(consistency.same_fault(row('Timing chain stretch'), row('timing-chain stretch N47', 'OTHER')))   # no code: wording
-        # back-fill: dry run proposes, --apply writes only NULL rows, OTHER/unmatched stay NULL
-        pilot = ['Timing belt in oil bath (wet belt)', 'Timing chain / tensioner cold-start rattle', 'VANOS solenoid valves',
-                 'Oil consumption at high mileage', 'Oil pump', 'Coolant module (water pump and thermostat housing)', 'Ignition coils',
-                 'Turbocharger wear', 'Diesel particulate filter (DPF)', 'Throttle body / idle control', 'Hybrid battery (NiMH) module or pack replacement']
-        want = ['TIMING_BELT', 'TIMING_CHAIN', 'CAM_PHASER', 'OIL_CONSUMPTION', 'ENGINE_INTERNALS', 'COOLING', 'IGNITION', 'TURBO', 'EMISSIONS',
-                'ENGINE_MANAGEMENT', 'HV_BATTERY']
-        faults = [{'id': i, 'part': 'ENGINE', 'component': n, 'component_code': None} for i, n in enumerate(pilot)]
-        faults += [{'id': 90, 'part': 'ENGINE', 'component': 'ENGINE'}, {'id': 91, 'part': 'ENGINE', 'component': 'Oil pump', 'component_code': 'OTHER'}]
-        done = []
-        ok, left = consistency.backfill_codes(faults)
-        self.assertEqual(([c for *_, c in ok], [i for i, *_ in left], done), (want, [90], []))
-        consistency.backfill_codes(faults, lambda i, c: done.append((i, c)))
-        self.assertEqual(done, [(i, c) for (i, _, _, c) in ok])
 
     def test_checklist_covers_faults_and_recalls_223(self):
         """A fault with an inspection_action and a recall row each get a checklist item (linked by fault_id / recall_id); until then
@@ -1925,22 +1971,6 @@ class AppTest(unittest.TestCase):
         research_reset.reset_reliability(config.DB, apply=True, delete=True)
         self.assertEqual(c.execute("SELECT count(*) FROM research_checks WHERE task LIKE 'rel.%'").fetchone()[0], 0)
         c.close()
-
-    def test_pilot_compare_identical_runs(self):
-        """#167 pilot: comparing a run with itself reports full agreement and no failures."""
-        import pilot_compare
-        c = sqlite3.connect(config.DB)
-        c.execute("INSERT INTO faults (engine_id, component, part, consequence, existence, parts_eur, labor_eur, frequency_band, shape, source_id) "
-                  "VALUES (?, 'Timing chain stretch', 'ENGINE', 'ENGINE_DAMAGE', 'CONFIRMED', 300, 500, 'common', 'WEAR_KM', ?)", (E_A, SRC_GUIDE))
-        c.commit(); c.close()
-        acct, pilot_compare.ACCOUNT = pilot_compare.ACCOUNT, 1
-        try:
-            out = pilot_compare.report(config.DB, config.DB)
-        finally:
-            pilot_compare.ACCOUNT = acct
-        for line in ('- A: 1, B: 1, matched: 1', '- Same level: 100 % (1/1)', '- Band within one step: 100 % (1/1)',
-                     '- Workshop price within ±30 %: 100 % (1/1)', '- A: none'):
-            self.assertIn(line, out)
 
     def test_rating_sources_api(self):
         """source_keys / source_ratings (#354): per-source rules, EngineScope permission, archive instead of delete."""

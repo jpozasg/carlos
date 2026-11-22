@@ -2,7 +2,7 @@
 import { t, comp } from './i18n.js';
 import { esc, euro, num, PEND, thumb, unitName, carShort, carLabel, carLink, store } from './ui.js';
 
-export function costStack(us, comps, costSel, p, selCost) {
+export function costStack(us, comps, costSel, selCost) {
   const on = k => costSel.has(k), idx = k => comps.indexOf(k) + 1;
   const pos = u => comps.filter(on).reduce((a, k) => a + Math.max(0, u.components[k] ?? 0), 0);
   const max = Math.max(1, ...us.map(pos));
@@ -13,7 +13,7 @@ export function costStack(us, comps, costSel, p, selCost) {
     const sc = selCost(u), miss = sc.missing.length, nsel = comps.filter(on).length;
     return `<div class="crow"><div class="lbl who">${thumb(u)}<span>${carLink(u, unitName(u))}<small>${u.is_reference ? t('reference') : esc(u.listing_id ?? '')}</small></span></div>
       <div class="track"><div class="cstack" style="width:${pos(u) / max * 100}%">${segs}</div></div>
-      <div class="after"><span class="tot">${miss && miss === nsel ? PEND() : euro(sc.sum)}${sc.complete ? ` <span class="muted small">· ${euro(sc.sum / (p.ownership_years * 12))}${t('per_month')}</span>` : ''}</span>
+      <div class="after"><span class="tot">${miss && miss === nsel ? PEND() : euro(sc.sum)}${sc.complete && u.period_months ? ` <span class="muted small">· ${euro(sc.sum / u.period_months)}${t('per_month')}</span>` : ''}</span>
         ${miss && miss < nsel ? `<span class="gap" title="${esc(sc.missing.map(comp).join(', '))}"><i class="segm hatch"></i>+${t('pendings', { n: miss })}</span>` : ''}
         ${neg.length ? `<span class="gap">${neg.map(k => esc(comp(k)) + ' ' + esc(euro(u.components[k]))).join(', ')}</span>` : ''}</div></div>`;
   }).join('');

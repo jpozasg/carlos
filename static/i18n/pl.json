@@ -74,7 +74,6 @@
  "co_month": "Miesięcznie",
  "co_subtotal": "Znana suma częściowa (nie TCO)",
  "co_missing": "Nieznane składniki",
- "faults_line": "{n} znanych słabych punktów, oczekiwany koszt {e} w okresie (część napraw).",
  "rel_weak": "Słabe punkty",
  "rel_recalls": "Wezwania serwisowe",
  "rel_remedy": "Naprawa",
@@ -666,7 +665,6 @@
  "ruler_title": "Koszt miesięczny, wszystkie auta na jednej skali",
  "ruler_lead": "Twoje auto to przerywana linia. Auta na lewo od niej kosztują miesięcznie mniej, na prawo więcej. Wypełniony znacznik to pełny koszt posiadania; pusty to suma częściowa, ustawiona tam, gdzie wskazują znane koszty.",
  "ruler_axis": "€ miesięcznie",
- "ruler_partial": "częściowy",
  "plate_title": "Tabliczka znamionowa",
  "plate_cost": "Koszt miesięczny",
  "plate_cost_short": "Koszt",
@@ -1111,5 +1109,16 @@
  "rel_recall_kba": "Baza akcji serwisowych KBA",
  "rel_vin_check": "Poproś dealera marki o sprawdzenie otwartych akcji serwisowych po VIN.",
  "rel_keys_title": "Źródła niezawodności (linki)",
- "rel_ratings_title": "Oceny niezawodności"
+ "rel_ratings_title": "Oceny niezawodności",
+ "plate_cost_partial": "Znany koszt",
+ "versus_ref_incomplete": "Koszt twojego auta jest jeszcze niepełny, więc uczciwe porównanie nie jest jeszcze możliwe.",
+ "order_note": "Kolejność: {s}, {d}.",
+ "order_note_cost": "Kolejność: {s}, {d}. Auta z częściowym kosztem są po tych z pełnym.",
+ "hidden_n": {
+  "one": "{n} auto jest ukryte przez przełączniki powyżej.",
+  "few": "{n} auta są ukryte przez przełączniki powyżej.",
+  "other": "{n} aut jest ukrytych przez przełączniki powyżej."
+ },
+ "rk_faults_total": "Słabe punkty (oczekiwane, {n})",
+ "rk_repairs_total": "Naprawy: ryzyka + słabe punkty + pewne"
 }

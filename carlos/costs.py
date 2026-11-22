@@ -900,7 +900,7 @@ def listing_detail(c, listing_id, p, ranked):
     # the dossier lists the sources these rows cite too (shared sources such as the HU fee have no vehicle)
     have = {s['id'] for s in u['sources']}
     cited = {x['source_id'] for x in u['maintenance_plan'] + u['repair_risks'] + u['tyres'] + u['insurance'] + u['tax']
-             + u.get('fault_plan', []) + u['recalls'] + u['quotes']
+             + u.get('fault_plan', []) + u['recalls'] + u['quotes'] + u['valuations'] + u['unit_costs']
              + u['observations'] if x['source_id'] and x['source_id'] not in have}
     if cited:
         u['sources'] += rows(c, f"SELECT * FROM sources WHERE id IN ({','.join('?' * len(cited))}) ORDER BY id", tuple(cited))
