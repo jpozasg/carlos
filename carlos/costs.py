@@ -490,9 +490,9 @@ def cash_now(u, parts):
     return u['price_eur'] + parts['purchase_sale']
 
 
-def tco_rows(c, p):
+def tco_rows(c, p, know=None):
     years = p['ownership_years']; km = p['annual_km'] * years
-    know = Knowledge(c)
+    know = Knowledge(c) if know is None else know  # the caller's one object: resolved once per database state
     by_listing, vals, resets, insp, photos, prices = {}, {}, {}, {}, {}, {}
     for v in rows(c, 'SELECT * FROM valuations ORDER BY id'):  # the latest valuation of each kind wins
         vals.setdefault(v['listing_id'], {})[v['kind']] = v
@@ -746,14 +746,15 @@ def breakeven(u, ref, vals, months):
             'end_advantage': round(keep_end - switch_end, 2)}
 
 
-def listing_detail(c, listing_id, p, ranked):
-    """Everything about one listing: the ranked row plus its own rows and the resolved knowledge of its variant."""
+def listing_detail(c, listing_id, p, ranked, know=None):
+    """Everything about one listing: the ranked row plus its own rows and the resolved knowledge of its variant. `know`: the
+    Knowledge the ranking was built with (the same database state), so one listing does not reload all of it."""
     u = next((r for r in ranked if r['id'] == listing_id), None)
     if u is None:
         return None
     q = lambda sql: rows(c, sql, (listing_id,))
     v = levels_of(u, [r['option_id'] for r in q('SELECT option_id FROM listing_options WHERE listing_id=?')])
-    know = Knowledge(c)
+    know = Knowledge(c) if know is None else know
     reg = u.get('build_date') or u['first_registration']  # as in the ranking
     u.update(valuations=q('SELECT * FROM valuations WHERE listing_id=? ORDER BY id'),
              unit_costs=q('SELECT * FROM unit_costs WHERE listing_id=? ORDER BY id'),

@@ -1,5 +1,5 @@
 """Generates one Markdown dossier per listing from SQLite. The .md files are read-only: they are overwritten."""
-import json, os, re
+import json, os, re, uuid
 
 MARKER = '<!-- GENERATED from the database: do not edit by hand -->'
 
@@ -130,7 +130,11 @@ def export_all(c, out_dir, p, detail):
     for (lid,) in c.execute('SELECT id FROM listings ORDER BY id').fetchall():
         u = detail(c, lid, p)
         f = out_dir / filename(u)
-        tmp = f.with_suffix('.md.tmp'); tmp.write_text(render(u, p), encoding='utf-8'); os.replace(tmp, f)  # never a half-written file
+        tmp = f.with_name(f'{f.name}.{uuid.uuid4().hex}.tmp')  # unique: two exports of one account may run at once
+        try:
+            tmp.write_text(render(u, p), encoding='utf-8'); os.replace(tmp, f)  # never a half-written file
+        except BaseException:
+            tmp.unlink(missing_ok=True); raise
         written.append(f)
     for f in out_dir.glob('*.md'):  # delete only generated dossiers that no longer match a listing
         if f not in written and f.read_text(encoding='utf-8').startswith('<!-- GENERATED from'):

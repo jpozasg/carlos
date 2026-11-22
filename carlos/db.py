@@ -3,9 +3,15 @@ import sqlite3
 from . import config
 
 
+class Connection(sqlite3.Connection):
+    scope = None  # (user id, curator) once auth.scope ran on it: what the ranking cache keys on (server.costed)
+
+
 def connect():
-    c = sqlite3.connect(config.DB)
+    # WAL: readers never wait for the writer; the 30 s busy timeout covers the few writes that overlap (worker + browser)
+    c = sqlite3.connect(config.DB, timeout=30, factory=Connection)
     c.row_factory = sqlite3.Row
+    c.execute('PRAGMA journal_mode=WAL')
     c.execute('PRAGMA foreign_keys=ON')
     return c
 
