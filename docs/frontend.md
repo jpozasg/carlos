@@ -10,7 +10,7 @@ Plain ES modules served by the app, no build step, no dependencies. `static/`:
 | `js/app.js` | state `S`, data loading, hash router (`#/compare?view=…`, `#/ranking`, `#/listing/<id>`, `#/models`, `#/models/<variant id>`, `#/sources`, `#/settings`, `#/admin` (admins: workers, accounts, research queue, change log), `#/start?step=N`, `#/ranking?quiz=1`, `#/models?make=…&model=…&engine=…`), header, theme and language switching |
 | `js/api.js` | `get`, `post`, `patch`, `send`; a 401 sends the browser to `/login` |
 | `js/i18n.js` | `t(key, vars)`, plural objects `{one, other}`, `tv(code)` for fixed database codes, language detection |
-| `js/ui.js` | formatting (`euro`, `num`, `yrs`), escaping, tags, `store` (localStorage per browser), toast |
+| `js/ui.js` | formatting (`euro`, `num`, `yrs`), escaping, tags, `store` (localStorage per browser), toast (an error stays until its close button is pressed, `role=alert`; a success goes after 3.5 s) |
 | `js/charts.js` | cost composition bars and the break-even SVG |
 | `js/quiz.js` | the ranking questionnaire (eight best–worst tasks of four cars; tap or keys 1–4 for first, then last; Enter continues) and the priorities profile with the count behind each weight; used by the Ranking page and the setup wizard |
 | `js/pages/*.js` | one module per page, each exporting `render(main, route)` |
