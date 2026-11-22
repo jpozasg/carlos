@@ -24,7 +24,7 @@ Do all the work yourself in this run, one step after another: do not start backg
    - **Second-hand purchases only (#165):** if the ad is a **new car** (no first registration, delivery km only) or **lease-only** (no purchase price), do not capture it: end with `CARLOS_RESULT failed: new car / lease-only ad — Carlos compares second-hand purchases only (#165)`. A used ad that also shows a lease rate is captured as a purchase; leave the lease out.
    - **Capture specifics:** an electric car's seller battery-health figure goes into `battery_soh_claim`.
    - **Tax:** the official calculator in the browser as `docs/browser-tasks.md` says (an electric car: record the amount after the exemption; the calculation applies the exemption).
-   - **Insurance:** never in this run. It is the separate INSURANCE unit (`docs/prompts/units/insurance.md`), only for accounts that opted in; otherwise leave it to the to-do. Do not log a warning for it.
+   - **Insurance:** never in this run; the owner enters the quote by hand in the dossier. Do not log a warning for it.
    - **Charging preferences:** come from the account's setup; nothing to research.
    - Every `fault()` needs `code=` (its `component_code` from `fault_components` of `GET /api/agent/schema`); a 400 about it names the suggested code: resend with that one or a better fit.
    - A generation is the whole production run: use `applies_from` / `applies_to` on a row for a fault fixed by the facelift or a recall's build range (protocol, "Phase windows"), never a second generation.

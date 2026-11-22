@@ -9,7 +9,7 @@ const TAG = { QUEUED: 'warn', RUNNING: 'warn', WAITING: 'warn', DONE: 'good', SK
 export const statusTag = s => `<span class="tag ${TAG[s] ?? ''}">${esc(tv(s))}</span>`;
 
 // Parts of a request (#218 phase 2): the stages after reading the ad. Missing `parts`/`children` (old server) = no part view.
-const ORDER = ['CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE', 'TAX', 'LISTING', 'INSURANCE'];
+const ORDER = ['CAPTURE', 'VARIANT', 'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX', 'RESEARCH_A', 'RESEARCH_B', 'ARBITER', 'MERGE', 'TAX', 'LISTING', 'INSURANCE']; // INSURANCE: rows queued before 2026-11-22, shown as history
 // user-facing state: SKIPPED counts as done; icon + text, never colour alone
 const UST = { DONE: 'done', SKIPPED: 'done', RUNNING: 'doing', WAITING: 'waiting', QUEUED: 'pending', FAILED: 'failed', CANCELLED: 'pending' };
 const ICON = { done: '✓', doing: '▶', waiting: '…', pending: '○', failed: '✕' };

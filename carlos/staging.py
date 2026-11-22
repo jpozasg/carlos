@@ -169,7 +169,6 @@ UNIT_TABLES = {
     'TAX': {'tax_data', 'sources', 'research_checks', 'listing_events'},
     'LISTING': {'valuations', 'unit_costs', 'maintenance_resets', 'inspection_items', 'listing_events', 'listing_history', 'sources',
                 'research_checks', 'listings'},
-    'INSURANCE': {'listing_quotes', 'sources', 'listing_events'},
 }
 
 
@@ -187,7 +186,7 @@ def variant_chain(c, listing_id):
 
 
 def check_unit_write(c, req, table, row_id, data):
-    """The generic /api/agent write of a non-staged unit (CAPTURE, TAX, LISTING, INSURANCE; `req` is its research_requests row):
+    """The generic /api/agent write of a non-staged unit (CAPTURE, TAX, LISTING; `req` is its research_requests row):
     its own tables only; a new row on a level only on a level of its listing's variant chain; a PATCH of a shared catalogue row
     only on that chain too (CAPTURE never patches one: the research run does). Raises NotAllowed (403)."""
     unit, allowed = req['unit'], UNIT_TABLES.get(req['unit'])
