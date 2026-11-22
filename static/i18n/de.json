@@ -355,6 +355,23 @@
  "archive": "Inseratsarchiv",
  "no_archive": "Noch keine Erfassungen. Sobald das Inserat archiviert ist, bleiben Beschreibung, Ausstattung und Fotos hier erhalten, auch wenn es verschwindet.",
  "last_capture": "Letzte Erfassung {d} · insgesamt {n}",
+ "photo_remove_btn": "Entfernen",
+ "photo_remove": "Foto {n} entfernen",
+ "photo_remove_ask": "Foto {n} entfernen? Es verschwindet sofort aus dem Dossier und bleibt unter den entfernten Fotos, bis Sie es endgültig löschen.",
+ "photo_cancel": "Abbrechen",
+ "photos_removed": {
+  "one": "{n} entferntes Foto",
+  "other": "{n} entfernte Fotos"
+ },
+ "photo_removed_item": "Entfernt, aufgenommen {d}",
+ "photo_restore": "Wiederherstellen",
+ "photo_restore_aria": "Das entfernte Foto von {d} wiederherstellen",
+ "photo_delete": "Endgültig löschen",
+ "photo_delete_aria": "Das entfernte Foto von {d} endgültig löschen",
+ "photo_delete_ask": "Dieses Foto endgültig löschen? Die Datei wird vom Server gelöscht und kann nicht wiederhergestellt werden.",
+ "photo_removed_toast": "Foto entfernt. Es kann unten wiederhergestellt werden.",
+ "photo_restored": "Foto wiederhergestellt",
+ "photo_deleted": "Foto endgültig gelöscht",
  "photos_archived": {
   "one": "{n} Foto archiviert (oben).",
   "other": "{n} Fotos archiviert (oben)."

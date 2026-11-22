@@ -363,6 +363,14 @@ details.formula{padding:14px 16px}
 .strip button{flex:none;border:2px solid transparent;border-radius:8px;padding:0;background:none;cursor:pointer;opacity:.75}
 .strip button[aria-current=true]{border-color:var(--accent);opacity:1}
 .strip img{width:84px;height:63px;object-fit:cover;border-radius:6px;display:block}
+.strip .thumb{flex:none;display:grid;gap:4px;justify-items:start}
+.strip .photo-rm{padding:2px 8px;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--surface-2);color:var(--text-2);font:inherit;font-size:12px;cursor:pointer;opacity:1}
+.strip .photo-rm:focus-visible{outline-offset:-2px}/* the strip scrolls: an outside ring would be cut */
+.photo-ask{margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--surface-2)}
+.photo-ask p{margin:0 0 8px}
+.removed-photos{margin-top:8px}.removed-list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:10px}
+.removed-list .row{margin-top:4px}
+@media (pointer:coarse){.strip .photo-rm{min-height:44px;min-width:44px}}
 .navbtn{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;border:0;background-color:rgb(0 0 0/.55);color:#fff;font-size:20px;cursor:pointer;display:grid;place-items:center}
 .navbtn.prev{left:10px}.navbtn.next{right:10px}
 /* chevrons as centred SVG (the ‹ › glyphs and a rotated CSS border both sat off-centre); each chevron is optically

@@ -355,6 +355,23 @@
  "archive": "Archivo del anuncio",
  "no_archive": "Aún no hay capturas. Una vez archivado el anuncio, su descripción, características y fotos se quedan aquí aunque desaparezca.",
  "last_capture": "Última captura {d} · {n} en total",
+ "photo_remove_btn": "Quitar",
+ "photo_remove": "Quitar la foto {n}",
+ "photo_remove_ask": "¿Quitar la foto {n}? Sale del expediente al momento y queda entre las fotos quitadas hasta que la borre definitivamente.",
+ "photo_cancel": "Cancelar",
+ "photos_removed": {
+  "one": "{n} foto quitada",
+  "other": "{n} fotos quitadas"
+ },
+ "photo_removed_item": "Quitada, capturada el {d}",
+ "photo_restore": "Restaurar",
+ "photo_restore_aria": "Restaurar la foto quitada capturada el {d}",
+ "photo_delete": "Borrar definitivamente",
+ "photo_delete_aria": "Borrar definitivamente la foto quitada capturada el {d}",
+ "photo_delete_ask": "¿Borrar esta foto definitivamente? El archivo se elimina del servidor y no se puede recuperar.",
+ "photo_removed_toast": "Foto quitada. Se puede restaurar abajo.",
+ "photo_restored": "Foto restaurada",
+ "photo_deleted": "Foto borrada definitivamente",
  "photos_archived": {
   "one": "{n} foto archivada (arriba).",
   "other": "{n} fotos archivadas (arriba)."

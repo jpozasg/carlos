@@ -357,6 +357,25 @@
  "archive": "Archiwum ogłoszenia",
  "no_archive": "Brak jeszcze zapisów. Po zarchiwizowaniu ogłoszenia jego opis, wyposażenie i zdjęcia zostają tutaj, nawet gdy ogłoszenie zniknie.",
  "last_capture": "Ostatni zapis {d} · łącznie {n}",
+ "photo_remove_btn": "Usuń",
+ "photo_remove": "Usuń zdjęcie {n}",
+ "photo_remove_ask": "Usunąć zdjęcie {n}? Znika z karty od razu i zostaje w usuniętych zdjęciach, dopóki nie skasujesz go na stałe.",
+ "photo_cancel": "Anuluj",
+ "photos_removed": {
+  "one": "{n} usunięte zdjęcie",
+  "few": "{n} usunięte zdjęcia",
+  "many": "{n} usuniętych zdjęć",
+  "other": "{n} usuniętych zdjęć"
+ },
+ "photo_removed_item": "Usunięte, wykonane {d}",
+ "photo_restore": "Przywróć",
+ "photo_restore_aria": "Przywróć usunięte zdjęcie z {d}",
+ "photo_delete": "Usuń na stałe",
+ "photo_delete_aria": "Usuń na stałe usunięte zdjęcie z {d}",
+ "photo_delete_ask": "Usunąć to zdjęcie na stałe? Plik zostanie skasowany z serwera i nie da się go odzyskać.",
+ "photo_removed_toast": "Zdjęcie usunięte. Można je przywrócić poniżej.",
+ "photo_restored": "Zdjęcie przywrócone",
+ "photo_deleted": "Zdjęcie usunięte na stałe",
  "photos_archived": {
   "one": "Zarchiwizowane zdjęcia: {n} (powyżej).",
   "other": "Zarchiwizowane zdjęcia: {n} (powyżej)."

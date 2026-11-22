@@ -355,6 +355,23 @@
  "archive": "Listing archive",
  "no_archive": "No captures yet. Once the listing is archived, its description, features and photos stay here even after it disappears.",
  "last_capture": "Last capture {d} · {n} in total",
+ "photo_remove_btn": "Remove",
+ "photo_remove": "Remove photo {n}",
+ "photo_remove_ask": "Remove photo {n}? It leaves the dossier at once and stays in the removed photos until you delete it for good.",
+ "photo_cancel": "Cancel",
+ "photos_removed": {
+  "one": "{n} removed photo",
+  "other": "{n} removed photos"
+ },
+ "photo_removed_item": "Removed, captured {d}",
+ "photo_restore": "Restore",
+ "photo_restore_aria": "Restore the removed photo captured {d}",
+ "photo_delete": "Delete for good",
+ "photo_delete_aria": "Delete for good the removed photo captured {d}",
+ "photo_delete_ask": "Delete this photo for good? The file is erased from the server and cannot be recovered.",
+ "photo_removed_toast": "Photo removed. It can be restored below.",
+ "photo_restored": "Photo restored",
+ "photo_deleted": "Photo deleted for good",
  "photos_archived": {
   "one": "{n} photo archived (above).",
   "other": "{n} photos archived (above)."
