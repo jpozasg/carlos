@@ -4,7 +4,7 @@ import { S, applyTheme, loadAll, renderShell, refreshTco } from '../app.js';
 import { post, get } from '../api.js';
 import * as i18n from '../i18n.js';
 import { t } from '../i18n.js';
-import { $, esc, num, store, toast } from '../ui.js';
+import { $, busy, esc, num, store, toast } from '../ui.js';
 
 const KEYS = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'fuel_price_date', 'diesel_price_eur_l', 'diesel_price_date', 'budget_ideal_eur', 'budget_max_eur', 'exclude_over_max', 'postal_code', 'purchase_mode',
   'home_charging', 'home_charging_pct', 'electricity_home_eur_kwh', 'electricity_home_date', 'electricity_public_eur_kwh', 'electricity_public_date', 'wallbox_cost_eur'];
@@ -69,6 +69,8 @@ function account() {
     <form id="pwForm" class="stack"><div class="fields"><div class="field"><label for="pw_old">${t('pw_old')}</label><input id="pw_old" type="password" autocomplete="current-password" required></div>
       <div class="field"><label for="pw_new">${t('pw_new')}</label><input id="pw_new" type="password" autocomplete="new-password" minlength="8" required></div></div>
       <div><button class="btn ghost sm" type="submit">${t('pw_change')}</button></div></form>
+    <h3 style="margin-top:16px">${t('my_data')}</h3><p class="small muted" style="margin-top:0">${t('my_data_hint')}</p>
+    <div class="row"><button class="btn ghost sm" type="button" data-export>${t('export_my_data')}</button></div>
     ${S.me.role === 'admin' ? `<h3 style="margin-top:16px">${t('agent_token')}</h3><p class="small muted" style="margin-top:0">${t('agent_token_hint')}</p>
     <div class="row"><button class="btn ghost sm" type="button" data-token>${S.me.has_token ? t('token_renew') : t('token_create')}</button></div><div id="tokenOut"></div>` : ''}</div>`;  // agent tokens: admins only (issue #130)
 }
@@ -97,6 +99,9 @@ function bind() {
     if (e.target.id === 'fuelToday') { $('fuel_price_date').value = new Date().toISOString().slice(0, 10); paramUi(); return; }
     if (e.target.id === 'discardParams') { await loadAll(); renderShell(); draw(); return; }
     const md = e.target.closest('[data-mode-pick]'); if (md) { applyTheme(md.dataset.modePick); draw(); return; }
+    const ex = e.target.closest('[data-export]');  // the person's own rows, as the Settings page shows them (the login, not a viewed account)
+    if (ex) { await busy(ex, async () => { try { const d = await get('/api/account/export'); const a = document.createElement('a'); const url = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }));
+      a.href = url; a.download = `carlos-${S.me.username}.json`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (err) { toast(err.message, true); } }); return; }
     if (e.target.closest('[data-token]')) { try { const r = await post('/api/account/token', {}); $('tokenOut').innerHTML = `<p class="small">${t('token_shown_once')}</p><div class="token-box">${esc(r.token)}</div>`; S.me.has_token = true; } catch (err) { toast(err.message, true); } } });
   root.addEventListener('change', async e => {
     const k = e.target.dataset.filter; if (!k) return;

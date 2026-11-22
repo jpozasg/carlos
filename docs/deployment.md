@@ -46,6 +46,10 @@ carlos.example.net {
 ## Moving the data between machines
 The data directory is a git repository of its own (private). After a session: commit and push it (`cars.sqlite`, `media/`, `dossiers/`); `backups/` stays ignored. The database runs in WAL mode (#405): the newest writes may sit in `cars.sqlite-wal` until a checkpoint. Stop the server first (it checkpoints on a clean exit), or run `PRAGMA wal_checkpoint(TRUNCATE)`, and ignore `cars.sqlite-wal` and `cars.sqlite-shm` in the data repository; a copy of `cars.sqlite` alone is not a complete backup while the server runs (use `migrate.py`'s backup, which uses the SQLite backup API). On the other machine: pull, start the app; pending migrations run automatically with a backup first. The agent token in `.env` is per machine: generate one in Settings on the new machine or copy `.env` by hand.
 
+## Public pages: imprint and source link
+- `/privacy` (`static/privacy.html`) is the privacy notice, in English; its bracketed items are for the operator to complete before the instance is opened to other people. `/impressum` shows the text of `impressum.txt` in the data directory (`/srv/carlos-data/impressum.txt`, plain text, cut at 20 KB); without the file it shows a placeholder. The text is never part of the repository.
+- Every page links to the source code (AGPL-3.0, section 13). The link is `config.SOURCE_URL`: the repository, or the environment variable `CARLOS_SOURCE_URL` in the service unit. A modified version must point to its own source.
+
 ## Backups and health
 - Every migration backs up the database to `backups/` (the last five are kept).
 - `GET /api/health` returns integrity, schema version, number of listings and the storage ratio for monitoring.

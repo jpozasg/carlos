@@ -1006,5 +1006,19 @@
  "q_err_deductible": "Gib 0 oder mehr ein oder lass das Feld leer.",
  "q_err_server": "Das Angebot wurde nicht gespeichert: {m}",
  "q_valid_until": "Gültig bis {d}",
- "q_expired": "Abgelaufen am {d}; wird weiter für die Kosten verwendet"
+ "q_expired": "Abgelaufen am {d}; wird weiter für die Kosten verwendet",
+ "source_code": "Quellcode (AGPL-3.0)",
+ "footer_privacy": "Datenschutz",
+ "footer_imprint": "Impressum",
+ "imprint_title": "Impressum",
+ "imprint_missing": "Für diese Installation ist noch kein Impressum hinterlegt.",
+ "my_data": "Meine Daten",
+ "my_data_hint": "Ihre eigenen Daten als eine JSON-Datei: Fahrzeuge, Notizen, selbst eingegebene Versicherungsangaben und Einstellungen. Passwörter und Tokens sind nicht enthalten; Fotos erscheinen nur mit Dateinamen.",
+ "export_my_data": "Meine Daten herunterladen (JSON)",
+ "erase_account": "Konto löschen",
+ "erase_type": "{u} eingeben zur Bestätigung",
+ "erase_confirm": "Endgültig löschen",
+ "cancel": "Abbrechen",
+ "erase_lead": "Löscht das Konto mit seinen Fahrzeugen, Notizen, Fotos und Einstellungen. Vorher werden die Daten als Exportdatei im Datenverzeichnis gespeichert. Katalogdaten, die andere Konten teilen, bleiben.",
+ "erase_done": "{u} gelöscht. Der Export liegt in {f} (Datenverzeichnis)."
 }

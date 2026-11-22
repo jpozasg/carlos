@@ -1009,5 +1009,19 @@
  "q_err_deductible": "Wpisz 0 lub więcej albo zostaw puste.",
  "q_err_server": "Oferta nie została zapisana: {m}",
  "q_valid_until": "Ważna do {d}",
- "q_expired": "Wygasła {d}; nadal używana w kosztach"
+ "q_expired": "Wygasła {d}; nadal używana w kosztach",
+ "source_code": "Kod źródłowy (AGPL-3.0)",
+ "footer_privacy": "Prywatność",
+ "footer_imprint": "Nota prawna",
+ "imprint_title": "Nota prawna",
+ "imprint_missing": "Dla tej instancji nie ustawiono jeszcze noty prawnej.",
+ "my_data": "Moje dane",
+ "my_data_hint": "Twoje własne dane w jednym pliku JSON: samochody, notatki, wprowadzone przez Ciebie dane ubezpieczenia i ustawienia. Bez haseł i tokenów; zdjęcia tylko z nazwami plików.",
+ "export_my_data": "Pobierz moje dane (JSON)",
+ "erase_account": "Usuń konto",
+ "erase_type": "Wpisz {u}, aby potwierdzić",
+ "erase_confirm": "Usuń na stałe",
+ "cancel": "Anuluj",
+ "erase_lead": "Usuwa konto wraz z samochodami, notatkami, zdjęciami i ustawieniami. Wcześniej dane zapisują się w pliku eksportu w katalogu danych. Dane katalogu wspólne z innymi kontami pozostają.",
+ "erase_done": "Usunięto {u}. Eksport jest w {f} (katalog danych)."
 }

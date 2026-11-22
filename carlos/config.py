@@ -10,6 +10,8 @@ MEDIA_DIR = DATA_DIR / 'media'
 MD_DIR = DATA_DIR / 'dossiers'
 ENV = ROOT / '.env'
 STATIC = ROOT / 'static'
+# AGPL-3.0 section 13: every page links to the source of the running version (env CARLOS_SOURCE_URL for a fork or a mirror)
+SOURCE_URL = os.environ.get('CARLOS_SOURCE_URL') or 'https://github.com/jpozasg/carlos'
 HOST, PORT = '127.0.0.1', int(os.environ.get('CARLOS_PORT') or 8000)
 # Host header names this server answers (issue #414, L4): loopback plus CARLOS_HOSTS (comma list, e.g. the public name
 # that the reverse proxy passes through); any other Host gets 400.

@@ -2,7 +2,7 @@
 import { get, post } from './api.js';
 import * as i18n from './i18n.js';
 import { t } from './i18n.js';
-import { $, esc, num, store, toast, yrs } from './ui.js';
+import { $, esc, num, safeUrl, store, toast, yrs } from './ui.js';
 
 export const S = { accounts: [], me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
   fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null, prefs: {} };
@@ -57,7 +57,10 @@ export function renderShell() {
     ${S.me ? `<a class="chip" href="#/settings" title="${esc(t('account'))}">👤 ${esc(S.me.username)}</a><button class="chip" type="button" data-logout>${t('logout')}</button>` : ''}</div>
     ${viewedName() ? `<div class="callout viewas" role="status"><p>${t('viewing_as', { u: `<b>${esc(viewedName())}</b>` })}</p><button class="btn sm" type="button" data-viewas-exit>${t('viewing_exit')}</button></div>` : ''}
     <nav class="main" aria-label="${esc(t('sections'))}">${[...NAV, ...(S.me?.role === 'admin' ? ['admin'] : [])].map(k => `<a href="#/${k}" data-nav="${k}">${t('tab_' + k)}</a>`).join('')}</nav>`;
-  $('footer').innerHTML = esc(t('footer')) + ' · ' + t('osm_credit');  // ODbL attribution for the bundled postcode points (#169)
+  // ODbL attribution for the bundled postcode points (#169); the source link (AGPL-3.0 section 13) comes from the page's meta tag
+  const src = document.querySelector('meta[name="carlos-source"]')?.content || '';
+  $('footer').innerHTML = esc(t('footer')) + ' · ' + t('osm_credit') + ` · <a href="${safeUrl(src)}" target="_blank" rel="noopener">${esc(t('source_code'))}</a>`
+    + ` · <a href="/privacy">${esc(t('footer_privacy'))}</a> · <a href="/impressum">${esc(t('footer_imprint'))}</a>`;
   setHeaderHeight();
 }
 function setHeaderHeight() {  // the compare control bar sticks right below the (sticky) header

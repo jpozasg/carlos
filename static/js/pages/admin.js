@@ -1,12 +1,12 @@
 // Admin (issue #142): research workers (status, token), accounts (invite link, re-invite, deactivate, role), the research
 // queue and the change log. Viewing any account is the header switcher (app.js).
 import { S } from '../app.js';
-import { get, post, patch } from '../api.js';
+import { get, post, patch, del } from '../api.js';
 import { t } from '../i18n.js';
 import { $, esc, toast, empty, safeUrl } from '../ui.js';
 import { statusTag, partsHtml } from '../requests.js';
 
-let root, users = [], reqs = [], lastInvite = null, workers = [], lastToken = null, changes = [];
+let root, users = [], reqs = [], lastInvite = null, workers = [], lastToken = null, changes = [], eraseId = null;
 const WS = { idle: '', working: 'good', error: 'bad', down: 'bad', deactivated: '' };
 const uname = id => esc(users.find(u => u.id === id)?.username ?? (id == null ? '—' : '#' + id));
 function workersHtml() {
@@ -25,17 +25,25 @@ function changesHtml() {
     <div class="tablewrap"><table><thead><tr><th>${t('ch_when')}</th><th>${t('ch_writer')}</th><th>${t('ch_account')}</th><th>${t('ch_table')}</th><th>${t('ch_action')}</th></tr></thead><tbody>${changes.map(x => `<tr><td class="small">${esc(x.changed_at)}</td><td>${esc(x.writer ?? '—')}</td><td>${esc(x.account ?? '—')}</td><td class="small">${esc(x.table_name)} #${x.row_id}</td><td class="small">${esc(x.action)}</td></tr>`).join('') || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>
     ${changes.length && changes.length % 50 === 0 ? `<button class="btn ghost sm" type="button" data-older style="margin-top:8px">${t('ch_older')}</button>` : ''}`;
 }
+// the erasure form under the account: the button stays disabled until the username is typed exactly (the server checks it too)
+function eraseCard(u) {  // a card under the table: a table cell cannot hold the form at phone width
+  return `<div class="card" style="margin-top:12px"><form class="row" data-erase-form="${u.id}" style="flex-wrap:wrap;align-items:flex-end"><div class="field"><label for="er_name">${t('erase_type', { u: esc(u.username) })}</label><input id="er_name" data-name="${esc(u.username)}" autocomplete="off" spellcheck="false" required></div>
+    <button class="btn danger" type="submit" id="er_go" disabled>${t('erase_confirm')}</button><button class="btn ghost" type="button" data-erase-cancel>${t('cancel')}</button></form>
+    <p class="small muted" style="max-width:60ch;margin:8px 0 0">${t('erase_lead')}</p></div>`;
+}
 function draw() {
   const rows = users.map(u => `<tr><td><b>${esc(u.username)}</b>${u.id === S.me.id ? ` <span class="tag ref">${t('you')}</span>` : ''}</td><td>${esc(t('role_' + u.role))}</td>
     <td>${u.is_active ? `<span class="tag good">${t('active')}</span>` : `<span class="tag">${t('inactive')}</span>`}${u.has_password ? '' : ` <span class="tag warn">${t('no_password')}</span>`}</td><td class="small">${esc(u.created_at)}</td>
     <td class="row"><button class="btn ghost sm" type="button" data-invite="${u.id}">${t('invite_link')}</button>
-      ${u.id !== S.me.id ? `<button class="btn ghost sm" type="button" data-active="${u.id}" data-to="${u.is_active ? 0 : 1}">${u.is_active ? t('deactivate') : t('activate')}</button><button class="btn ghost sm" type="button" data-role="${u.id}" data-to="${u.role === 'admin' ? 'user' : 'admin'}">${u.role === 'admin' ? t('make_user') : t('make_admin')}</button>` : ''}</td></tr>`).join('');
+      ${u.id !== S.me.id ? `<button class="btn ghost sm" type="button" data-active="${u.id}" data-to="${u.is_active ? 0 : 1}">${u.is_active ? t('deactivate') : t('activate')}</button><button class="btn ghost sm" type="button" data-role="${u.id}" data-to="${u.role === 'admin' ? 'user' : 'admin'}">${u.role === 'admin' ? t('make_user') : t('make_admin')}</button><button class="btn ghost sm" type="button" data-erase="${u.id}">${t('erase_account')}</button>` : ''}</td></tr>
+      `).join('');
   root.innerHTML = `<div class="section"><h2>${t('tab_admin')}</h2><p class="lead">${t('admin_lead')}</p>
     <div class="card" style="margin-bottom:16px">${workersHtml()}</div>
     <div class="card" style="margin-bottom:16px"><h3>${t('new_user')}</h3><form id="newUser" class="row"><div class="field"><label for="nu_name">${t('username')}</label><input id="nu_name" pattern="[\\w.-]{2,40}" required></div>
       <div class="field"><label for="nu_role">${t('role')}</label><select id="nu_role" class="inline"><option value="user">${t('role_user')}</option><option value="admin">${t('role_admin')}</option></select></div><button class="btn" type="submit" style="align-self:flex-end">${t('create_invite')}</button></form>
       ${lastInvite ? `<p class="small" style="margin:12px 0 4px">${t('invite_created', { u: esc(lastInvite.username) })}</p><div class="token-box">${esc(lastInvite.invite)}</div>` : ''}</div>
     <div class="tablewrap"><table><thead><tr><th>${t('username')}</th><th>${t('role')}</th><th>${t('status')}</th><th>${t('created')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>
+    ${eraseId != null && users.find(x => x.id === eraseId) ? eraseCard(users.find(x => x.id === eraseId)) : ''}
     <h3 style="margin-top:24px">${t('req_queue')}</h3><p class="small muted">${t('req_queue_lead')}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('req_requested')}</th><th>${t('username')}</th><th>${t('req_url')}</th><th>${t('status')}</th><th>${t('req_result')}</th></tr></thead><tbody>${reqs.map(r => `<tr><td class="small">${esc(r.requested_at)}</td><td>${esc(r.username)}</td>
       <td class="small"><a href="${safeUrl(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a>${r.note ? `<div class="muted">${esc(r.note)}</div>` : ''}</td><td>${statusTag(r.status)}${r.worker ? `<div class="small muted">${esc(r.worker)} · ${esc(r.claimed_at ?? '')}</div>` : ''}${r.requested_by ? `<div class="small muted">${t('req_by', { u: uname(r.requested_by) })}</div>` : ''}</td>
@@ -43,7 +51,13 @@ function draw() {
 }
 async function reload() { [users, reqs, workers, changes] = await Promise.all([get('/api/admin/users'), get('/api/admin/requests'), get('/api/admin/workers'), get('/api/admin/changes?limit=50')]); draw(); }
 function bind() {
+  root.addEventListener('input', e => { if (e.target.id === 'er_name') $('er_go').disabled = e.target.value !== e.target.dataset.name; });
   root.addEventListener('submit', async e => { e.preventDefault();
+    if (e.target.dataset.eraseForm) {  // erasure: the server writes the export first and refuses a wrong username
+      const u = users.find(x => x.id === +e.target.dataset.eraseForm);
+      try { const r = await busy($('er_go'), () => del(`/api/admin/users/${u.id}`, { username: $('er_name').value })); eraseId = null; toast(t('erase_done', { u: r.username, f: r.export })); await reload(); } catch (err) { toast(err.message, true); }
+      return;
+    }
     if (e.target.id === 'newWorker') { try { const name = $('nw_name').value.trim(); const r = await post('/api/admin/workers', { name }); lastToken = { name, token: r.token }; await reload(); } catch (err) { toast(err.message, true); } return; }
     try { const r = await post('/api/admin/users', { username: $('nu_name').value.trim(), role: $('nu_role').value }); lastInvite = r; await reload(); } catch (err) { toast(err.message, true); } });
   root.addEventListener('click', async e => {
@@ -51,6 +65,8 @@ function bind() {
     const wa = e.target.closest('[data-wactive]'); if (wa) { try { await patch(`/api/admin/workers/${wa.dataset.wactive}`, { is_active: +wa.dataset.to }); await reload(); } catch (err) { toast(err.message, true); } return; }
     if (e.target.closest('[data-older]')) { try { changes = changes.concat(await get(`/api/admin/changes?limit=50&before=${changes[changes.length - 1].id}`)); draw(); } catch (err) { toast(err.message, true); } return; }
     const inv = e.target.closest('[data-invite]'); if (inv) { try { const r = await post(`/api/admin/users/${inv.dataset.invite}/invite`, {}); lastInvite = { username: users.find(u => u.id === +inv.dataset.invite)?.username, invite: r.invite }; draw(); } catch (err) { toast(err.message, true); } return; }
+    const er = e.target.closest('[data-erase]'); if (er) { eraseId = +er.dataset.erase; draw(); $('er_name')?.focus(); return; }
+    if (e.target.closest('[data-erase-cancel]')) { eraseId = null; draw(); return; }
     const ac = e.target.closest('[data-active]'); if (ac) { try { await patch(`/api/admin/users/${ac.dataset.active}`, { is_active: +ac.dataset.to }); await reload(); } catch (err) { toast(err.message, true); } return; }
     const ro = e.target.closest('[data-role]'); if (ro) { try { await patch(`/api/admin/users/${ro.dataset.role}`, { role: ro.dataset.to }); await reload(); } catch (err) { toast(err.message, true); } } });
 }
