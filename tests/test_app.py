@@ -1013,28 +1013,13 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('POST', '/api/worker/claim', {'worker': 'desk2'})[1]['request']['id'], got[2]['id'])
 
     def test_done_gate_218(self):
-        """A DONE report with contract items missing goes back to the queue (attempts + 1), the third time FAILED; a complete
-        listing is DONE; a usage-limit release is not an attempt."""
+        """A request without a unit is refused (owner decision 2026-11-22); the gate of the unit-split requests is in test_dual_flow."""
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/9'})
-        self.sql_write("UPDATE research_requests SET unit=NULL")   # a legacy single-run request: the whole listing is graded
-        done = lambda rid: self.req('POST', f'/api/worker/requests/{rid}', {'status': 'DONE', 'listing_id': CAR_A, 'result': 'ok'})[1]
-        claim = lambda: self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']
-        self.gaps[:] = ['gen.hu', 'var.tyres']
-        r = claim()
-        self.assertEqual((r['attempts'], r['missing']), (0, []))
-        d = done(r['id'])
-        self.assertEqual((d['status'], d['attempts'], d['listing_id'], d['worker']), ('QUEUED', 1, CAR_A, None))
-        r = claim()
-        self.assertEqual((r['attempts'], r['missing']), (1, ['gen.hu', 'var.tyres']))
-        self.req('POST', f'/api/worker/requests/{r["id"]}', {'status': 'QUEUED', 'result': 'usage limit'})   # not an attempt
-        r = claim(); self.assertEqual(r['attempts'], 1)
-        self.assertEqual(done(r['id'])['status'], 'QUEUED')
-        d = done(claim()['id'])
-        self.assertEqual((d['status'], d['attempts']), ('FAILED', 3))
-        self.assertIn('gen.hu, var.tyres', d['result'])
-        self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/10'})
-        self.gaps[:] = []
-        self.assertEqual(done(claim()['id'])['status'], 'DONE')
+        self.sql_write("UPDATE research_requests SET unit=NULL")   # a request without a unit: the retired single run (2026-11-22)
+        self.assertIsNone(self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request'])   # refused at the claim, never handed out
+        self.assertEqual(self.sql("SELECT status, result FROM research_requests WHERE parent_id IS NULL")[0], ('FAILED', research_units.refusal(None)))
+        self.assertIn('without a unit', self.sql("SELECT result FROM research_requests")[0][0])
+
 
     def test_duplicate_fault_guard_221(self):
         """The same fault filed twice is refused (409) when one catalogue variant would carry both; distinct_of overrides it with a reason."""
@@ -1154,36 +1139,12 @@ class AppTest(unittest.TestCase):
     def test_units_218(self):
         """A listing request is split into units stage by stage; a unit with nothing missing is SKIPPED, the server re-grades each
         unit, missing items re-queue it, and the parent is DONE when the stages are over."""
-        patcher = mock.patch.object(research_units, 'FLOW', 'units')   # the legacy stages (the dual flow has its own tests)
-        patcher.start(); self.addCleanup(patcher.stop)
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/9'})
         claim = lambda: self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']
-        finish = lambda r, **d: self.req('POST', f'/api/worker/requests/{r["id"]}', {'status': 'DONE', **d})[1]
-        parts = lambda: {p['unit']: p['status'] for p in self.req('GET', '/api/requests')[1][0]['parts']}
-        self.gaps[:] = ['var.tyres', 'gen.hu', 'lst.checklist']
-        cap = claim()
-        self.assertEqual(cap['unit'], 'CAPTURE')
-        self.assertEqual(finish(cap, listing_id=CAR_A)['status'], 'WAITING')
-        self.assertEqual(parts(), {'VARIANT': 'QUEUED'})                      # the next stages exist only when this one is closed
-        v = claim()
-        self.assertEqual((v['unit'], v['missing'], v['listing_id']), ('VARIANT', ['var.tyres'], CAR_A))
-        self.gaps[:] = ['gen.hu', 'lst.checklist']
-        self.assertEqual(finish(v)['status'], 'DONE')
-        self.assertEqual(parts(), {'VARIANT': 'DONE', 'GENERATION': 'SKIPPED', 'GEN_MAINTENANCE': 'QUEUED', 'ENGINE': 'SKIPPED', 'GEARBOX': 'SKIPPED'})
-        m = claim()
-        self.assertEqual(m['unit'], 'GEN_MAINTENANCE')
-        self.assertEqual(finish(m)['status'], 'QUEUED')                       # gen.hu still missing: another attempt
-        m = claim(); self.assertEqual(m['attempts'], 1)
-        self.gaps[:] = ['lst.checklist']
-        self.assertEqual(finish(m)['status'], 'DONE')
-        self.assertEqual(parts()['TAX'], 'SKIPPED')
-        last = claim()
-        self.assertEqual(last['unit'], 'LISTING')
-        self.gaps[:] = []
-        self.assertEqual(finish(last)['status'], 'DONE')
-        top = self.req('GET', '/api/requests')[1][0]
-        self.assertEqual((top['status'], top['listing_id']), ('DONE', CAR_A))
-        self.assertEqual(self.req('GET', '/api/admin/requests')[1][0]['children'][0]['unit'], 'VARIANT')
+        self.sql_write("UPDATE research_requests SET unit='VARIANT'")         # a retired single-run unit (2026-11-22)
+        self.assertIsNone(claim())
+        self.assertEqual(self.sql("SELECT status, result FROM research_requests")[0], ('FAILED', research_units.refusal('VARIANT')))
+        self.assertIn('unit VARIANT is retired', research_units.refusal('VARIANT'))
 
     def test_worker_insurance_removed_2026_11_22(self):
         """The worker's insurance quotes are gone (owner decision 2026-11-22, CHECK24 bans automated applications): INSURANCE is
@@ -1367,21 +1328,26 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', '/api/admin/data/sessions')[0], 404)
         self.assertEqual(self.req('GET', '/api/admin/data/listings', token=None, cookie=c2)[0], 401)
 
-    @mock.patch.dict(os.environ, {'WORKER_ALLOW_ADMIN': '1'})  # the admin fallback is opt-in (#386)
     def test_worker_once_with_fake_claude_113(self):
         import worker
         from capture_listing import Api
+        wt = self.req('POST', '/api/admin/workers', {'name': 'test'})[1]['token']   # a registered worker: its own token only (no admin fallback)
+        def api():
+            a = Api(self.base, wt); a.worker = True
+            return a
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/7'})
         logs = Path(self.tmp.name) / 'logs'
-        # the fake agent proves it got the requester's account in its environment, then reports the admin's car
-        cmd = f"sh -c 'echo account=$CARLOS_ACCOUNT; echo CARLOS_RESULT listing_id={CAR_A}'"
-        self.assertTrue(worker.work_one(Api(self.base, TOKEN), 'test', cmd, logs, 30))
+        # the fake agent gets no account header and no worker or admin token: only the request's own token
+        cmd = f"sh -c 'echo acct=${{CARLOS_ACCOUNT:-none}} worker=${{WORKER_TOKEN:-none}}; echo CARLOS_RESULT listing_id={CAR_A}'"
+        self.assertTrue(worker.work_one(api(), 'test', cmd, logs, 30))
         r = self.req('GET', '/api/requests')[1][0]
         self.assertEqual((r['status'], r['listing_id'], r['worker']), ('DONE', CAR_A, 'test'))
-        self.assertIn('account=1', (logs / f'request-{r["id"]}.log').read_text())
-        self.assertFalse(worker.work_one(Api(self.base, TOKEN), 'test', cmd, logs, 30))   # queue empty
+        log = (logs / f'request-{r["id"]}.log').read_text()
+        self.assertIn('acct=none worker=none', log)
+        self.assertNotIn(wt, log)
+        self.assertFalse(worker.work_one(api(), 'test', cmd, logs, 30))   # queue empty
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/8'})
-        worker.work_one(Api(self.base, TOKEN), 'test', "sh -c 'echo CARLOS_RESULT failed: page blocked'", logs, 30)
+        worker.work_one(api(), 'test', "sh -c 'echo CARLOS_RESULT failed: page blocked'", logs, 30)
         self.assertEqual([x['result'] for x in self.req('GET', '/api/requests')[1]][0], 'page blocked')
         self.assertEqual(worker.outcome('noise\nCARLOS_RESULT listing_id=12\n')['listing_id'], 12)
         self.assertEqual(worker.outcome('crashed')['status'], 'FAILED')
@@ -1392,15 +1358,16 @@ class AppTest(unittest.TestCase):
         self.assertEqual(worker.command('claude --model opus -p', 'haiku'), ['claude', '--model', 'opus', '-p'])
         self.assertEqual(worker.command("sh -c 'x'", 'haiku'), ['sh', '-c', 'x'])
 
-    @mock.patch.dict(os.environ, {'WORKER_ALLOW_ADMIN': '1'})  # the admin fallback is opt-in (#386)
     def test_worker_usage_limit_206(self):
         import datetime, worker
         from capture_listing import Api
+        wt = self.req('POST', '/api/admin/workers', {'name': 'test'})[1]['token']
+        api = Api(self.base, wt); api.worker = True
         logs = Path(self.tmp.name) / 'logs'
         self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/206'})
         cmd = "sh -c 'echo You have hit your 5-hour limit · resets 4am; exit 1'"
         with self.assertRaises(worker.UsageLimit):
-            worker.work_one(Api(self.base, TOKEN), 'test', cmd, logs, 30)
+            worker.work_one(api, 'test', cmd, logs, 30)
         r = self.req('GET', '/api/requests')[1][0]
         self.assertEqual((r['status'], r['worker']), ('QUEUED', None))          # released, not FAILED
         self.assertIn('Released', r['result'])

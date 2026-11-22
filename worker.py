@@ -1,5 +1,5 @@
 """Shared research worker (issue #113). Runs on the owner's always-on desktop, not on the Pi: polls the site for research
-requests, runs Claude Code headless with docs/prompts/research-request.md for each one, and reports the listing it wrote
+requests, runs Claude Code headless with the unit prompt of each one (docs/prompts/units/), and reports the listing it wrote
 into the requester's account (or why it failed). One request at a time.
 
 Environment: CAR_API (the site, e.g. https://carlos.example.net), WORKER_TOKEN (this worker's token, created by an
@@ -8,15 +8,15 @@ counts), POLL_SECONDS (60), CLAUDE_CMD ('claude -p'), WORKER_MODEL ('haiku': the
 --model unless CLAUDE_CMD has one), WORKER_TIMEOUT_MIN (120), WORKER_RESEARCH_TIMEOUT_MIN (150, the RESEARCH_A/B runs), WORKER_LOGS (worker-logs/, one log per request).
 The headless run gets only the per-request token of the request it works on (the requester's account and the shared
 catalogue, dead when the request ends) and an allow-listed environment (RUN_ENV; WORKER_PASS_ENV adds names), never
-WORKER_TOKEN or an admin token. Without WORKER_TOKEN the worker refuses to start, unless WORKER_ALLOW_ADMIN=1 (a pilot): then
-AGENT_TOKEN (an admin token) and the X-Carlos-Account header reach the run, the way it worked before #141. It also refuses to
+WORKER_TOKEN or an admin token. Without WORKER_TOKEN the worker refuses to start (the admin fallback was removed 2026-11-22).
+Only the current units run: a request without a unit or with a retired unit is refused with its reason (carlos/research_units.refusal). It also refuses to
 start from a checkout that holds .env or data/ (the server's secrets and database) unless WORKER_ALLOW_SHARED_CHECKOUT=1;
 run it as another OS user from a code-only checkout (docs/deployment.md). A `claude` run gets docs/worker-settings.json
 (deny rules for .env, data/, sqlite3: speed bumps, the OS user is the control) and no skills (--disable-slash-commands).
 Run: python worker.py [--once]   (--once: handle at most one request, then exit)"""
 import datetime, json, os, re, shlex, socket, subprocess, sys, time
 from pathlib import Path
-from capture_listing import Api, ApiError, load_token
+from capture_listing import Api, ApiError
 from carlos import research_units as ru, urlcheck
 
 ROOT = Path(__file__).resolve().parent
@@ -27,8 +27,7 @@ RUN_ENV = ('PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'TERM
            'https_proxy', 'http_proxy', 'no_proxy')
 RUN_ENV_PREFIXES = ('LC_', 'XDG_', 'ANTHROPIC_', 'CLAUDE_')  # locale, desktop session, Claude's own settings and login
 NEVER_PASSED = {'WORKER_TOKEN', 'AGENT_TOKEN', 'CARLOS_ACCOUNT'}
-NO_ADMIN_FALLBACK = ('no WORKER_TOKEN: the admin fallback is off (set WORKER_TOKEN, docs/deployment.md; WORKER_ALLOW_ADMIN=1 only for '
-                     'a pilot: the run then gets an admin token)')
+NO_WORKER_TOKEN = 'no WORKER_TOKEN: the worker refuses to start (set WORKER_TOKEN, docs/deployment.md); there is no admin fallback'
 RESULT = re.compile(r'CARLOS_RESULT (?:listing_id=(\d+)|failed: (.*)|done: (.*))')  # done: a follow-up without a listing (#168)
 
 
@@ -72,8 +71,8 @@ def fenced(value):
     return FENCE_MARKERS.sub('...', str(value))
 
 
-def unit_prompt(req):
-    """The short prompt of one research unit (#218 phase 2): shared rules + docs/prompts/units/<unit>.md."""
+def prompt_for(req):
+    """The prompt of one research unit (#218 phase 2): shared rules + docs/prompts/units/<unit>.md."""
     d = ROOT / 'docs' / 'prompts' / 'units'
     name = 'research' if req['unit'] in ('RESEARCH_A', 'RESEARCH_B') else req['unit'].lower()  # the two runs get the same prompt (#253)
     text = (d / '_header.md').read_text(encoding='utf-8') + (d / f'{name}.md').read_text(encoding='utf-8')
@@ -89,35 +88,16 @@ def unit_prompt(req):
     return text.strip()
 
 
-def prompt_for(req):
-    if req.get('unit'):
-        return unit_prompt(req)
-    text =(ROOT / 'docs' / 'prompts' / 'research-request.md').read_text(encoding='utf-8').split('\n---\n', 1)[1]
-    for k, v in {'{URL}': fenced(req['url']), '{NOTE}': fenced(req['note'] or '(none)'), '{ACCOUNT}': req['owner_id'],
-                 '{REQUEST_ID}': req['id'], '{REPO}': ROOT}.items():
-        text = text.replace(k, str(v))
-    if req.get('listing_id') and req.get('missing'):  # continuation after the server's grading (#218)
-        text += (f"\n\nCONTINUATION (attempt {req.get('attempts', 0) + 1}): listing {req['listing_id']} exists, but the server's grading "
-                 f"still finds these contract items MISSING: {', '.join(req['missing'])}.\nGrade the listing again (to-do), work only on "
-                 "these ids, and for every source that cannot be reached record a `NONE FOUND` or `N/A` check with the reason. "
-                 f"End with CARLOS_RESULT listing_id={req['listing_id']}.")
-    return text.strip()
-
-
 def run_env(api, req):
-    """The environment of the headless run (#386): an allow-list, so WORKER_TOKEN, the admin token and the rest of the worker's
-    environment never reach it; the per-request token is its AGENT_TOKEN. The admin token acting for the requester only with
-    WORKER_ALLOW_ADMIN=1 (a pilot without a registered worker). CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0: print mode stops background
-    tasks 10 min after the last turn, which left request 4 hanging (issue #137), so it waits for them."""
+    """The environment of the headless run (#386): an allow-list, so WORKER_TOKEN and the rest of the worker's environment never reach it;
+    the per-request token is its AGENT_TOKEN, the only credential a run gets (the admin fallback was removed 2026-11-22).
+    CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0: print mode stops background tasks 10 min after the last turn, which left request 4 hanging
+    (issue #137), so it waits for them."""
+    if not req.get('request_token'):
+        raise ApiError('no request token: the run is not started')
     extra = {x.strip() for x in os.environ.get('WORKER_PASS_ENV', '').split(',')} - NEVER_PASSED
     env = {k: v for k, v in os.environ.items() if k in RUN_ENV or k.startswith(RUN_ENV_PREFIXES) or k in extra}
-    env.update(CAR_API=api.base, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS='0')
-    if req.get('request_token') and is_worker(api):  # the run only ever sees the per-request token (#141)
-        env['AGENT_TOKEN'] = req['request_token']
-    elif os.environ.get('WORKER_ALLOW_ADMIN') == '1':  # admin fallback: the admin token acting for the requester
-        env.update(AGENT_TOKEN=api.token, CARLOS_ACCOUNT=str(req['owner_id']))
-    else:
-        raise ApiError(NO_ADMIN_FALLBACK)
+    env.update(CAR_API=api.base, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS='0', AGENT_TOKEN=req['request_token'])
     return env
 
 
@@ -176,14 +156,18 @@ def pause_seconds(text, now=None, fallback=1800):
 
 def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=None):
     """Claims and handles one request; False when the queue is empty."""
-    if not is_worker(api) and os.environ.get('WORKER_ALLOW_ADMIN') != '1':  # before the claim: a request must not be left RUNNING
-        raise ApiError(NO_ADMIN_FALLBACK)
+    if not is_worker(api):  # before the claim: a request must not be left RUNNING
+        raise ApiError(NO_WORKER_TOKEN)
     req = api.call('POST', '/api/worker/claim', {'worker': name})['request']
     if not req:
         return False
     if req.get('unit') in ru.SERVER_UNITS:  # the merge is server code: no Claude run (#253)
         print(f'request {req["id"]}: picked up {req.get("unit")} (no Claude run)', flush=True)
         report(api, req, merge_outcome(api, req))
+        return True
+    why = ru.refusal(req.get('unit'))
+    if why:  # the server refuses these at the claim too; a worker never runs one (owner decision 2026-11-22)
+        report(api, req, {'status': 'FAILED', 'result': why})
         return True
     print(f'request {req["id"]}: picked up {req.get("url")} (model {model})', flush=True)
     if req.get('url') and not req['url'].startswith('carlos://'):  # checked when it was queued; again now (DNS and rules change)
@@ -232,9 +216,9 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=
 
 def merge_outcome(api, req):
     """Runs POST /api/agent/merge with the request's own token and builds the finish payload (the server grades the real rows)."""
-    token = req.get('request_token') or api.token
-    mine = Api(api.base, token)
-    mine.account = None if req.get('request_token') else str(req['owner_id'])
+    if not req.get('request_token'):
+        return {'status': 'FAILED', 'result': 'Merge refused: no request token'}
+    mine = Api(api.base, req['request_token'])
     try:
         out = mine.call('POST', '/api/agent/merge', {})
     except (ApiError, OSError) as e:
@@ -270,10 +254,10 @@ def main(argv=None):
     os.umask(0o077)  # the run logs and anything else the worker writes are owner-only (issue #414, L5)
     os.environ.pop('CARLOS_ACCOUNT', None)  # the worker itself never acts for an account
     refuse_shared_checkout()
-    if not os.environ.get('WORKER_TOKEN') and os.environ.get('WORKER_ALLOW_ADMIN') != '1':
-        raise SystemExit(f'worker: {NO_ADMIN_FALLBACK}')
-    api = Api(os.environ.get('CAR_API', 'http://127.0.0.1:8000'), os.environ.get('WORKER_TOKEN') or load_token())
-    api.worker = bool(os.environ.get('WORKER_TOKEN'))
+    if not os.environ.get('WORKER_TOKEN'):
+        raise SystemExit(f'worker: {NO_WORKER_TOKEN}')
+    api = Api(os.environ.get('CAR_API', 'http://127.0.0.1:8000'), os.environ['WORKER_TOKEN'])
+    api.worker = True
     name, cmd = os.environ.get('WORKER_NAME') or socket.gethostname(), os.environ.get('CLAUDE_CMD', 'claude -p')
     model = os.environ.get('WORKER_MODEL', 'haiku')
     check_command(cmd)

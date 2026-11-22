@@ -1,6 +1,6 @@
 # Prompt: research and cost one car
 
-Reusable prompt for a research agent (an agent with web access and shell access to this repository). Research requests from the accounts are run by the shared worker with `docs/prompts/research-request.md`, which uses this prompt for the research step. Replace the `{…}` placeholders. One agent per car; several can run in parallel because each writes only its own variant, engine, generation and listing. The listing is captured first. Tax (BMF calculator, in the browser) is done by the run that has the browser (the worker's prompt, `research-request.md`); insurance never in a headless run.
+Reusable prompt for a research agent (an agent with web access and shell access to this repository). Research requests from the accounts are run by the shared worker, unit by unit (`docs/prompts/units/`; the worker's contract is `docs/prompts/research-request.md`); this reusable prompt is for a research agent working by hand. Replace the `{…}` placeholders. One agent per car; several can run in parallel because each writes only its own variant, engine, generation and listing. The listing is captured first. Tax (BMF calculator, in the browser) is done by the run that has the browser (the browser unit, `docs/prompts/units/tax.md`); insurance never in a headless run.
 
 ---
 

@@ -157,7 +157,7 @@ The phone's viewing mode and the dossier's own writes. Each one goes through the
 
 ### Research requests (`/api/requests`)
 
-An account asks for a listing to be researched; the shared worker does it and writes the car into that account (Auth model: request token). A listing request is split into units (CAPTURE, then VARIANT, GENERATION, GEN_MAINTENANCE, ENGINE, GEARBOX, TAX, LISTING, items per unit in `carlos/research_units.py`); a unit is QUEUED, RUNNING, WAITING (`shared_id`: an identical open unit of another request), DONE, SKIPPED (already researched), FAILED or CANCELLED.
+An account asks for a listing to be researched; the shared worker does it and writes the car into that account (Auth model: request token). A listing request is split into units (CAPTURE, then RESEARCH_A and RESEARCH_B, ARBITER, MERGE, TAX, LISTING, items per unit in `carlos/research_units.py`; the single-run units VARIANT, GENERATION, GEN_MAINTENANCE, ENGINE and GEARBOX, and a request without a unit, are refused at the claim with their reason, owner decision 2026-11-22); a unit is QUEUED, RUNNING, WAITING (`shared_id`: an identical open unit of another request), DONE, SKIPPED (already researched), FAILED or CANCELLED.
 
 | Method and path | Auth | Request | Response | Errors | Called by |
 |---|---|---|---|---|---|

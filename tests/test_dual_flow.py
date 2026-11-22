@@ -186,19 +186,17 @@ class FlowTest(unittest.TestCase):
         self.assertNotIn('MERGE', self.status(p1))
         self.assertEqual(self.status(p2)['RESEARCH_A'], 'QUEUED')              # nothing was merged: p2 does its own research
 
-    def test_legacy_parent_keeps_the_legacy_stages(self):
+    def test_a_retired_child_does_not_bring_back_the_legacy_stages(self):  # owner decision 2026-11-22: the stages are the two-agent flow only
         self.real = ['var.tyres', 'gen.hu', 'lst.checklist']
         pid = self.parent()
         with self.c:
             self.c.execute("INSERT INTO research_requests (owner_id, url, status, listing_id, parent_id, unit) VALUES (?, 'u', 'DONE', ?, ?, 'VARIANT')",
                            (ADMIN, CAR_A, pid))
         rq.advance(self.c, pid, self.mi)
-        self.assertEqual(self.status(pid), {'VARIANT': 'DONE', 'GENERATION': 'SKIPPED', 'GEN_MAINTENANCE': 'QUEUED', 'ENGINE': 'SKIPPED', 'GEARBOX': 'SKIPPED'})
-        with mock.patch.object(ru, 'FLOW', 'units'):                           # the rollback switch: a new parent starts with VARIANT
-            p2 = self.parent()
-            rq.advance(self.c, p2, self.mi)
-            self.assertEqual(self.status(p2), {'VARIANT': 'QUEUED'})
-        self.assertEqual([p['unit'] for p in rq.mine(self.c, ADMIN)[0]['parts']], ['VARIANT'])
+        st = self.status(pid)
+        self.assertEqual(st['VARIANT'], 'DONE')
+        self.assertIn('RESEARCH_A', st)
+        self.assertFalse(set(st) & {'GENERATION', 'GEN_MAINTENANCE', 'ENGINE', 'GEARBOX'})
 
     def test_progress_detail(self):
         self.real = ['eng.risks']
