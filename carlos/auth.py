@@ -6,7 +6,8 @@ import datetime, hashlib, hmac, secrets, time
 SESSION_DAYS, INVITE_HOURS = 30, 72
 COOKIE = 'carlos_session'
 LOGIN_MAX_FAILS, LOGIN_LOCK_SECONDS = 10, 300
-FAILS = {}  # shortcut: per-client lock in memory; resets on restart (single process)
+USER_MAX_FAILS = 20  # per username, from any address: higher, so a stranger cannot easily lock the owner out, but a botnet cannot guess forever
+FAILS = {}  # shortcut: lock counters in memory (keys: client address, 'u:<username>', 'pw:<user id>'); reset on restart (single process)
 OWNED = ('generations', 'engines', 'vehicles', 'sources', 'listings', 'project_parameters', 'project_preferences',
          'engine_families', 'gearbox_families', 'gearboxes', 'body_styles', 'options')
 # owner_id NULL = the shared catalogue (issue #109); the target design's levels (#174) are catalogue rows too
@@ -107,27 +108,48 @@ def user_by_token(c, token):
     return c.execute('SELECT * FROM main.users WHERE api_token_hash=? AND is_active=1', (digest(token),)).fetchone()
 
 
-def locked(client):
-    f = FAILS.get(client)
+def locked(key):
+    f = FAILS.get(key)
     return bool(f and time.time() < f['until'])
+
+
+def user_key(username):
+    return 'u:' + username.strip().lower()[:64]
+
+
+def fail(key, limit=LOGIN_MAX_FAILS):
+    """Counts a wrong password under `key`; `limit` of them lock the key for LOGIN_LOCK_SECONDS."""
+    now_ = time.time()
+    f = FAILS.setdefault(key, {'count': 0, 'until': 0.0, 'last': now_})
+    f['count'] += 1; f['last'] = now_
+    if f['count'] >= limit:
+        f.update(count=0, until=now_ + LOGIN_LOCK_SECONDS)
+
+
+def clear(key):
+    FAILS.pop(key, None)
+
+
+# A scrypt hash nobody can match: unknown usernames pay the same scrypt cost as known ones (no timing oracle).
+DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
 
 
 def login(c, username, password, client='local'):
     """Returns the session cookie value, or None. Ten wrong passwords from one client address lock that client for
-    five minutes (not the username, so a stranger cannot lock a user out). Stale entries are purged on every call."""
-    now_ = time.time()
+    five minutes; twenty for one username (from any address) lock that username, so rotating addresses does not
+    help. Unknown usernames are counted and take as long as known ones. Stale entries are purged on every call."""
+    now_, ukey = time.time(), user_key(username)
     for k in [k for k, f in FAILS.items() if f['until'] < now_ and f['last'] < now_ - LOGIN_LOCK_SECONDS]:
         del FAILS[k]
-    if locked(client):
+    if locked(client) or locked(ukey):
         return None
     u = c.execute('SELECT * FROM main.users WHERE username=? AND is_active=1', (username,)).fetchone()
-    if u is None or not u['password_hash'] or not check_password(u['password_hash'], password):
-        f = FAILS.setdefault(client, {'count': 0, 'until': 0.0, 'last': now_})
-        f['count'] += 1; f['last'] = now_
-        if f['count'] >= LOGIN_MAX_FAILS:
-            f.update(count=0, until=now_ + LOGIN_LOCK_SECONDS)
+    known = u is not None and bool(u['password_hash'])
+    ok = check_password(u['password_hash'] if known else DUMMY_HASH, password) and known  # scrypt runs either way
+    if not ok:
+        fail(client); fail(ukey, USER_MAX_FAILS)
         return None
-    FAILS.pop(client, None)
+    clear(client); clear(ukey)
     return new_session(c, u['id'])
 
 
@@ -179,9 +201,11 @@ def accept_invite(c, raw, password):
     return row['id']
 
 
-def set_password(c, user_id, password):
+def set_password(c, user_id, password, keep_session=None):
+    """Changes the password and ends every session of the account except `keep_session` (the digest of the caller's own cookie)."""
     with c:
         c.execute('UPDATE main.users SET password_hash=? WHERE id=?', (hash_password(password), user_id))
+        c.execute('DELETE FROM main.sessions WHERE user_id=? AND id<>?', (user_id, keep_session or ''))
 
 
 def new_token(c, user_id):

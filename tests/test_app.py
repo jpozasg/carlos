@@ -1,6 +1,6 @@
 """API, calculation and migration tests on a synthetic database (tests/fixture.py), never on real data.
 Run: python -m unittest -v"""
-import datetime, json, os, shutil, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
+import datetime, json, os, re, shutil, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -1830,7 +1830,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.upload(b'GIF89a', L)[0], 400)                         # type not allowed
         self.assertEqual(self.upload(jpg, L, ctype='application/json')[0], 415)
         self.assertEqual(self.upload(jpg, lid=999)[0], 404)
-        self.assertEqual(self.upload(b'\xff\xd8\xff' + b'x' * config.MAX_IMAGE_BYTES, L)[0], 400)
+        self.assertEqual(self.upload(b'\xff\xd8\xff' + b'x' * config.MAX_IMAGE_BYTES, L)[0], 413)
         budget, config.STORAGE_BUDGET = config.STORAGE_BUDGET, 0
         try:
             self.assertEqual(self.upload(jpg + b'more', L)[0], 507)                 # quota
@@ -1911,7 +1911,7 @@ class AppTest(unittest.TestCase):
             self.login(password='wrong')
         self.assertEqual(self.login()[0], 429)                                # this client is locked, even with the right password
         self.assertEqual(self.sql('SELECT count(*) FROM sessions')[0][0], 0)
-        self.assertEqual(len(auth.FAILS), 1)                                  # keyed by client, not by the names tried
+        self.assertEqual(sorted(auth.FAILS), ['127.0.0.1', 'u:admin'])        # the client and, apart, the username (10 of 20 fails: not locked)
         auth.FAILS['127.0.0.1'].update(until=0.0, last=0.0)                   # the lock expired long ago: purged on the next call
         self.assertEqual(self.login()[0], 200)
         self.assertNotIn('127.0.0.1', auth.FAILS)
@@ -1920,7 +1920,172 @@ class AppTest(unittest.TestCase):
         r = urllib.request.Request(self.base + '/api/auth/login', b'{}', {'Content-Type': 'application/json', 'Content-Length': str(server.MAX_JSON_BYTES + 1)}, method='POST')
         with self.assertRaises(urllib.error.HTTPError) as cm:
             urllib.request.urlopen(r)
-        self.assertEqual(cm.exception.code, 400)
+        self.assertEqual(cm.exception.code, 413)
+
+    # --- hardening (issue #383) ---
+    def run_token(self, unit):
+        """The per-request token of a claimed request of `unit` (the admin token claims it as the worker)."""
+        rid = self.req('POST', '/api/requests', {'url': f'https://www.example.com/car/{unit.lower()}'})[1]['id']
+        self.sql_write('UPDATE research_requests SET unit=? WHERE id=?', (unit, rid))
+        return self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']['request_token']
+
+    def fake_handler(self, token=None, cookie=None, method='GET', path='/api/tco'):
+        h = object.__new__(server.Handler)
+        h.command, h.path = method, path
+        h.headers = {**({'Authorization': f'Bearer {token}'} if token else {}), **({'Cookie': f'{auth.COOKIE}={cookie}'} if cookie else {})}
+        return h
+
+    def raw_http(self, head):
+        import socket
+        s = socket.create_connection(('127.0.0.1', self.srv.server_port), timeout=5)
+        try:
+            s.sendall(head.encode())
+            return s.recv(4096).split(b'\r\n', 1)[0].decode()
+        finally:
+            s.close()
+
+    def test_security_headers_on_every_response(self):
+        for path in ('/', '/login', '/static/js/boot.js', '/api/auth/me', '/nothing-here'):
+            try:
+                resp = urllib.request.urlopen(urllib.request.Request(self.base + path))
+            except urllib.error.HTTPError as e:
+                resp = e
+            h = resp.headers
+            self.assertIn("script-src 'self';", h['Content-Security-Policy'], path)
+            self.assertIn("frame-ancestors 'none'", h['Content-Security-Policy'])
+            self.assertEqual((h['X-Content-Type-Options'], h['X-Frame-Options'], h['Referrer-Policy']), ('nosniff', 'DENY', 'no-referrer'), path)
+            self.assertIsNone(h['Strict-Transport-Security'])                           # plain http: no HSTS
+        r = urllib.request.Request(self.base + '/login', headers={'X-Forwarded-Proto': 'https'})
+        self.assertIn('max-age=', urllib.request.urlopen(r).headers['Strict-Transport-Security'])
+
+    def test_pages_need_no_inline_script(self):
+        """The CSP forbids inline scripts and handlers: every page loads its code from /static/js."""
+        for page in ('index.html', 'auth.html'):
+            html = (config.STATIC / page).read_text()
+            self.assertEqual(re.findall(r'<script(?![^>]*\bsrc=)[^>]*>', html), [], page)
+            self.assertEqual(re.findall(r'\son[a-z]+\s*=\s*["\']', html), [], page)
+        for js in config.STATIC.glob('js/**/*.js'):
+            self.assertEqual(re.findall(r'\son(?:click|change|input|submit|load|error)\s*=\s*\\?["\']', js.read_text()), [], js.name)
+        self.assertIn("location.protocol === 'https:' ? '; Secure'", (config.STATIC / 'js' / 'app.js').read_text())   # the carlos_view cookie
+
+    def test_negative_and_oversized_content_length(self):
+        head = 'POST /api/auth/login HTTP/1.0\r\nContent-Type: application/json\r\nContent-Length: %s\r\n\r\n'
+        self.assertIn(' 400 ', self.raw_http(head % '-1'))                              # answered at once, no wait for a body
+        self.assertIn(' 400 ', self.raw_http(head % 'abc'))
+        self.assertIn(' 413 ', self.raw_http(head % str(server.MAX_JSON_BYTES + 1)))
+        self.assertIn(' 414 ', self.raw_http('GET /' + 'a' * 70000 + ' HTTP/1.0\r\n\r\n'))             # an error before the headers exist still answers
+
+    def test_stalled_client_is_dropped(self):
+        import socket, time
+        self.assertEqual(server.Handler.timeout, server.SOCKET_TIMEOUT)
+        with mock.patch.object(server.Handler, 'timeout', 0.3):
+            s = socket.create_connection(('127.0.0.1', self.srv.server_port), timeout=5)
+            s.sendall(b'POST /api/auth/login HTTP/1.0\r\nContent-Type: application/json\r\nContent-Length: 50\r\n\r\n{')   # promises 50 bytes, sends 1
+            t0 = time.time()
+            self.assertEqual(s.recv(100), b'')                                         # the server gave up and closed the connection
+            self.assertLess(time.time() - t0, 4)
+            s.close()
+
+    def test_log_line_hides_invite_tokens_and_query(self):
+        self.assertEqual(server.redact_log('"GET /invite/AbC-123_xyz HTTP/1.1" 200 -'), '"GET /invite/... HTTP/1.1" 200 -')
+        self.assertEqual(server.redact_log('"GET /api/auth/invite/AbC-123_xyz HTTP/1.1" 200 -'), '"GET /api/auth/invite/... HTTP/1.1" 200 -')
+        self.assertNotIn('secret', server.redact_log('"GET /api/tco?token=secret&annual_km=1 HTTP/1.1" 200 -'))
+
+    def test_sqlite_error_text_only_for_agents(self):
+        boom = sqlite3.OperationalError('no such column: secret_table.hidden_col')
+        _, cookie = self.login()
+        with mock.patch.object(server, 'model_tree', side_effect=boom):
+            st, body = self.req('GET', '/api/models', token=None, cookie=cookie)
+            self.assertEqual(st, 400)
+            self.assertNotIn('hidden_col', json.dumps(body))                            # a browser gets no schema detail
+            self.assertIn('hidden_col', self.req('GET', '/api/models')[1]['error'])     # an agent token still gets the exact text
+
+    def test_storage_and_health_are_admin_only(self):
+        _, c2 = self.second_account()
+        for path in ('/api/storage', '/api/health'):
+            self.assertEqual(self.req('GET', path, token=None, cookie=c2)[0], 403, path)
+            self.assertEqual(self.req('GET', path)[0], 200, path)
+        rt = self.run_token('CAPTURE')
+        for path in ('/api/storage', '/api/health'):
+            self.assertEqual(self.req('GET', path, token=rt)[0], 403, path)
+
+    def test_request_token_reads_an_allow_list(self):
+        """M3/N6: a research run reads the research endpoints; the profile only goes to the INSURANCE unit."""
+        self.sql_write("INSERT INTO project_preferences (owner_id, preference_key, preference_value) VALUES (1, 'insurance_holder_birth_date', '1980-01-01'), (1, 'diy_jobs', 'oil and filters')")
+        self.sql_write("UPDATE project_parameters SET postal_code='80331', sf_class='SF5', driver_age=45 WHERE owner_id=1")
+        rt = self.run_token('CAPTURE')
+        for path in ('/api/agent/todo', '/api/todo', '/api/agent/schema', '/api/models', '/api/vehicles', f'/api/vehicles/{V_A}', '/api/generations',
+                     '/api/engines', '/api/sources', '/api/listings', f'/api/listings/{CAR_A}', '/api/tco', '/api/preferences'):
+            self.assertEqual(self.req('GET', path, token=rt)[0], 200, path)
+        for path in ('/api/parameters', '/api/ranking', '/api/storage', '/api/health', '/api/requests', '/api/ui/check', '/api/admin/users'):
+            self.assertEqual(self.req('GET', path, token=rt)[0], 403, path)
+        # what the open endpoints still carry of the profile: the DIY choices, not the person
+        self.assertEqual({r['preference_key'] for r in self.req('GET', '/api/preferences', token=rt)[1]}, {'diy_jobs'})
+        for path in ('/api/tco', '/api/listings'):
+            body = self.req('GET', path, token=rt)[1]
+            self.assertTrue({'postal_code', 'sf_class', 'driver_age', 'ranking_answers'}.isdisjoint(body['parameters']), path)
+            self.assertIn('ownership_years', body['parameters'])
+            self.assertNotIn('weights', body['ranking'])
+        self.assertEqual(self.req('GET', '/api/tco', token=TOKEN)[1]['parameters']['postal_code'], '80331')   # the owner's own view is whole
+
+    def test_insurance_unit_reads_the_profile(self):
+        self.sql_write("INSERT INTO project_preferences (owner_id, preference_key, preference_value) VALUES (1, 'insurance_holder_birth_date', '1980-01-01')")
+        self.sql_write("UPDATE project_parameters SET postal_code='80331' WHERE owner_id=1")
+        rt = self.run_token('INSURANCE')
+        self.assertEqual(self.req('GET', '/api/parameters', token=rt)[1]['postal_code'], '80331')
+        self.assertIn('insurance_holder_birth_date', {r['preference_key'] for r in self.req('GET', '/api/preferences', token=rt)[1]})
+        self.assertEqual(self.req('GET', '/api/tco', token=rt)[1]['parameters']['postal_code'], '80331')
+        self.assertEqual(self.req('POST', '/api/parameters', {'annual_km': 1}, token=rt)[0], 403)           # reading only
+
+    def test_request_token_is_a_curator_never_an_admin(self):
+        """N3: the research token writes the catalogue (curator) but inherits no admin check."""
+        from carlos import db
+        def flags(**kw):
+            h, c = self.fake_handler(**kw), db.connect()
+            try:
+                h.require(c)
+            finally:
+                c.close()
+            return h.admin, h.curator
+        self.assertEqual(flags(token=TOKEN), (True, True))
+        self.assertEqual(flags(token=self.run_token('CAPTURE')), (False, True))
+        self.assertEqual(flags(cookie=self.second_account()[1]), (False, False))
+        c = db.connect()
+        try:
+            with self.assertRaises(server.NotAllowed):
+                self.fake_handler(token=self.run_token('TAX')).require(c, admin=True)
+        finally:
+            c.close()
+
+    def test_login_backoff_per_username_and_last_forwarded_hop(self):
+        login = lambda ip, pw='wrong', user='admin': self.req('POST', '/api/auth/login', {'username': user, 'password': pw}, token=None,
+                                                              headers={'X-Forwarded-For': f'6.6.6.6, {ip}'})[0]
+        self.assertEqual(login('9.9.9.9'), 401)
+        self.assertIn('9.9.9.9', auth.FAILS)                                             # the last hop (the proxy's), not 6.6.6.6
+        self.assertNotIn('6.6.6.6', auth.FAILS)
+        for i in range(auth.USER_MAX_FAILS - 1):                                         # rotating the address does not help against one username
+            login(f'10.0.{i // 200}.{i % 200}')
+        self.assertEqual(login('10.9.9.9', PASSWORD), 429)                               # locked for every address, even with the right password
+        self.assertEqual(login('10.9.9.9', 'wrong', user='nobody'), 401)                 # other usernames are not affected
+        auth.FAILS['u:admin'].update(until=0.0, last=0.0)
+        self.assertEqual(login('10.9.9.8', PASSWORD), 200)
+
+    def test_unknown_username_costs_a_scrypt_check(self):
+        with mock.patch.object(auth, 'check_password', wraps=auth.check_password) as chk:
+            self.assertEqual(self.login('nobody', 'x')[0], 401)
+            self.assertEqual(chk.call_count, 1)                                          # same work as for a known name
+            self.assertEqual(self.login('admin', 'x')[0], 401)
+            self.assertEqual(chk.call_count, 2)
+        self.assertFalse(auth.check_password(auth.DUMMY_HASH, 'carlos-dummy-password'))
+
+    def test_password_change_ends_other_sessions_and_is_rate_limited(self):
+        _, here = self.login(); _, other = self.login()
+        self.assertEqual(self.req('POST', '/api/account/password', {'old': PASSWORD, 'new': 'a new password'}, token=None, cookie=here)[0], 200)
+        self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=here)[0], 200)   # the caller stays signed in
+        self.assertEqual(self.req('GET', '/api/tco', token=None, cookie=other)[0], 401)  # every other session is gone
+        for _ in range(auth.LOGIN_MAX_FAILS):
+            self.assertEqual(self.req('POST', '/api/account/password', {'old': 'nope', 'new': 'another password'}, token=None, cookie=here)[0], 401)
+        self.assertEqual(self.req('POST', '/api/account/password', {'old': 'a new password', 'new': 'another password'}, token=None, cookie=here)[0], 429)
 
     def test_password_change_and_agent_token(self):
         st, cookie = self.login()

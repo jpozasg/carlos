@@ -2,7 +2,7 @@
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
-import datetime, json, math, os, re, secrets, sqlite3
+import datetime, json, math, os, re, secrets, sqlite3, sys
 import markdown_export
 from . import auth, config, research, research_requests as rq, research_units, staging
 from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
@@ -39,10 +39,44 @@ STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 
 
 MAX_JSON_BYTES = 1_000_000  # no JSON body of this API comes near it; stops unauthenticated memory floods
+SOCKET_TIMEOUT = 30  # seconds a client may stall on a read (slowloris); the server is threaded, so a stalled socket holds one thread
+
+# Sent with every response (issue #383). No inline scripts (static/js/boot.js, auth.js); style attributes are still allowed.
+SECURITY_HEADERS = (
+    ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                                "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
+    ('X-Content-Type-Options', 'nosniff'), ('X-Frame-Options', 'DENY'), ('Referrer-Policy', 'no-referrer'),
+    ('Cross-Origin-Opener-Policy', 'same-origin'))
+
+# What a per-request token (the headless research run of one claimed request, #141) may read. The profile (parameters,
+# preferences, ranking answers), the disk and the queue stay closed to it (issue #383, review M3/N6).
+RUN_GET = re.compile(r'/api/(agent/(todo|schema|stage|disputes)|todo|models|vehicles(/\d+)?|generations|engines|sources|listings(/\d+)?|tco|preferences)')
+PROFILE_GET = ('/api/parameters',)  # the INSURANCE unit only (with the unfiltered /api/preferences): it fills the quote form from them
+# The profile inside /api/tco and /api/listings and /api/preferences: every other unit gets the calculation settings
+# and the DIY/driving choices it needs (agent_tools.diy_jobs, resale_rule_of_thumb), not the person.
+PROFILE_PARAMS = ('postal_code', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'drivers_count', 'driver_age',
+                  'purchase_mode', 'ranking_weights', 'ranking_answers')
+RUN_PREFERENCES = ('diy_jobs', 'diy_skills', 'driving_mix', 'search_radius', 'preferred_engine', 'current_car', 'onboarding_done')
 
 
 class Forbidden(Exception):
     pass
+
+
+class TooLarge(Exception):
+    pass
+
+
+class RateLimited(Exception):
+    pass
+
+
+LOG_SECRET = re.compile(r'(/invite/)[\w-]+|\?\S*')
+
+
+def redact_log(line):
+    """An access-log line without invite tokens and without the query string (a secret may travel in either)."""
+    return LOG_SECRET.sub(lambda m: m[1] + '...' if m[1] else '?...', line)
 
 
 def ranked_rows(c, p):
@@ -118,7 +152,19 @@ def clean_params(data):
 
 
 class Handler(BaseHTTPRequestHandler):
-    user = None
+    timeout = SOCKET_TIMEOUT
+    user = request = None
+    admin = curator = False  # admin: an admin login or token; curator: may write the shared catalogue (an admin, or the research run of one request)
+
+    def end_headers(self):  # also covers send_error pages
+        for k, v in SECURITY_HEADERS:
+            self.send_header(k, v)
+        if getattr(self, 'headers', None) and self.headers.get('X-Forwarded-Proto') == 'https':  # no headers yet on a malformed request line
+            self.send_header('Strict-Transport-Security', 'max-age=15552000')
+        super().end_headers()
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write('%s - [%s] %s\n' % (self.address_string(), self.log_date_time_string(), redact_log(fmt % args)))
 
     # ------------------------------------------------------------------ responses
     def send_json(self, obj, status=200, cookie=None):
@@ -140,13 +186,25 @@ class Handler(BaseHTTPRequestHandler):
         # Requiring JSON forces a CORS preflight in browsers: another site cannot write.
         if not self.headers.get('Content-Type', '').startswith('application/json'):
             raise UnsupportedMediaType('Content-Type must be application/json')
-        length = int(self.headers.get('Content-Length', '0'))
-        if length > MAX_JSON_BYTES:
-            raise ValueError(f'Body too large: {length} bytes, maximum {MAX_JSON_BYTES}')
-        data = json.loads(self.rfile.read(length))
+        data = json.loads(self.rfile.read(self.body_length(MAX_JSON_BYTES)))
         if not isinstance(data, dict):
             raise ValueError('Expected a JSON object')
         return data
+
+    def body_length(self, limit):
+        """The Content-Length, 0..limit (a negative one would make rfile.read wait for the whole stream)."""
+        n = int(self.headers.get('Content-Length', '0') or 0)
+        if n < 0:
+            raise ValueError('Content-Length must not be negative')
+        if n > limit:
+            raise TooLarge(f'Body too large: {n} bytes, maximum {limit}')
+        return n
+
+    def client_ip(self):
+        """The address for the login lock: the LAST X-Forwarded-For hop, added by the reverse proxy (the earlier ones are
+        whatever the client sent). Without a proxy the header is client-controlled; auth.login's per-username counter holds then."""
+        xff = self.headers.get('X-Forwarded-For')
+        return (xff.split(',')[-1] if xff else self.client_address[0]).strip()
 
     def session_cookie(self, value, clear=False):
         secure = '; Secure' if self.headers.get('X-Forwarded-Proto') == 'https' else ''
@@ -184,18 +242,19 @@ class Handler(BaseHTTPRequestHandler):
         self.uid is then that account, self.user stays the admin (the change log records who wrote)."""
         if self.identify(c) is None:
             raise Forbidden('Login required')
+        self.admin = self.curator = False
         if self.request is not None:  # catalogue writes as the worker always did, listing data only in the requester's account
             p = urlsplit(self.path).path
-            if admin or self.headers.get('X-Carlos-Account') or not (
-                    self.command == 'GET' and not p.startswith('/api/worker/')
-                    or self.command in ('POST', 'PATCH') and p.startswith('/api/agent/')):
-                raise NotAllowed("A request token reads and writes research data for the requester's account only (no admin, settings, queue or deletes)")
-            self.admin, self.uid = True, self.request['owner_id']
+            reads = self.command == 'GET' and (RUN_GET.fullmatch(p) or p in PROFILE_GET and self.request['unit'] == 'INSURANCE')
+            if admin or self.headers.get('X-Carlos-Account') or not (reads or self.command in ('POST', 'PATCH') and p.startswith('/api/agent/')):
+                raise NotAllowed("A request token reads and writes research data for the requester's account only (no admin, settings, profile, queue or deletes)")
+            self.curator, self.uid = True, self.request['owner_id']  # curator, never admin: the token inherits no admin check
             auth.scope(c, self.uid, curator=True)
             return self.user
         if admin and self.user['role'] != 'admin':
             raise Forbidden('Admin only')
-        self.admin, self.uid = self.user['role'] == 'admin', self.user['id']
+        self.admin = self.curator = self.user['role'] == 'admin'
+        self.uid = self.user['id']
         acting, p = self.headers.get('X-Carlos-Account'), urlsplit(self.path).path
         # "view as account" (issue #142): an admin's browser session carries the account in the carlos_view cookie, so
         # pages and photos (<img> sends no headers) show that account; never for admin pages, non-admins are ignored
@@ -216,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError(f'X-Carlos-Account={acting}: no such active account')
             if row is not None:  # a stale view cookie (account gone) falls back to the admin's own account
                 self.uid = row[0]
-        auth.scope(c, self.uid, curator=self.admin)
+        auth.scope(c, self.uid, curator=self.curator)
         return self.user
 
     # ------------------------------------------------------------------ routing
@@ -267,7 +326,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'error': str(e)}, 507)
         except Conflict as e:
             self.send_json(e.payload, 409)
-        except (ValueError, sqlite3.Error) as e:  # JSONDecodeError is a ValueError; CHECK/FK violations are sqlite3.Error
+        except TooLarge as e:
+            self.send_json({'error': str(e)}, 413)
+        except RateLimited as e:
+            self.send_json({'error': str(e)}, 429)
+        except sqlite3.Error as e:  # CHECK/FK violations: agents need the exact text; a browser gets a generic one (the text names tables and columns)
+            self.log_error('sqlite error: %s', e)
+            self.send_json({'error': str(e) if self.headers.get('Authorization') else 'The request could not be completed'}, 400)
+        except ValueError as e:  # JSONDecodeError is a ValueError
             self.send_json({'error': str(e)}, 400)
         finally:
             c.close()
@@ -280,10 +346,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(auth.public(u) if u else {'error': 'Login required'}, 200 if u else 401)
         elif path == '/api/auth/login' and method == 'POST':
             d = self.read_json()
-            client = (self.headers.get('X-Forwarded-For') or self.client_address[0]).split(',')[0].strip()
-            raw = auth.login(c, str(d.get('username') or ''), str(d.get('password') or ''), client)
+            client, username = self.client_ip(), str(d.get('username') or '')
+            raw = auth.login(c, username, str(d.get('password') or ''), client)
             if raw is None:
-                self.send_json({'error': 'Wrong username or password'}, 429 if auth.locked(client) else 401); return
+                self.send_json({'error': 'Wrong username or password'}, 429 if auth.locked(client) or auth.locked(auth.user_key(username)) else 401); return
             u = auth.user_by_session(c, raw)
             self.send_json(auth.public(u), cookie=self.session_cookie(raw))
         elif path == '/api/auth/logout' and method == 'POST':
@@ -327,6 +393,8 @@ class Handler(BaseHTTPRequestHandler):
         if method == 'GET':
             m = re.fullmatch(r'/api/listings/(\d+)', path)
             mv = re.fullmatch(r'/api/vehicles/(\d+)', path)
+            if path in ('/api/storage', '/api/health') and not self.admin:  # file names, sizes and the integrity state are the operator's
+                raise NotAllowed('Admin only')
             if path == '/api/storage':
                 self.send_json(storage_usage())
             elif path == '/api/vehicles':
@@ -343,22 +411,27 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/api/engines':
                 self.send_json(rows(c, 'SELECT * FROM engines ORDER BY id'))
             elif path == '/api/parameters':
-                self.send_json(p)
+                self.send_json(p)  # a request token reaches this only as the INSURANCE unit (require)
             elif path == '/api/ui/check':
                 self.send_json({'ok': True})
             elif path == '/api/ranking':
                 self.send_json({**ranking_state(p), 'criteria': CRITERIA, 'tasks': TASKS})
             elif path == '/api/preferences':
-                self.send_json(rows(c, 'SELECT * FROM project_preferences ORDER BY preference_key'))
+                self.send_json([r for r in rows(c, 'SELECT * FROM project_preferences ORDER BY preference_key')
+                                if self.request is None or self.request['unit'] == 'INSURANCE' or r['preference_key'] in RUN_PREFERENCES])
             elif path in ('/api/tco', '/api/listings'):
                 over = {k: v[-1] for k, v in query.items() if k in CALC_PARAMS}
                 p = {**p, **clean_params(over)}  # preview: overrides are validated and never stored
                 check_budget(p)
                 out, n = ranked_rows(c, p)
                 fuel_age = days_since(p['fuel_price_date'], datetime.date.today())
+                ranking = {**ranking_state(p), 'criteria': CRITERIA, 'tasks': TASKS, 'candidates': n}
+                if self.request is not None and self.request['unit'] != 'INSURANCE':  # no profile for a research run (M3/N6)
+                    p = {k: v for k, v in p.items() if k not in PROFILE_PARAMS}
+                    ranking = {'criteria': CRITERIA, 'tasks': TASKS, 'candidates': n}
                 self.send_json({'parameters': p, 'preview': bool(over), 'components': config.TCO_COMPONENTS, 'listings': out,
                                 'budget': budget(p),
-                                'ranking': {**ranking_state(p), 'criteria': CRITERIA, 'tasks': TASKS, 'candidates': n},
+                                'ranking': ranking,
                                 'fuel_price_stale': None if fuel_age is None else fuel_age > config.STALE_FUEL_PRICE_DAYS})
             elif m:
                 d = detail(c, int(m[1]), p)
@@ -472,11 +545,16 @@ class Handler(BaseHTTPRequestHandler):
                                   (uid, k, str(v).strip()[:1000]))
             self.send_json(rows(c, 'SELECT * FROM project_preferences ORDER BY preference_key'))
         elif path == '/api/account/password' and method == 'POST':
-            d = self.read_json()
+            d, key = self.read_json(), f'pw:{user["id"]}'  # the logged-in user, not a viewed account
+            if auth.locked(key):
+                raise RateLimited('Too many wrong passwords; try again in a few minutes')
             if not auth.check_password(user['password_hash'], str(d.get('old') or '')):
+                auth.fail(key)
                 raise Forbidden('Wrong current password')
+            auth.clear(key)
             auth.check_new_password(d.get('new'))
-            auth.set_password(c, uid, d['new'])
+            cookie = SimpleCookie(self.headers.get('Cookie', ''))
+            auth.set_password(c, user['id'], d['new'], keep_session=auth.digest(cookie[auth.COOKIE].value) if auth.COOKIE in cookie else None)
             self.send_json({'ok': True})
         elif path == '/api/account/token' and method == 'POST':
             if self.user['role'] != 'admin':
@@ -493,10 +571,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'POST /api/agent/media/<listing_id>?url=...&snapshot_id=...'}, 405); return
             if not self.headers.get('Content-Type', '').startswith('image/'):
                 raise UnsupportedMediaType('Content-Type must be image/jpeg, image/png or image/webp')
-            length = int(self.headers.get('Content-Length', '0'))
-            if length > config.MAX_IMAGE_BYTES:
-                raise ValueError(f'Image is {length} bytes; maximum {config.MAX_IMAGE_BYTES}')
-            row_id, created = save_media(c, int(agent[2]), self.rfile.read(length), query)
+            row_id, created = save_media(c, int(agent[2]), self.rfile.read(self.body_length(config.MAX_IMAGE_BYTES)), query)
             if created:
                 export_markdown(c, uid)
             self.send_json({'table': 'listing_media', 'id': row_id, 'created': created}, 201 if created else 200)
@@ -513,7 +588,7 @@ class Handler(BaseHTTPRequestHandler):
             data = self.read_json()
             if (method == 'PATCH') != bool(agent[2]):
                 self.send_json({'error': 'POST /api/agent/<table> inserts; PATCH /api/agent/<table>/<id> updates'}, 405); return
-            if not self.admin:
+            if not self.curator:
                 check_writable(c, agent[1], int(agent[2]) if agent[2] else None, data)
             existing = resolve_variant(c, data, uid) if agent[1] == 'vehicles' and method == 'POST' else \
                 resolve_level(c, agent[1], data) if agent[1] in ('generations', 'engines') and method == 'POST' else None
@@ -521,7 +596,7 @@ class Handler(BaseHTTPRequestHandler):
                 export_markdown(c, uid)
                 self.send_json({'table': agent[1], 'id': existing, 'existing': True}); return
             merged = agent[1] == 'review_flags' and method == 'POST' and open_flag(c, data) is not None
-            row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.admin, user['id'])
+            row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.curator, user['id'])
             self.export_all(c, uid, linked_accounts(c, agent[1], row_id))
             self.send_json({'table': agent[1], 'id': row_id, **({'merged': True} if merged else {})}, 201 if method == 'POST' and not merged else 200)
         else:
@@ -584,10 +659,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise NotFound('POST /api/ui/media/<listing_id>')
             if not self.headers.get('Content-Type', '').startswith('image/'):
                 raise UnsupportedMediaType('Content-Type must be image/jpeg, image/png or image/webp')
-            length = int(self.headers.get('Content-Length', '0'))
-            if length > config.MAX_IMAGE_BYTES:
-                raise ValueError(f'Image is {length} bytes; maximum {config.MAX_IMAGE_BYTES}')
-            new_id, created = save_media(c, row_id, self.rfile.read(length), {'url': ['user upload (viewing mode)']})
+            new_id, created = save_media(c, row_id, self.rfile.read(self.body_length(config.MAX_IMAGE_BYTES)), {'url': ['user upload (viewing mode)']})
             return {'table': 'listing_media', 'id': new_id, 'created': created}
         data = self.read_json()
         if kind == 'inspection_items' and method == 'PATCH' and row_id is not None:

@@ -1,6 +1,6 @@
 """capture_listing.py against a test server on the synthetic fixture database. Run: python -m unittest -v"""
 import tempfile, threading, unittest
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import capture_listing
 from carlos import config, server
@@ -114,6 +114,47 @@ class CaptureListingTest(unittest.TestCase):
         (self.dir / 'photos' / 'x.gif').write_bytes(b'GIF89a')
         self.assertIsNone(capture_listing.read_photo({'file': 'photos/x.gif'}, self.dir)[0])
         self.assertIsNone(capture_listing.read_photo({'file': 'missing.jpg'}, self.dir)[0])
+
+    def test_photo_file_stays_inside_the_capture_folder(self):  # review M6
+        outside = self.dir.parent / 'outside-secret.jpg'
+        outside.write_bytes(JPG)
+        self.addCleanup(outside.unlink)
+        (self.dir / 'photos' / 'link.jpg').symlink_to(outside)
+        for f in ('../outside-secret.jpg', str(outside), 'photos/../../outside-secret.jpg', 'photos/link.jpg'):
+            body, why = capture_listing.read_photo({'file': f}, self.dir)
+            self.assertEqual((body, why), (None, 'file is outside the capture folder'), f)
+        self.assertEqual(capture_listing.read_photo({'file': 'photos/../photos/1.jpg'}, self.dir)[1], 'image/jpeg')
+
+    def test_photo_url_guard(self):  # review N7: no LAN, loopback, metadata, other schemes, credentials
+        hosts = {'cdn.example': ['93.184.216.34'], 'lan.example': ['192.168.1.20'], 'mixed.example': ['93.184.216.34', '10.0.0.5'],
+                 'v6.example': ['::1'], 'mapped.example': ['::ffff:127.0.0.1'], 'meta.example': ['169.254.169.254']}
+        resolver = lambda host: hosts.get(host) or [host]                       # an IP literal resolves to itself
+        ok = capture_listing.check_photo_url
+        ok('https://cdn.example/1.jpg', resolver)
+        for bad in ('file:///etc/passwd', 'ftp://cdn.example/1.jpg', 'http://127.0.0.1/x.jpg', 'http://[::1]/x.jpg', 'http://localhost/x.jpg',
+                    'http://169.254.169.254/latest/meta-data', 'http://192.168.1.1/x.jpg', 'http://10.0.0.1:8080/x.jpg', 'http://lan.example/x.jpg',
+                    'http://mixed.example/x.jpg', 'http://v6.example/x.jpg', 'http://mapped.example/x.jpg', 'http://meta.example/x.jpg',
+                    'https://user:pw@cdn.example/1.jpg', 'http:///x.jpg'):
+            with self.assertRaises(ValueError, msg=bad):
+                ok(bad, lambda h: resolver(h) if h != 'localhost' else ['127.0.0.1'])
+            self.assertIsNone(capture_listing.read_photo({'url': bad}, self.dir, lambda h: ['127.0.0.1'] if h == 'localhost' else resolver(h))[0], bad)
+
+    def test_photo_redirect_to_a_private_address_is_refused(self):
+        class Redirect(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(302); self.send_header('Location', 'http://10.0.0.1/secret.jpg'); self.end_headers()
+            log_message = lambda *a: None
+        srv = ThreadingHTTPServer(('127.0.0.1', 0), Redirect)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
+        seen = []
+        def resolver(host):                                                     # the test server stands in for a public host
+            seen.append(host)
+            return ['10.0.0.1'] if host == '10.0.0.1' else ['93.184.216.34']
+        body, why = capture_listing.read_photo({'url': f'http://127.0.0.1:{srv.server_port}/1.jpg'}, self.dir, resolver)
+        self.assertIsNone(body)
+        self.assertIn('private or reserved', why)
+        self.assertEqual(seen, ['127.0.0.1', '10.0.0.1'])                       # the redirect target was checked, and refused
 
 
 if __name__ == '__main__':

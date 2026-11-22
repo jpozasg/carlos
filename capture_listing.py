@@ -7,9 +7,9 @@ URLs given in the capture; a refused download is reported and skipped, never ret
 Usage:  python capture_listing.py capture.json [--dry-run] [--api http://127.0.0.1:8000]
 Format: see CAPTURE_FORMAT below (also printed with --help).
 """
-import argparse, json, os, re, sys, urllib.error, urllib.request
+import argparse, ipaddress, json, os, re, socket, sys, urllib.error, urllib.request
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from carlos import config  # NEW_CAR_MAX_KM: a new car is refused before any write (#165)
 
 ROOT = Path(__file__).resolve().parent
@@ -158,18 +158,52 @@ def find_existing(api, cap):
     return None
 
 
-def read_photo(photo, base_dir):
-    """Returns (bytes, mime) or (None, reason). Local files win over URLs."""
+def resolve_host(host):
+    """The addresses a host name resolves to (injectable in tests)."""
+    return [ai[4][0] for ai in socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)]
+
+
+def check_photo_url(url, resolver=resolve_host):
+    """ValueError unless `url` is a plain http(s) link whose host resolves only to public addresses: a capture is
+    text from a web page, and must not make this machine fetch its LAN, loopback or cloud-metadata addresses (the
+    image would then be stored in the requester's account, review N7). shortcut: the name is resolved here and again
+    by urllib, so DNS rebinding in between is not closed; acceptable for an owner-run helper reading photo links."""
+    u = urlsplit(url)
+    if u.scheme not in ('http', 'https') or not u.hostname or u.username or u.password:
+        raise ValueError('photo links must be plain http(s) URLs without credentials')
+    for addr in resolver(u.hostname):
+        ip = ipaddress.ip_address(addr.split('%')[0])
+        if not (getattr(ip, 'ipv4_mapped', None) or ip).is_global:
+            raise ValueError('photo host resolves to a private or reserved address')
+
+
+class _GuardRedirects(urllib.request.HTTPRedirectHandler):
+    def __init__(self, resolver):
+        self.resolver = resolver
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        check_photo_url(newurl, self.resolver)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def read_photo(photo, base_dir, resolver=resolve_host):
+    """Returns (bytes, mime) or (None, reason). Local files win over URLs; a file must lie inside `base_dir` (no
+    `..`, no absolute path, no symlink out of it); a URL must be public (check_photo_url), also after redirects."""
     try:
         if photo.get('file'):
-            body = (base_dir / photo['file']).read_bytes()
+            base = base_dir.resolve()
+            f = (base / photo['file']).resolve()
+            if not f.is_relative_to(base):
+                return None, 'file is outside the capture folder'
+            body = f.read_bytes()
         else:
+            check_photo_url(photo['url'], resolver)
             req = urllib.request.Request(photo['url'], headers={'User-Agent': USER_AGENT})
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.build_opener(_GuardRedirects(resolver)).open(req, timeout=30) as resp:
                 body = resp.read(MAX_IMAGE_BYTES + 1)
     except urllib.error.HTTPError as e:
         return None, f'download refused (HTTP {e.code}); not retried'
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, TypeError) as e:
         return None, f'could not read: {e}'
     if len(body) > MAX_IMAGE_BYTES:
         return None, f'larger than {MAX_IMAGE_BYTES} bytes; capture the ~1024 px version'
