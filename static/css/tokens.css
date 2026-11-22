@@ -11,33 +11,50 @@
   --border-w:1px;--shadow:0 1px 2px rgb(0 0 0/.04),0 2px 8px rgb(0 0 0/.04);
   --tag-case:none;--tag-spacing:0;--label-case:none;--label-spacing:0;
   --bg-decor:none;--bg-decor-size:auto;
-  /* data-viz series (validated palette, identical in every theme so charts stay comparable) */
-  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s8:#e34948;
+  /* data-viz series, validated with the dataviz validator (light on #f7f8fa, dark on #13161b: adjacent CVD >= 8.4, all marks >= 3:1).
+     --s9 is a neutral, not a hue (a ninth hue would collide with the eight): its chroma check fails on purpose, so a mark
+     in --s9 always carries its label (legend entry, aria-label) and is never told apart by colour alone. */
+  --s1:#2a78d6;--s2:#e76633;--s3:#19a170;--s4:#be8100;--s5:#d06e93;--s6:#008300;--s7:#6250d6;--s8:#e34948;--s9:#7a8494;
   --good:#0ca30c;--good-ink:#006300;--good-soft:#e3f5e3;
   --warn:#fab219;--warn-ink:#7a5200;--warn-soft:#fff3d6;
-  --bad:#d03b3b;--bad-ink:#a42828;--bad-soft:#fbe5e5;
+  --bad:#d03b3b;--bad-contrast:#fff;--bad-ink:#a42828;--bad-soft:#fbe5e5;
+  --field-border:#767f8c;
 }
 /* ---------- cluster (the default world: an instrument cluster at night; amber readouts, teal for savings) ---------- */
 :root[data-theme="cluster"]{
   color-scheme:dark;
-  --bg:#0b0d10;--surface:#13161b;--surface-2:#1b1f26;--border:#2a2f38;--border-strong:#424a57;
+  --bg:#0b0d10;--surface:#13161b;--surface-2:#1b1f26;--border:#2a2f38;--border-strong:#424a57;--field-border:#6a7380;  /* --field-border: inputs and unpressed buttons, 3:1 on --surface (WCAG 1.4.11) */
   --text:#f2f3f5;--text-2:#b9bec8;--text-3:#8a909b;
   --accent:#f5a524;--accent-ink:#ffc45e;--accent-soft:#2d2210;--accent-contrast:#17110a;
   --ref-soft:#1a2328;
   --readout:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
   --radius:10px;--radius-s:6px;--radius-pill:999px;--border-w:1px;--shadow:0 0 0 1px rgb(255 255 255/.03),0 6px 20px rgb(0 0 0/.5);
-  --good:#2fd4a8;--good-ink:#6fe6c5;--good-soft:#0f2e26;--warn-ink:#ffc14d;--warn-soft:#332a10;--bad:#ff5c5c;--bad-ink:#ff8a8a;--bad-soft:#331616;
-  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;
+  --good:#2fd4a8;--good-ink:#6fe6c5;--good-soft:#0f2e26;--warn-ink:#ffc14d;--warn-soft:#332a10;--bad:#ff5c5c;--bad-contrast:#1a0a0a;--bad-ink:#ff8a8a;--bad-soft:#331616;
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;--s9:#8791a0;
   --bg-decor:radial-gradient(ellipse at top,rgb(245 165 36/.07),transparent 60%);--bg-decor-size:auto;
 }
+/* Light mode: chosen (data-mode=light) or, with no choice (Auto), the OS setting. The two blocks below hold the same
+   declarations; tests/test_theme_tokens.py fails when they drift apart. */
 :root[data-theme="cluster"][data-mode="light"]{
   color-scheme:light;
-  --bg:#e9ebee;--surface:#f7f8fa;--surface-2:#e0e3e8;--border:#c9ced6;--border-strong:#9aa3b0;
-  --text:#121418;--text-2:#3f4652;--text-3:#6b7380;
-  --accent:#b86e00;--accent-ink:#8a5200;--accent-soft:#fdeccd;--accent-contrast:#fff;
+  --bg:#e9ebee;--surface:#f7f8fa;--surface-2:#e0e3e8;--border:#c9ced6;--border-strong:#9aa3b0;--field-border:#767f8c;
+  --text:#121418;--text-2:#3f4652;--text-3:#5a6270;
+  --accent:#b86e00;--accent-ink:#8a5200;--accent-soft:#fdeccd;--accent-contrast:#17110a;
   --ref-soft:#e4ecf0;
-  --good-ink:#006300;--good-soft:#e3f5e3;--warn-ink:#7a5200;--warn-soft:#fff3d6;--bad-ink:#a42828;--bad-soft:#fbe5e5;
-  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s8:#e34948;
+  --good:#0ca30c;--good-ink:#006300;--good-soft:#e3f5e3;--warn-ink:#7a5200;--warn-soft:#fff3d6;--bad:#d03b3b;--bad-contrast:#fff;--bad-ink:#a42828;--bad-soft:#fbe5e5;
+  --s1:#2a78d6;--s2:#e76633;--s3:#19a170;--s4:#be8100;--s5:#d06e93;--s6:#008300;--s7:#6250d6;--s8:#e34948;--s9:#7a8494;
   --shadow:0 1px 2px rgb(0 0 0/.06);--bg-decor:none;
+}
+@media (prefers-color-scheme:light){
+:root[data-theme="cluster"]:not([data-mode]){
+  color-scheme:light;
+  --bg:#e9ebee;--surface:#f7f8fa;--surface-2:#e0e3e8;--border:#c9ced6;--border-strong:#9aa3b0;--field-border:#767f8c;
+  --text:#121418;--text-2:#3f4652;--text-3:#5a6270;
+  --accent:#b86e00;--accent-ink:#8a5200;--accent-soft:#fdeccd;--accent-contrast:#17110a;
+  --ref-soft:#e4ecf0;
+  --good:#0ca30c;--good-ink:#006300;--good-soft:#e3f5e3;--warn-ink:#7a5200;--warn-soft:#fff3d6;--bad:#d03b3b;--bad-contrast:#fff;--bad-ink:#a42828;--bad-soft:#fbe5e5;
+  --s1:#2a78d6;--s2:#e76633;--s3:#19a170;--s4:#be8100;--s5:#d06e93;--s6:#008300;--s7:#6250d6;--s8:#e34948;--s9:#7a8494;
+  --shadow:0 1px 2px rgb(0 0 0/.06);--bg-decor:none;
+}
 }
 /* ---------- retro (seventies brochure: cream, burnt orange, avocado) ---------- */
