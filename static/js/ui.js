@@ -37,7 +37,15 @@ export function toast(msg, bad) {
   const el = $('toast'); el.textContent = msg; el.className = 'show' + (bad ? ' bad' : '');
   clearTimeout(el._h); el._h = setTimeout(() => el.className = bad ? 'bad' : '', 3500);
 }
-export const empty = x => `<p class="empty">${x}</p>`;
+// a request-sending control: disabled and aria-busy while `work` runs, restored in finally so a double submit is impossible
+export async function busy(btn, work) {
+  const label = btn.textContent; btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = t('saving');
+  try { return await work(); }
+  finally { if (btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = label; } }
+}
+// an ISO date (YYYY-MM-DD) as the reader's locale writes it
+export const fmtDate = iso => /^\d{4}-\d\d-\d\d/.test(iso || '') ? new Intl.DateTimeFormat(locale(), { dateStyle: 'medium' }).format(new Date(iso.slice(0, 10) + 'T12:00:00')) : '';
+export const empty = x =>`<p class="empty">${x}</p>`;
 export const facts = pairs => `<dl class="facts">${pairs.map(([k, v]) => `<dt>${k}</dt><dd>${v ?? PEND()}</dd>`).join('')}</dl>`;
 export const media = fp => '/media/' + esc(fp);
 export const CAR_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 40v-8l6-12a4 4 0 0 1 3.6-2.2h28.8A4 4 0 0 1 50 20l6 12v8a3 3 0 0 1-3 3H11a3 3 0 0 1-3-3Z"/><path d="M12 32h40"/><circle cx="19" cy="43" r="5"/><circle cx="45" cy="43" r="5"/></svg>';

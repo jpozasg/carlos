@@ -21,7 +21,7 @@ const QUOTE_PREFS = ['insurance_holder_gender', 'insurance_holder_birth_date', '
 function workerQuotes() {
   const on = S.prefs?.insurance_worker_quotes, since = String(on || '').match(/\d{4}-\d{2}-\d{2}/)?.[0];
   const miss = [...QUOTE_PARAMS.filter(k => S.saved[k] == null || S.saved[k] === ''), ...QUOTE_PREFS.filter(k => !S.prefs?.[k])];
-  return `<div class="card"><h3>${t('wq_title')}</h3><p class="small muted" style="margin-top:0">${t('wq_text')}</p>
+  return `<div class="card"><h3>${t('wq_title')}</h3><p class="small muted" style="margin-top:0">${t('wq_text')}</p><p class="small"><b>${t('wq_owner_only')}</b></p>
     <label class="row" style="gap:8px;align-items:center"><input type="checkbox" id="wq_on" ${on ? 'checked' : ''}> <b>${t('wq_label')}</b></label>
     <p class="small" role="status">${on ? `<span class="tag good">✓ ${t('wq_enabled')}${since ? ' · ' + esc(since) : ''}</span>` : `<span class="tag">${t('wq_disabled')}</span>`}</p>
     ${miss.length ? `<p class="small"><span class="tag warn">⚠ ${t('wq_incomplete')}</span> ${miss.map(k => esc(k.replace(/^insurance_/, '').replace(/_/g, ' '))).join(', ')}. <a href="#/start?step=3">${t('wq_complete')}</a></p>` : ''}</div>`;
@@ -101,7 +101,7 @@ function draw() {
   root.innerHTML = `<div class="section"><h2>${t('tab_settings')}</h2><p class="lead">${t('settings_lead')}</p>
     <div class="callout"><p>${t('setup_again_text')}</p><a class="btn ghost sm" href="#/start">${t('setup_again')}</a></div>
     <div class="grid" style="grid-template-columns:1fr"><div class="card">${form()}</div></div>
-    <div class="grid" style="grid-template-columns:1fr;margin-top:16px">${workerQuotes()}</div>
+    ${S.me.role === 'admin' ? `<div class="grid" style="grid-template-columns:1fr;margin-top:16px">${workerQuotes()}</div>` : ''}
     <div class="grid" style="margin-top:16px">${filters()}${appearance()}${account()}</div></div>`;
   paramUi();
 }

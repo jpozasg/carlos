@@ -489,3 +489,10 @@ main:focus{outline:none}
 tr.hl td{background:var(--surface-2);font-weight:600}
 /* every animation and transition (skeleton shimmer, toast, tooltip, hero zoom, score sweep) is off when the OS asks for less motion */
 @media (prefers-reduced-motion:reduce){*,::before,::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* manual insurance quote (#399): inline errors stay until the next try; the how-to is plain text and one link */
+.hint.err{color:var(--bad-ink)}
+details.quote-entry{margin-top:14px;padding-top:10px;border-top:1px solid var(--border)}
+details.quote-entry>summary{cursor:pointer;font-weight:600;font-size:14px;padding:4px 0}
+details.quote-entry .howto{margin:8px 0 12px;padding:10px 12px;border-radius:var(--radius-s);background:var(--surface-2)}
+details.quote-entry .howto a{overflow-wrap:anywhere}
+@media (pointer:coarse){details.quote-entry>summary{min-height:44px;display:flex;align-items:center}}

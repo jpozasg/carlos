@@ -907,7 +907,7 @@ def listing_detail(c, listing_id, p, ranked):
              unit_costs=q('SELECT * FROM unit_costs WHERE listing_id=? ORDER BY id'),
              maintenance_resets=q('SELECT * FROM maintenance_resets WHERE listing_id=? ORDER BY id'),
              history=q('SELECT * FROM listing_history WHERE listing_id=? ORDER BY id'),
-             quotes=q('SELECT * FROM listing_quotes WHERE listing_id=? ORDER BY id'),
+             quotes=q('SELECT * FROM listing_quotes WHERE listing_id=? ORDER BY id'), quote_max_age_days=config.QUOTE_MAX_AGE_DAYS,
              recalls=know.of('recalls', v, reg), review_flags=know.of('review_flags', v),
              inspection=q('SELECT * FROM inspection_items WHERE listing_id=? ORDER BY id'),
              events=q('SELECT * FROM listing_events WHERE listing_id=? ORDER BY event_date, id'),

@@ -363,11 +363,23 @@ def release_shared(c, x, missing=None):
             advance(c, w['parent_id'], missing)
 
 
+WORKER_QUOTES_PAUSED = ("Worker insurance quotes run only for the owner's own account until a lawyer has answered "
+                        "(2026-11-22); enter the quote by hand in the dossier's Costs tab")
+
+
+def owner_is_admin(c, owner_id):
+    r = c.execute('SELECT role FROM main.users WHERE id=?', (owner_id,)).fetchone()
+    return bool(r) and r[0] == 'admin'
+
+
 def _insurance_skip(c, parent):
     """Why the INSURANCE unit does not run for this request (None: it runs). Order: reference car (its premium is the owner's
-    USER DATA), the account's consent (Settings, preference insurance_worker_quotes), a complete insurance profile."""
+    USER DATA), an account that is not the owner's own admin account (paused, #399), the account's consent (Settings,
+    preference insurance_worker_quotes), a complete insurance profile."""
     if c.execute('SELECT is_reference FROM main.listings WHERE id=?', (parent['listing_id'],)).fetchone()[0]:
         return "Reference car: the premium is the owner's USER DATA"
+    if not owner_is_admin(c, parent['owner_id']):
+        return WORKER_QUOTES_PAUSED
     prefs = {r[0]: r[1] for r in c.execute('SELECT preference_key, preference_value FROM main.project_preferences WHERE owner_id=?', (parent['owner_id'],))}
     if not prefs.get('insurance_worker_quotes'):
         return 'Insurance quotes not enabled for this account (Settings)'

@@ -62,8 +62,8 @@ def todo(c, p, ranked):
                 t.append(f"reliability from {rs['present']} of {rs['of']} sources" + (' (not scored)' if rs['score'] is None else '')
                          + f": no published figure for {', '.join(rs['missing'])} (source_keys / source_ratings: Autoscore on the engine; TÜV-Report, ADAC on the generation)")
         # the contract's listing items that no line above covers (an expired quote, a weak point without a checklist item)
-        t += [f"listing {i['id']} missing: {i['title']}" for i in u['research']
-              if i['id'] in ('lst.insurance', 'lst.checklist') and i['grade'] == 'MISSING']
+        t += [f"listing {i['id']} missing: {i['title']}" + (' (enter it in the dossier Costs tab)' if i['id'] == 'lst.insurance' and not u['is_reference'] else '')
+              for i in u['research'] if i['id'] in ('lst.insurance', 'lst.checklist') and i['grade'] == 'MISSING']
         listings.append({'listing_id': u['id'], 'name': f"{u['make']} {u['model']} {u['listing_id'] or '(reference)'}", 'todo': t})
     know = Knowledge(c)
     contract = research.Contract(c, know)
@@ -116,9 +116,7 @@ def account_todo(c, p, today):
             age = days_since(p.get(k + '_date'), today)
             if p.get(k + '_eur_kwh') is not None and (age is None or age > config.STALE_FUEL_PRICE_DAYS):
                 t.append(f'{k.replace("_", " ")} price older than {config.STALE_FUEL_PRICE_DAYS} days or undated (Settings)')
-    missing = quote_profile_gaps(p, prefs)
-    if not prefs.get('insurance_worker_quotes'):
-        t.append('insurance quotes by the worker are not enabled (Settings); quote in a live session or switch it on')
+    missing = quote_profile_gaps(p, prefs)  # the worker's quotes are paused for other accounts (#399): no "not enabled" line
     if missing:
         t.append('insurance profile incomplete for quotes (ask the user or the setup Drivers/Insurance steps): ' + ', '.join(missing))
     return t
