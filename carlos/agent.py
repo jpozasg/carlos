@@ -439,8 +439,8 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, reques
 
 
 # A listing is deleted together with its own rows, children first (photos before captures, resets before costs).
-LISTING_CHILDREN_DELETE_ORDER = ('maintenance_resets', 'inspection_items', 'unit_costs', 'valuations', 'listing_events',
-                                 'listing_media', 'listing_snapshots')
+LISTING_CHILDREN_DELETE_ORDER = ('listing_options', 'listing_quotes', 'listing_history', 'maintenance_resets', 'inspection_items',
+                                 'unit_costs', 'valuations', 'listing_events', 'listing_media', 'listing_snapshots')
 
 
 def references(c, table, row_id):
@@ -477,10 +477,13 @@ def agent_delete(c, table, row_id, user_id, request_id=None):
         c.execute(f'DELETE FROM main.{table} WHERE id=?', (row_id,))
         log_change(c, table, row_id, 'delete', json.dumps(dict(old), ensure_ascii=False),
                    json.dumps({'deleted': True, 'removed_children': {k: v for k, v in removed.items() if v}}), user_id, request_id)
-    for f in files:  # after the commit: a failed delete keeps its photos
-        path = config.MEDIA_DIR / f
+    media = config.MEDIA_DIR.resolve()
+    for f in files:  # after the commit: a failed delete keeps its photos; a path outside the media folder is never unlinked
+        path = (config.MEDIA_DIR / f).resolve()
+        if not path.is_relative_to(media):
+            continue
         path.unlink(missing_ok=True)
-        if path.parent != config.MEDIA_DIR and path.parent.is_dir() and not any(path.parent.iterdir()):
+        if path.parent != media and path.parent.is_dir() and not any(path.parent.iterdir()):
             path.parent.rmdir()
     return removed
 

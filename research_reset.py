@@ -23,6 +23,8 @@ owner confirmed that exact deletion in the session (AGENTS.md: never delete with
 
 Usage: python research_reset.py <cars.sqlite> [--apply] [--keep-account 5] [--drop-requests] [--keep-tax-insurance]
        python research_reset.py <cars.sqlite> --reliability [--apply] [--delete]"""
+import datetime
+import shutil
 import sqlite3
 import sys
 from pathlib import Path
@@ -124,8 +126,14 @@ def run(db, apply=False, keep=5, drop_requests=False, keep_ti=False):
             print('Dry run: nothing changed. Run with --apply to reset (a backup is made first).')
             return done
         assert c.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
-        for f in media:  # after the commit: a failed reset never loses photos
-            (db.parent / 'media' / f).unlink(missing_ok=True)
+        trash = db.parent / 'trash' / f'research-reset-{datetime.datetime.now():%Y%m%d-%H%M%S}'
+        for f in media:  # after the commit: a failed reset never loses photos; they move to the trash, nothing is unlinked
+            src = db.parent / 'media' / f
+            if src.is_file():
+                (trash / f).parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(src, trash / f)
+        if media:
+            print(f'Photo files moved to {trash} (delete that folder by hand once you are sure).')
         print('Reset applied; integrity ok, no foreign-key violations.')
         return done
     finally:
