@@ -1268,7 +1268,10 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}', token=rt)[0], 404)
         self.assertEqual(self.agent('PATCH', f'listings/{CAR_A}', {'notes': 'x'}, token=rt)[0], 404)
         st, src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, token=rt)
-        st, l = self.agent('POST', 'listings', {'vehicle_id': V_A, 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'W1',
+        st, v = self.agent('POST', 'vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Her 1.4', 'transmission': 'Manual', 'body_style': 'Hatchback, 5 doors',
+                                                'emissions_standard': 'Euro 5', 'co2_g_km': 140, 'hsn': '5151', 'tsn': 'WWW', 'technical_status': 'VERIFIED'}, token=rt)
+        self.assertEqual(st, 201, v)  # SEC-2: a capture lists on a variant it created (a known variant is not its to name)
+        st, l = self.agent('POST', 'listings', {'vehicle_id': v['id'], 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'W1',
                                                 'price_eur': 5000, 'mileage_km': 90000}, token=rt)
         self.assertEqual((st, self.sql('SELECT owner_id FROM listings WHERE id=?', (l['id'],))[0][0]), (201, uid2))
         st, g = self.agent('POST', 'generations', {'make': 'Zeta', 'model': 'Z', 'name': 'Z1'}, token=rt)

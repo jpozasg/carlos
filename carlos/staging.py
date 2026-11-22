@@ -220,19 +220,39 @@ def _capture_variant(c, req, listing_id, vid):
     return gen is not None and c.execute('SELECT 1 FROM main.vehicles WHERE id=? AND generation_id=?', (vid, gen)).fetchone() is not None
 
 
+def _own_listing(c, req, table, row_id):
+    """The listing a non-staged unit works on: its request's listing. A capture that has none yet works on the first listing it wrote,
+    or on the listing row it is writing now (that write is its claim, SEC-1)."""
+    if req['listing_id']:
+        return req['listing_id']
+    if req['unit'] != 'CAPTURE':
+        return None
+    first = c.execute("SELECT row_id FROM main.change_log WHERE request_id=? AND table_name='listings' ORDER BY id LIMIT 1", (req['id'],)).fetchone()
+    return first[0] if first else (row_id if table == 'listings' else None)
+
+
 def check_unit_write(c, req, table, row_id, data):
     """The generic /api/agent write of a non-staged unit (CAPTURE, TAX, LISTING; `req` is its research_requests row):
-    its own tables only; a new row on a level only on a level of its listing's variant chain; a PATCH of a shared catalogue row
-    only on that chain too (CAPTURE never patches one: the research run does). Raises NotAllowed (403)."""
+    its own tables only; a row or a new row that belongs to a listing only on the request's own listing (SEC-1); a new row on a
+    level only on a level of that listing's variant chain (SEC-2: a capture's listing may name only a variant it created or its own
+    generation); a PATCH of a shared catalogue row only on that chain too (CAPTURE never patches one: the research run does).
+    Raises NotAllowed (403)."""
     unit, allowed = req['unit'], UNIT_TABLES.get(req['unit'])
     if allowed is None:  # MERGE, a retired unit (2026-11-22) or no unit at all: nothing is written through /api/agent
         raise NotAllowed(ru.refusal(unit) or f'{unit} writes nothing through /api/agent')
     if table not in allowed:
         raise NotAllowed(f'{unit} writes only {", ".join(sorted(allowed))}, not {table}')
     data = data if isinstance(data, dict) else {}  # agent_write answers 400 for anything else
+    own = _own_listing(c, req, table, row_id)
+
+    def on_own_listing(lid):
+        if lid is not None and lid != own:
+            raise NotAllowed(f'{table} belongs to listing {lid}: {unit} works on listing {own} only')
     levels = []
     if row_id is None:
-        if unit != 'CAPTURE' and table != 'listings':  # the capture's listing and variant do not exist yet; a listing's vehicle_id is a pointer
+        if table != 'listings':  # a listings row is its listing: its listing_id is the platform's id, not ours
+            on_own_listing(data.get('listing_id'))
+        if table == 'listings' or unit != 'CAPTURE':  # the capture's other new rows are its shell (generation, engine, variant); a listing's variant is checked
             levels = [_level(data)]
     else:
         base = c.execute(f'SELECT * FROM {_view(table)} WHERE id=?', (row_id,)).fetchone()  # table is one of the fixed names above
@@ -242,12 +262,17 @@ def check_unit_write(c, req, table, row_id, data):
             levels = [_level(dict(base)), _level({**dict(base), **data})]
             if any(col is None for col, _ in levels):
                 raise NotAllowed(f'{table} id={row_id} has no level (a global default or a shared source): {unit} does not change it')
-        elif base is not None:  # an account's own row: a level it is moved to (a listing's variant, a source of its car) stays on the car's chain
+        elif base is not None:  # an account's own row: its listing is the request's, and a level it is moved to stays on the car's chain
+            if table == 'listings':
+                on_own_listing(row_id)
+            else:
+                on_own_listing(base['listing_id'] if 'listing_id' in base.keys() else None)
+                on_own_listing(data.get('listing_id'))
             levels = [(k, data[k]) for k in config.LEVEL_COLUMNS if data.get(k) is not None]
-    chain = variant_chain(c, req['listing_id']) if levels and req['listing_id'] else []
+    chain = variant_chain(c, own) if levels and own else []
     for col, lid in levels:
-        if col is not None and [col, lid] not in chain and not (unit == 'CAPTURE' and table == 'listings' and col == 'vehicle_id' and _capture_variant(c, req, row_id, lid)):
-            raise NotAllowed(f"{col}={lid} is outside the variant of listing {req['listing_id']}: {unit} writes only on that car's levels")
+        if col is not None and [col, lid] not in chain and not (unit == 'CAPTURE' and table == 'listings' and col == 'vehicle_id' and _capture_variant(c, req, own, lid)):
+            raise NotAllowed(f"{col}={lid} is outside the variant of this run's listing ({own}): {unit} writes only on that car's levels")
 
 
 def _fault_conflicts(c, req, p, mine, distinct):
