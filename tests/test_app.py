@@ -2022,6 +2022,21 @@ class AppTest(unittest.TestCase):
         self.assertEqual(st, 409)
         self.assertIn('restore it', why['error'])
 
+    def test_photo_upload_only_into_own_listing(self):
+        """D08: an account cannot store a photo on another account's listing (404), by either upload route; the owner can."""
+        adm = self.login()[1]
+        st, u = self.req('POST', '/api/admin/users', {'username': 'maria'}, token=None, cookie=adm)
+        self.req('POST', '/api/auth/invite/' + u['invite'].rsplit('/', 1)[1], {'password': 'marias password'}, token=None)
+        maria = self.login('maria', 'marias password')[1]
+        jpg = fx.jpeg([(0xE0, b'd' * 40)])
+        ui_post = lambda cookie: self.req('POST', f'/api/ui/media/{CAR_A}', raw=jpg, ctype='image/jpeg', token=None, cookie=cookie)
+        agent_post = lambda cookie: self.req('POST', f'/api/agent/media/{CAR_A}', raw=jpg, ctype='image/jpeg', token=None, cookie=cookie)
+        self.assertEqual(ui_post(maria)[0], 404)
+        self.assertEqual(agent_post(maria)[0], 404)
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM listing_media WHERE listing_id=?', (CAR_A,))[0][0], 0)
+        self.assertEqual(ui_post(adm)[0], 201)   # the owner's own listing
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM listing_media WHERE listing_id=?', (CAR_A,))[0][0], 1)
+
     def test_remove_photo_is_scoped_to_the_account(self):
         adm = self.login()[1]
         self.assertEqual(self.upload(fx.jpeg([(0xE0, b'd' * 60)]), CAR_A)[0], 201)
