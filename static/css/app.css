@@ -516,3 +516,56 @@ details.quote-entry .howto a{overflow-wrap:anywhere}
 @media (pointer:coarse){details.quote-entry>summary{min-height:44px;display:flex;align-items:center}
   .vbtns button,.vnote,.dtabs button,.viewing-on .btn,.viewing-on .linkbtn,.decide .btn,.decide .linkbtn,.btn.sm{min-height:44px;touch-action:manipulation}
   details.rownote>summary{padding:15px;margin:-15px}}
+
+/* Utilities that replace the former inline style attributes: the CSP (style-src without unsafe-inline) refuses those. */
+.ar-16-10{aspect-ratio:16/10}
+.as-e{align-self:flex-end}
+.as-end{align-self:end}
+.bg-text3{background:var(--text-3)}
+.cols-1{grid-template-columns:1fr}
+.cur-d{cursor:default}
+.cur-p{cursor:pointer}
+.d-flex{display:flex}
+.d-inl-flex{display:inline-flex}
+.fs22{font-size:22px}
+.gap8{gap:8px}
+.jc-c{justify-content:center}
+.jc-e{justify-content:flex-end}
+.jc-sb{justify-content:space-between}
+.m0{margin:0}
+.mb0{margin-bottom:0px}
+.mb10{margin-bottom:10px}
+.mb12{margin-bottom:12px}
+.mb16{margin-bottom:16px}
+.mb4{margin-bottom:4px}
+.mb8{margin-bottom:8px}
+.minw0{min-width:0}
+.minw90{min-width:90px}
+.ml12{margin-left:12px}
+.ml8{margin-left:8px}
+.mt0{margin-top:0px}
+.mt10{margin-top:10px}
+.mt12{margin-top:12px}
+.mt14{margin-top:14px}
+.mt16{margin-top:16px}
+.mt22{margin-top:22px}
+.mt24{margin-top:24px}
+.mt4{margin-top:4px}
+.mt6{margin-top:6px}
+.mt8{margin-top:8px}
+.mx0{margin-left:0;margin-right:0}
+.nodeco{text-decoration:none}
+.op0{opacity:0}
+.p12{padding:12px}
+.pl18{padding-left:18px}
+.rel{position:relative}
+.ta-r{text-align:right}
+.w100{width:100%}
+.ut-padding-16{padding:16px}
+.ut-margin-0-0-4{margin:0 0 4px}
+.ut-margin-8-0-12{margin:8px 0 12px}
+.ut-flex-wrap-wrap{flex-wrap:wrap}
+.ut-align-items-flex-end{align-items:flex-end}
+.ut-max-width-60ch{max-width:60ch}
+.ut-margin-8-0-0{margin:8px 0 0}
+.ut-margin-12-0-4{margin:12px 0 4px}

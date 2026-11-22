@@ -381,11 +381,34 @@ def guard_duplicate(c, table, data, row_id, distinct):
     data['notes'] = f"Distinct from {table[:-1].replace('_', ' ')} {', '.join('#%d' % i for i in ids)}: {reason}"
 
 
-def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
+# Listing-level tables (a listing and what hangs off it). A research run that writes more than LISTING_WRITE_ALERT rows of them
+# in one run is flagged for review (security review H2 point 5): a change_log note on the request, once.
+LISTING_LEVEL = frozenset({'listings', *_LISTING_CHILDREN})
+LISTING_WRITE_ALERT = 50
+
+
+def log_change(c, table, row_id, action, old, new, user_id, request_id=None):
+    """One change_log row (the caller's transaction). A research run (request_id) that has written more than
+    LISTING_WRITE_ALERT listing-level rows gets a 'flag' note on its request, once."""
+    c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id,request_id) VALUES (?,?,?,?,?,?,?)',
+              (table, row_id, action, old, new, user_id, request_id))
+    if request_id is None or table not in LISTING_LEVEL:
+        return
+    marks = ','.join('?' * len(LISTING_LEVEL))
+    n = c.execute(f'SELECT count(*) FROM main.change_log WHERE request_id=? AND table_name IN ({marks})',
+                  (request_id, *LISTING_LEVEL)).fetchone()[0]
+    if n > LISTING_WRITE_ALERT and c.execute("SELECT 1 FROM main.change_log WHERE request_id=? AND table_name='research_requests' "
+                                             "AND action='flag'", (request_id,)).fetchone() is None:
+        c.execute("INSERT INTO main.change_log (table_name,row_id,action,new_json,user_id,request_id) VALUES ('research_requests',?,'flag',?,?,?)",
+                  (request_id, json.dumps({'review': f'{n} listing-level rows written in one run (more than {LISTING_WRITE_ALERT}): check this request'}),
+                   user_id, request_id))
+
+
+def agent_write(c, table, row_id, data, user_id, admin=False, actor=None, request_id=None):
     """Inserts (row_id None) or updates a row of this account in one transaction and records it in change_log.
     Admin inserts of generations, engines, variants and level sources go to the shared catalogue (owner_id NULL);
     knowledge rows follow their level, except an account's own premium or USER DATA figure, which stays private.
-    `actor` is who wrote it (the admin acting for the account), for the change log."""
+    `actor` is who wrote it (the admin acting for the account), `request_id` the research request whose token wrote it, for the change log."""
     distinct = data.pop('distinct_of', None) if table in DUPLICATE_GUARDED and isinstance(data, dict) else None
     data = clean_row(c, table, data, insert=row_id is None, row_id=row_id)
     check_parents(c, table, data)
@@ -411,8 +434,7 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
             old = json.dumps(dict(old), ensure_ascii=False)
         if table == 'listings' and data.get('vehicle_id') is not None:
             link(c, user_id, data['vehicle_id'])
-        c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
-                  (table, row_id, 'update' if old else 'insert', old, json.dumps(data, ensure_ascii=False), actor or user_id))
+        log_change(c, table, row_id, 'update' if old else 'insert', old, json.dumps(data, ensure_ascii=False), actor or user_id, request_id)
     return row_id
 
 
@@ -435,7 +457,7 @@ def references(c, table, row_id):
     return out
 
 
-def agent_delete(c, table, row_id, user_id):
+def agent_delete(c, table, row_id, user_id, request_id=None):
     """Deletes a row of this account (issue #58) and records it in change_log. Agents call this only after the owner
     confirmed it in the session (AGENTS.md); archiving (PATCH archived=1) is the default for outdated rows.
     A listing goes together with its own rows and photo files; any other row is refused while something references it."""
@@ -453,9 +475,8 @@ def agent_delete(c, table, row_id, user_id):
         if refs:
             raise ValueError(f'{table} id={row_id} is still referenced by {", ".join(refs)}: delete or re-point those first')
         c.execute(f'DELETE FROM main.{table} WHERE id=?', (row_id,))
-        c.execute('INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)',
-                  (table, row_id, 'delete', json.dumps(dict(old), ensure_ascii=False),
-                   json.dumps({'deleted': True, 'removed_children': {k: v for k, v in removed.items() if v}}), user_id))
+        log_change(c, table, row_id, 'delete', json.dumps(dict(old), ensure_ascii=False),
+                   json.dumps({'deleted': True, 'removed_children': {k: v for k, v in removed.items() if v}}), user_id, request_id)
     for f in files:  # after the commit: a failed delete keeps its photos
         path = config.MEDIA_DIR / f
         path.unlink(missing_ok=True)
@@ -494,7 +515,7 @@ def storage_usage(max_age=60):
     return _STORAGE['value']
 
 
-def save_media(c, listing_id, body, query):
+def save_media(c, listing_id, body, query, request_id=None):
     """Stores a listing photo in media/<listing>/<sha256>.<ext>; deduplicates and respects the quota."""
     if not body:
         raise ValueError('Empty body: send the image bytes')
@@ -525,8 +546,7 @@ def save_media(c, listing_id, body, query):
             cur = c.execute('INSERT INTO main.listing_media (listing_id, snapshot_id, original_url, file_path, mime, bytes, sha256) '
                             'VALUES (?,?,?,?,?,?,?)', (listing_id, int(snapshot) if snapshot else None,
                                                       query.get('url', [None])[0], rel, kind[0], len(body), digest))
-            c.execute('INSERT INTO main.change_log (table_name,row_id,action,new_json) VALUES (?,?,?,?)',
-                      ('listing_media', cur.lastrowid, 'insert', json.dumps({'file_path': rel, 'bytes': len(body)})))
+            log_change(c, 'listing_media', cur.lastrowid, 'insert', None, json.dumps({'file_path': rel, 'bytes': len(body)}), None, request_id)
     except Exception:
         # without a DB row the file would be orphaned; but if a concurrent upload already registered it, keep it
         if c.execute('SELECT 1 FROM main.listing_media WHERE file_path=?', (rel,)).fetchone() is None:

@@ -1,4 +1,20 @@
 import { t, tv, locale } from './i18n.js';
+
+// Computed sizes and colours. The CSP has no 'unsafe-inline' for styles, so a render writes data-style="width:40%" and the
+// observer sets those properties through CSSOM (allowed) once the markup is in the page. Static looks are classes in app.css.
+const applyDataStyle = el => {
+  for (const d of el.dataset.style.split(';')) {
+    const i = d.indexOf(':');
+    if (i > 0) el.style.setProperty(d.slice(0, i).trim(), d.slice(i + 1).trim());
+  }
+};
+new MutationObserver(records => {
+  for (const r of records) for (const n of r.addedNodes) {
+    if (n.nodeType !== 1) continue;
+    if (n.hasAttribute('data-style')) applyDataStyle(n);
+    n.querySelectorAll('[data-style]').forEach(applyDataStyle);
+  }
+}).observe(document.documentElement, { childList: true, subtree: true });
 export const $ = id => document.getElementById(id);
 export const esc = s => s == null ? '' : String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const safeUrl = u => /^https?:\/\//i.test(u || '') ? esc(u) : '#';
@@ -83,13 +99,13 @@ export function researchLevels(levels) {
   const rows = Object.entries(levels || {}).map(([lvl, x]) => {
     const open = x.items.filter(i => i.grade !== 'VERIFIED');
     return `<li>${lvlTag(lvl)} <span class="tag ${RS[x.state]}">${t('rs_' + x.state)}</span>${x.missing.length ? ` <span class="small">${t('rs_missing', { n: x.missing.length })}</span>` : ''}${x.accepted.length ? ` <span class="small muted">· ${t('rs_accepted', { n: x.accepted.length })}</span>` : ''}
-      ${open.length ? `<details class="small"><summary style="cursor:pointer">${open.length}</summary><ul lang="en" style="margin:4px 0 0;padding-left:18px">${open.map(i => `<li>${i.grade === 'MISSING' ? '✗' : '½'} <code>${esc(i.id)}</code> ${esc(i.title)}${i.hint ? ` <span class="tag warn">${t('rs_move')}</span>` : ''}</li>`).join('')}</ul></details>` : ''}</li>`; }).join('');
+      ${open.length ? `<details class="small"><summary class="cur-p">${open.length}</summary><ul class="mt4 mx0 mb0 pl18" lang="en">${open.map(i => `<li>${i.grade === 'MISSING' ? '✗' : '½'} <code>${esc(i.id)}</code> ${esc(i.title)}${i.hint ? ` <span class="tag warn">${t('rs_move')}</span>` : ''}</li>`).join('')}</ul></details>` : ''}</li>`; }).join('');
   return rows ? `<ul class="rs-levels">${rows}</ul>` : '';
 }
 export function gaps(items) {
-  if (!items || !items.length) return `<p class="small" style="margin:10px 0 0"><span class="tag good">✓ ${t('no_gaps')}</span></p>`;
-  return `<details style="margin-top:10px"><summary class="small" style="cursor:pointer"><span class="tag warn">${t('gaps', { n: items.length })}</span></summary>
-    <ul class="small" lang="en" style="margin:6px 0 0;padding-left:18px">${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted" style="margin:4px 0 0">${t('gaps_note')}</p></details>`;
+  if (!items || !items.length) return `<p class="small mt10 mx0 mb0"><span class="tag good">✓ ${t('no_gaps')}</span></p>`;
+  return `<details class="mt10"><summary class="small cur-p"><span class="tag warn">${t('gaps', { n: items.length })}</span></summary>
+    <ul class="small mt6 mx0 mb0 pl18" lang="en">${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted mt4 mx0 mb0">${t('gaps_note')}</p></details>`;
 }
 export function intervalTxt(km, mo) { const a = []; if (km) a.push(num(km, 0) + ' km'); if (mo) a.push(num(mo, 0) + ' ' + t('months_short')); return a.join(' ' + t('or_word') + ' ') || '—'; }
 
@@ -98,9 +114,9 @@ export function intervalTxt(km, mo) { const a = []; if (km) a.push(num(km, 0) + 
 export function flagsCard(flags) {
   if (!flags || !flags.length) return '';
   const open = f => f.status === 'OPEN';
-  return `<div class="card span2"><h3>${t('flags_title')} <span class="muted small">${flags.filter(open).length}</span></h3><p class="small muted" style="margin-top:0">${t('flags_lead')}</p>
+  return `<div class="card span2"><h3>${t('flags_title')} <span class="muted small">${flags.filter(open).length}</span></h3><p class="small muted mt0">${t('flags_lead')}</p>
     <ul class="check">${flags.map(f => `<li><span class="ico ${open(f) ? 'pend' : 'ok'}" aria-hidden="true">${open(f) ? '!' : '✓'}</span><div><b>${esc(f.what)}</b> <span class="tag ${open(f) ? 'warn' : 'good'}">${esc(tv(f.status))}</span> <span class="tag">${esc(tv(f.kind))}</span> ${lvlTag(f.level)}
-      <div class="small muted">${esc(f.why)}</div>${(f.reviews || []).length ? `<ul class="small" style="margin:4px 0 0;padding-left:18px">${f.reviews.map(r => `<li>${esc(r.review_date)} · ${esc(r.worker)} · <b>${esc(tv(r.outcome))}</b>: ${esc(r.conclusion)} — ${esc(r.finding)}</li>`).join('')}</ul>` : `<div class="small muted">${t('flag_no_reviews')}</div>`}</div></li>`).join('')}</ul></div>`;
+      <div class="small muted">${esc(f.why)}</div>${(f.reviews || []).length ? `<ul class="small mt4 mx0 mb0 pl18">${f.reviews.map(r => `<li>${esc(r.review_date)} · ${esc(r.worker)} · <b>${esc(tv(r.outcome))}</b>: ${esc(r.conclusion)} — ${esc(r.finding)}</li>`).join('')}</ul>` : `<div class="small muted">${t('flag_no_reviews')}</div>`}</div></li>`).join('')}</ul></div>`;
 }
 // a fault's probability as the sources put it: a frequency band with its shape, or a sourced curve (#168)
 export const faultProb = f => f.frequency_band ? `${esc(tv(f.frequency_band))}${f.shape ? ' · ' + esc(tv(f.shape)) : ''}` : (f.curve_km || f.curve_age ? t('f_curve') : '—');

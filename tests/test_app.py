@@ -2143,6 +2143,21 @@ class AppTest(unittest.TestCase):
         r = urllib.request.Request(self.base + '/login', headers={'X-Forwarded-Proto': 'https'})
         self.assertIn('max-age=', urllib.request.urlopen(r).headers['Strict-Transport-Security'])
 
+    def test_no_inline_style_or_script_in_static(self):
+        # the CSP has style-src 'self' (no 'unsafe-inline'): styles are classes in static/css or data-style set by ui.js
+        csp = urllib.request.urlopen(self.base + '/login').headers['Content-Security-Policy']
+        self.assertIn("style-src 'self';", csp)
+        static = os.path.join(os.path.dirname(__file__), '..', 'static')
+        bad = []
+        for dirpath, _, names in os.walk(static):
+            for n in names:
+                if not n.endswith(('.html', '.js')):
+                    continue
+                text = open(os.path.join(dirpath, n), encoding='utf-8').read()
+                if re.search(r'\sstyle=|<style|\ssetAttribute\(\s*[\'"]style', text):
+                    bad.append(n)
+        self.assertEqual(bad, [], 'inline style in static/: move it to a class in static/css or to data-style')
+
     def test_pages_need_no_inline_script(self):
         """The CSP forbids inline scripts and handlers: every page loads its code from /static/js."""
         for page in ('index.html', 'auth.html'):

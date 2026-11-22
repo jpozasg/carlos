@@ -44,9 +44,9 @@ MAX_JSON_BYTES = 1_000_000  # no JSON body of this API comes near it; stops unau
 SOCKET_TIMEOUT = 30  # seconds a client may stall on a read (slowloris); the server is threaded, so a stalled socket holds one thread
 MAX_THREADS = 32  # connections served at once (issue #414, M2): the Pi 2B has little memory; the next one gets 503 'overloaded'
 
-# Sent with every response (issue #383). No inline scripts (static/js/boot.js, auth.js); style attributes are still allowed.
+# Sent with every response (issue #383). No inline scripts or styles (static/js/boot.js, auth.js; static/css, data-style in ui.js).
 SECURITY_HEADERS = (
-    ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
                                 "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
     ('X-Content-Type-Options', 'nosniff'), ('X-Frame-Options', 'DENY'), ('Referrer-Policy', 'no-referrer'),
     ('Cross-Origin-Opener-Policy', 'same-origin'))
@@ -632,7 +632,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/agent/merge' and method == 'POST':  # #253 P4: the MERGE unit writes the agreed findings of its listing request
             if self.request is None or self.request['unit'] != 'MERGE':
                 raise NotAllowed('Only the MERGE run of a research request merges staged findings')
-            out = staging.merge(c, self.request['parent_id'], self.request['owner_id'], actor=self.user['id'])
+            out = staging.merge(c, self.request['parent_id'], self.request['owner_id'], actor=self.user['id'], request_id=self.request['id'])
             self.export_all(c, uid, out.pop('accounts'))
             self.send_json(out); return
         if agent and self.staged_run():  # #253: the writes of a research run go to staging (negative ids), never to the catalogue
@@ -712,7 +712,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'POST /api/agent/media/<listing_id>?url=...&snapshot_id=...'}, 405); return
             if not self.headers.get('Content-Type', '').startswith('image/'):
                 raise UnsupportedMediaType('Content-Type must be image/jpeg, image/png or image/webp')
-            row_id, created = save_media(c, int(agent[2]), self.rfile.read(self.body_length(config.MAX_IMAGE_BYTES)), query)
+            if self.request is not None:  # a request token: its own listing only (review H2 point 4)
+                staging.check_media(c, self.request, int(agent[2]))
+            row_id, created = save_media(c, int(agent[2]), self.rfile.read(self.body_length(config.MAX_IMAGE_BYTES)), query, self.request_id())
             if created:
                 export_later(uid, self.curator)  # a photo changes the dossier's archive list: exported later, once
             self.send_json({'table': 'listing_media', 'id': row_id, 'created': created}, 201 if created else 200)
@@ -722,7 +724,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self.admin:
                 check_writable(c, agent[1], int(agent[2]), {})
             others = linked_accounts(c, agent[1], int(agent[2]))
-            removed = agent_delete(c, agent[1], int(agent[2]), uid)
+            removed = agent_delete(c, agent[1], int(agent[2]), uid, self.request_id())
             self.export_all(c, uid, others)
             self.send_json({'table': agent[1], 'id': int(agent[2]), 'deleted': True, 'removed_children': removed})
         elif agent and agent[1] in AGENT_TABLES | RETIRED_TABLES:
@@ -740,11 +742,15 @@ class Handler(BaseHTTPRequestHandler):
             if existing:  # the shared catalogue already has this HSN/TSN, generation or engine: reuse it (issues #109, #293)
                 self.export_all(c, uid)
                 self.send_json({'table': agent[1], 'id': existing, 'existing': True}); return
-            row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.curator, user['id'])
+            row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.curator, user['id'], self.request_id())
             self.export_all(c, uid, linked_accounts(c, agent[1], row_id))
             self.send_json({'table': agent[1], 'id': row_id}, 201 if method == 'POST' else 200)
         else:
             self.send_json({'error': 'Endpoint not found'}, 404)
+
+    def request_id(self):
+        """The research request whose token made this write (change_log.request_id), None for every other caller."""
+        return self.request['id'] if self.request is not None else None
 
     def staged_run(self):
         """The caller is the per-request token of a research run whose writes go to staging (#253)."""

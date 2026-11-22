@@ -1,5 +1,6 @@
 """capture_listing.py against a test server on the synthetic fixture database. Run: python -m unittest -v"""
-import tempfile, threading, unittest
+import os, tempfile, threading, unittest
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import capture_listing
@@ -155,6 +156,22 @@ class CaptureListingTest(unittest.TestCase):
         self.assertIsNone(body)
         self.assertIn('private or reserved', why)
         self.assertEqual(seen, ['127.0.0.1', '10.0.0.1'])                       # the redirect target was checked, and refused
+
+
+class LoadTokenTest(unittest.TestCase):
+    """The token comes from the environment only (review H1 follow-up): a .env file is never read."""
+
+    def test_environment_token_is_used(self):
+        with mock.patch.dict(os.environ, {'AGENT_TOKEN': 'from-env'}):
+            self.assertEqual(capture_listing.load_token(), 'from-env')
+
+    def test_env_file_is_ignored_and_missing_variable_names_itself(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(Path, 'cwd', return_value=Path(d)):
+            Path(d, '.env').write_text('AGENT_TOKEN=from-dotenv-file\n')
+            with self.assertRaises(SystemExit) as cm:
+                capture_listing.load_token()
+        self.assertIn('AGENT_TOKEN', str(cm.exception))
+        self.assertNotIn('from-dotenv-file', str(cm.exception))
 
 
 if __name__ == '__main__':

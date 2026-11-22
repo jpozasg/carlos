@@ -8,11 +8,11 @@ export function costStack(us, comps, costSel, selCost) {
   const max = Math.max(1, ...us.map(pos));
   return us.map(u => {
     const segs = comps.filter(on).map(k => { const v = u.components[k]; if (v == null || v <= 0) return '';
-      return `<div class="segm" style="flex:${v} 1 0;background:var(--s${idx(k)})" data-tip="${esc(comp(k))}: ${esc(euro(v))} (${num(v / pos(u) * 100, 0)} %)"></div>`; }).join('');
+      return `<div class="segm" data-style="flex:${v} 1 0;background:var(--s${idx(k)})" data-tip="${esc(comp(k))}: ${esc(euro(v))} (${num(v / pos(u) * 100, 0)} %)"></div>`; }).join('');
     const neg = comps.filter(on).filter(k => (u.components[k] ?? 0) < 0);
     const sc = selCost(u), miss = sc.missing.length, nsel = comps.filter(on).length;
     return `<div class="crow"><div class="lbl who">${thumb(u)}<span>${carLink(u, unitName(u))}<small>${u.is_reference ? t('reference') : esc(u.listing_id ?? '')}</small></span></div>
-      <div class="track"><div class="cstack" style="width:${pos(u) / max * 100}%">${segs}</div></div>
+      <div class="track"><div class="cstack" data-style="width:${pos(u) / max * 100}%">${segs}</div></div>
       <div class="after"><span class="tot">${miss && miss === nsel ? PEND() : euro(sc.sum)}${sc.complete && u.period_months ? ` <span class="muted small">· ${euro(sc.sum / u.period_months)}${t('per_month')}</span>` : ''}</span>
         ${miss && miss < nsel ? `<span class="gap" title="${esc(sc.missing.map(comp).join(', '))}"><i class="segm hatch"></i>+${t('pendings', { n: miss })}</span>` : ''}
         ${neg.length ? `<span class="gap">${neg.map(k => esc(comp(k)) + ' ' + esc(euro(u.components[k]))).join(', ')}</span>` : ''}</div></div>`;
@@ -53,17 +53,17 @@ export function beChart(ref, ready, beHi) {
     const dot = pb != null && pb <= N ? `<circle cx="${x(pb)}" cy="${y(b.upfront + b.monthly * pb)}" r="5" fill="${col}" stroke="var(--surface)" stroke-width="2"><title>${esc(t('pays_off', { n: num(pb, 0) }))}</title></circle>` : '';
     return `<path d="${run(s.buy)}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>${drop(s.buy[N], s.buyEnd, col)}${dot}`; }).join('');
   const lbl = labels.map(l => `${Math.abs(l.ly - l.y) > 3 ? `<line x1="${x(N) + 5}" x2="${x(N) + 12}" y1="${l.y}" y2="${l.ly}" stroke="${l.col}" stroke-width="1"/>` : ''}<text class="lbl" x="${x(N) + 14}" y="${l.ly + 4}">${l.name} <tspan class="lblv">${euro(l.end)}</tspan></text>`).join('');
-  return `<div class="card be be-wrap"><div class="legend"><span><i class="sw" style="background:var(--text-3)"></i>${t('be_keep', { u: carLabel(ref) })}</span>${ready.map(u => `<button type="button" class="chipbtn" data-behi="${u.id}" aria-pressed="${!!colr[u.id]}" title="${t('be_hi_hint')}"><i class="sw" style="background:${colr[u.id] || 'transparent'}"></i>${carLabel(u)}</button>`).join('')}</div>
-    <div class="row small muted" style="margin-bottom:8px"><span>${t('be_hi_lead')}</span><button type="button" class="linkbtn" data-beset="top">${t('be_hi_top')}</button><button type="button" class="linkbtn" data-beset="all">${t('cp_all')}</button><button type="button" class="linkbtn" data-beset="none">${t('cp_none')}</button></div>
+  return `<div class="card be be-wrap"><div class="legend"><span><i class="sw bg-text3"></i>${t('be_keep', { u: carLabel(ref) })}</span>${ready.map(u => `<button type="button" class="chipbtn" data-behi="${u.id}" aria-pressed="${!!colr[u.id]}" title="${t('be_hi_hint')}"><i class="sw" data-style="background:${colr[u.id] || 'transparent'}"></i>${carLabel(u)}</button>`).join('')}</div>
+    <div class="row small muted mb8"><span>${t('be_hi_lead')}</span><button type="button" class="linkbtn" data-beset="top">${t('be_hi_top')}</button><button type="button" class="linkbtn" data-beset="all">${t('cp_all')}</button><button type="button" class="linkbtn" data-beset="none">${t('cp_none')}</button></div>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${t('be_title')}" data-be>
       <g class="grid">${nt.ticks.map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`).join('')}</g>
       <g class="axis">${nt.ticks.map(v => `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${euro(v)}</text>`).join('')}${mt.map(m => `<text x="${x(m)}" y="${H - B + 18}" text-anchor="middle">${m}</text>`).join('')}<text x="${(L + W - R) / 2}" y="${H - 2}" text-anchor="middle">${t('months')}</text></g>
       <path d="${run(keep.keep)}" fill="none" stroke="${refCol}" stroke-width="2" stroke-dasharray="6 4"/>${drop(keep.keep[N], keep.keepEnd, refCol)}
-      ${lines}${lbl}<line class="xhair" y1="${T}" y2="${H - B}" x1="0" x2="0" style="opacity:0"/><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
-    </svg><div id="betip"></div><p class="small muted" style="margin:8px 0 0">${t('be_note')}</p></div>`;
+      ${lines}${lbl}<line class="xhair op0" y1="${T}" y2="${H - B}" x1="0" x2="0" /><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+    </svg><div id="betip"></div><p class="small muted mt8 mx0 mb0">${t('be_note')}</p></div>`;
 }
 export function beTable(ready) {
-  return `<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>${t('g_unit')}</th><th class="n">${t('be_upfront')}</th><th class="n">${t('be_running')}</th><th class="n">${t('be_saving')}</th><th class="n">${t('be_payback')}</th><th class="n">${t('be_end')}</th></tr></thead><tbody>
+  return `<div class="tablewrap mt12"><table><thead><tr><th>${t('g_unit')}</th><th class="n">${t('be_upfront')}</th><th class="n">${t('be_running')}</th><th class="n">${t('be_saving')}</th><th class="n">${t('be_payback')}</th><th class="n">${t('be_end')}</th></tr></thead><tbody>
     ${ready.map(u => { const b = u.breakeven, sv = b.ref_monthly - b.monthly; return `<tr><td>${carLink(u)}</td><td class="n">${euro(b.upfront)}</td><td class="n">${euro(b.monthly)}${t('per_month')}</td>
       <td class="n"><span class="${sv > 0 ? 'down' : 'up'}">${euro(sv)}${t('per_month')}</span></td><td class="n">${b.payback_months == null ? t('never') : b.payback_months > b.months ? t('after_period', { n: num(b.payback_months, 0) }) : t('n_months', { n: num(b.payback_months, 0) })}</td>
       <td class="n"><span class="${b.end_advantage >= 0 ? 'down' : 'up'}">${b.end_advantage >= 0 ? t('be_switch_better', { v: euro(b.end_advantage) }) : t('be_keep_better', { v: euro(-b.end_advantage) })}</span></td></tr>`; }).join('')}</tbody></table></div>`;
@@ -76,7 +76,7 @@ export function beHover(e, ref, ready, beHi) {
   const m = Math.max(0, Math.min(N, Math.round(((e.clientX - box.left) / sx - L) / (W - L - R) * N)));
   const xh = svg.querySelector('.xhair'), px = L + (W - L - R) * m / N; xh.setAttribute('x1', px); xh.setAttribute('x2', px); xh.style.opacity = 1;
   const b0 = ready[0].breakeven, end = m === N, colr = beColors(ready, beHi);
-  const row = (col, name, v, after) => `<div class="tiprow"><i class="sw" style="background:${col}"></i><span>${name}</span><b>${euro(v)}</b>${end ? `<span class="tipend">→ ${euro(after)}</span>` : ''}</div>`;
+  const row = (col, name, v, after) => `<div class="tiprow"><i class="sw" data-style="background:${col}"></i><span>${name}</span><b>${euro(v)}</b>${end ? `<span class="tipend">→ ${euro(after)}</span>` : ''}</div>`;
   const rows = [{ col: 'var(--text-3)', name: carLabel(ref), v: b0.ref_monthly * m, after: b0.ref_monthly * N + b0.ref_tx - b0.ref_resale_end },
     ...ready.filter(u => colr[u.id]).map(u => { const b = u.breakeven; return { col: colr[u.id], name: carLabel(u), v: b.upfront + b.monthly * m, after: b.upfront + b.monthly * N - b.resale_end }; })];
   rows.sort((a, b) => (end ? a.after - b.after : a.v - b.v));

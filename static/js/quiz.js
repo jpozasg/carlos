@@ -33,7 +33,7 @@ export function quiz(el, { tasks, answers = {}, params = {}, onDone, onCancel, d
     const badge = k => k === best || k === pick ? t('bw_first') : k === worst ? t('bw_last') : done ? t('bw_second') : '';
     el.innerHTML = `<div class="qz" data-qz>
       <div class="qz-top"><span class="qz-count num">${t('quiz_progress', { i: i + 1, n: order.length })}</span>
-        <div class="qz-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${order.length}" aria-valuenow="${order.filter(o => ans[o.id]).length}" aria-label="${esc(t('quiz_progress_aria'))}"><i style="width:${order.filter(o => ans[o.id]).length / order.length * 100}%"></i></div>
+        <div class="qz-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${order.length}" aria-valuenow="${order.filter(o => ans[o.id]).length}" aria-label="${esc(t('quiz_progress_aria'))}"><i data-style="width:${order.filter(o => ans[o.id]).length / order.length * 100}%"></i></div>
         ${onCancel ? `<button class="linkbtn" type="button" data-qz-cancel>${t('quiz_cancel')}</button>` : ''}</div>
       <p class="bw-frame small muted">${t('bw_frame')}</p>
       <h3 class="qz-title" aria-live="polite">${t('bw_ask_' + phase)}</h3>

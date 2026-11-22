@@ -11,7 +11,7 @@ const REL_SOURCES = [
   ['ADAC Pannenstatistik', 'B', 'generation', 'src_terms_free', 'https://www.adac.de/rund-ums-fahrzeug/unfall-schaden-panne/adac-pannenstatistik/'],
   ['ADAC Gebrauchtwagen-Info', 'B', 'generation', 'src_terms_free', 'https://assets.adac.de/Autodatenbank/GWInfo/gwNNNN-<make>-<model>-<years>-bericht.pdf'],
 ];
-const relBlock = () => `<div class="card" style="margin-bottom:16px"><h3>${t('src_rel_block')}</h3><p class="small muted">${t('src_rel_lead')}</p><div class="tablewrap"><table><thead><tr><th>${t('source')}</th><th>${t('quality')}</th><th>${t('level')}</th><th>${t('src_rel_terms')}</th><th>${t('src_rel_pattern')}</th></tr></thead><tbody>${REL_SOURCES.map(([n, q, l, terms, url]) =>
+const relBlock = () => `<div class="card mb16"><h3>${t('src_rel_block')}</h3><p class="small muted">${t('src_rel_lead')}</p><div class="tablewrap"><table><thead><tr><th>${t('source')}</th><th>${t('quality')}</th><th>${t('level')}</th><th>${t('src_rel_terms')}</th><th>${t('src_rel_pattern')}</th></tr></thead><tbody>${REL_SOURCES.map(([n, q, l, terms, url]) =>
   `<tr><td><b>${esc(n)}</b></td><td>${qTag(q, t('quality_hint', { q }))}</td><td>${lvlTag(l)}</td><td class="small">${t(terms)}</td><td class="small"><a href="${safeUrl(url.replace(/<.*$/, ''))}" target="_blank" rel="noopener">${esc(url)}</a></td></tr>`).join('')}</tbody></table></div><p class="small muted">${t('src_to_recheck')}</p></div>`;
 let root, q = '';
 function draw() {
@@ -24,7 +24,7 @@ function draw() {
   const lvl = s => s.vehicle_id ? 'variant' : s.engine_id ? 'engine' : s.generation_id ? 'generation' : 'shared';
   const match = s => !q || [s.title, s.url, s.supports, s.limitations, s.source_type].join(' ').toLowerCase().includes(q);
   const groups = {}; for (const s of S.sources.filter(match)) (groups[name(s)] ??= []).push(s);
-  const html = Object.entries(groups).map(([g, ss]) => `<div class="card" style="margin-bottom:16px"><h3>${hrefs[key(ss[0])] ? `<a href="${hrefs[key(ss[0])]}">${esc(g)}</a>` : esc(g)} ${lvlTag(lvl(ss[0]))} <span class="muted small">${ss.length}</span></h3>${ss.map(s => `<div class="src"><div class="src-title">${qTag(s.quality, t('quality_hint', { q: s.quality ?? t('unrated') }))}<span>${esc(s.title)}</span></div>
+  const html = Object.entries(groups).map(([g, ss]) => `<div class="card mb16"><h3>${hrefs[key(ss[0])] ? `<a href="${hrefs[key(ss[0])]}">${esc(g)}</a>` : esc(g)} ${lvlTag(lvl(ss[0]))} <span class="muted small">${ss.length}</span></h3>${ss.map(s => `<div class="src"><div class="src-title">${qTag(s.quality, t('quality_hint', { q: s.quality ?? t('unrated') }))}<span>${esc(s.title)}</span></div>
       ${s.url ? `<a href="${safeUrl(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>` : `<span class="small muted">${t('no_url')}</span>`}
       ${s.supports ? `<p><b>${t('supports')}:</b> ${esc(s.supports)}</p>` : ''}${s.limitations ? `<p><b>${t('limitations')}:</b> ${esc(s.limitations)}</p>` : ''}
       <p class="muted small">${esc(s.source_type ?? '')}${s.accessed_date ? ' · ' + t('accessed', { d: esc(s.accessed_date) }) : ''} · id ${s.id}</p></div>`).join('')}</div>`).join('');
