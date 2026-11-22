@@ -2,7 +2,7 @@
 import { S, refreshTco, go } from '../app.js';
 import { get, send } from '../api.js';
 import { t, tv, comp } from '../i18n.js';
-import { $, esc, euro, num, PEND, eP, sumKnown, totalP, perMonth, pct, rangeTxt, consumptionTxt, consumptionSpread, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, safeUrl, statusTags, gaps, intervalTxt, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb } from '../ui.js';
+import { $, esc, euro, num, PEND, eP, sumKnown, totalP, perMonth, pct, consumptionTxt, consumptionSpread, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, safeUrl, statusTags, gaps, intervalTxt, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
 let PHOTOS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
@@ -127,16 +127,6 @@ function archive(d) {
     ${Object.keys(attrs).length ? facts(Object.entries(attrs).map(([k, v]) => [esc(k), esc(typeof v === 'string' ? v : JSON.stringify(v))])) : ''}
     ${s && s.description ? `<details style="margin-top:10px"><summary class="small" style="cursor:pointer">${t('listing_description')}</summary><p class="desc">${esc(s.description)}</p></details>` : ''}`;
 }
-// a lease offer (#129): the offer as the ad states it, the cost per month of each way, and what is not predicted
-function leaseFacts(d) {
-  if (d.lease_monthly_eur == null) return [];
-  const o = d.offers || {}, pm = x => x && x.cost_month != null ? euro(x.cost_month) + t('per_month') + (x.complete ? '' : ' ' + t('partial_short')) : PEND();
-  const offer = [euro(d.lease_monthly_eur) + t('per_month'), d.lease_term_months ? t('lease_term_n', { n: d.lease_term_months }) : PEND(),
-    d.lease_km_per_year ? num(d.lease_km_per_year, 0) + ' km/' + t('year_short') : PEND(), `${t('lease_down')} ${eP(d.lease_down_payment_eur)}`,
-    `${t('lease_fees')} ${eP(d.lease_fees_eur)}`, `${t('lease_includes')}: ${d.lease_includes ? esc(d.lease_includes.split(',').map(k => t('li_' + k)).join(', ')) : t('lease_nothing')}`].join(' · ');
-  return [[t('lease_offer') + (d.lease_kind ? ` (${esc(t('lk_' + d.lease_kind))})` : ''), offer],
-    [t('lease_vs_buy'), `${t('am_buy')}: ${pm(o.purchase)} · ${t('am_lease')}: ${pm(o.lease)} · <b>${t(d.offer === 'lease' ? 'costed_lease' : 'costed_buy')}</b><div class="small muted">${t('lease_note')}</div>`]];
-}
 function rankCard(d) {  // the reference car is scored too (issue #72), only not ranked
   const R = S.ranking;
   const rows = (d.explain && d.explain.length ? d.explain : Object.keys(R.criteria).map(k => ({ criterion: k, weight: R.weights[k], value: d.metrics[k], score: null, contribution: null, why_missing: 'no value for this car' }))).map(x => {
@@ -177,20 +167,15 @@ function maintenanceCard(d) {
     <tr><td colspan="6"><b>${t('mp_total')}</b></td><td class="n"><b>${d.components?.maintenance != null ? euro(d.components.maintenance) : totalP(tot)}</b>${hrs ? `<div class="small muted">${num(hrs, 1)} h</div>` : ''}</td><td></td></tr></tbody></table></div></div>`;
 }
 function risksCard(d) {
-  const rows = (d.repair_risks || []).slice().sort((a, b) => (b.expected_eur || 0) - (a.expected_eur || 0)), fp = d.fault_plan || [], cr = certainOf(d, 'repairs');
-  if (!rows.length && !fp.length && !cr.length) return `<div class="card span2"><h3>${t('rk_title')}</h3>${empty(t('rk_none'))}</div>`;
-  // the repairs component = certain + risks + weak points (carlos/costs.py). The total is the server's figure: it is unknown
-  // (NULL) without a mileage, without any researched risk or weak point, or with an unpriced one, and it also counts the
-  // PRESENT items of the car's history. The two expected rows are shown only while the server knows that part.
+  const fp = d.fault_plan || [], cr = certainOf(d, 'repairs');
+  if (!fp.length && !cr.length) return `<div class="card span2"><h3>${t('rk_title')}</h3>${empty(t('rk_none'))}</div>`;
+  // the repairs component = certain + weak points (carlos/costs.py). The total is the server's figure: it is unknown
+  // (NULL) without a mileage, without any researched weak point, or with an unpriced one, and it also counts the
+  // PRESENT items of the car's history. The expected row is shown only while the server knows that part.
   const cd = d.cost_detail || {}, expKnown = cd.repairs_expected != null;
-  const risks = sumKnown(rows, r => r.expected_eur), faults = sumKnown(fp, f => f.expected_eur);
-  return `<div class="card span2"><h3>${t('rk_title')}</h3><p class="small muted" style="margin-top:0">${t('rk_lead')}</p>
-    <div class="tablewrap"><table><thead><tr><th>${t('rk_comp')}</th><th>${t('level')}</th><th>${t('rk_window')}</th><th class="n">${t('rk_prob')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('rk_share')}</th><th class="n">${t('rk_exp')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
-    ${rows.map(r => `<tr${r.share ? '' : ' class="muted"'}><td><span title="${esc(r.evidence ?? '')}${r.notes ? ' — ' + esc(r.notes) : ''}">${esc(r.component)}</span>${r.diy ? ` <span class="tag">${t('mp_diy')}</span>` : ''}</td><td>${lvlTag(r.level, r)}</td>
-      <td>${rangeTxt(r.km_from, r.km_to)}</td><td class="n">${pct(r.probability)}</td><td class="n">${eP(r.price_eur)}</td>
-      <td class="n">${pct(r.share)}</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
-    ${rows.length ? `<tr><td colspan="6"><b>${t('rk_total')}</b></td><td class="n"><b>${expKnown ? totalP(risks) : PEND()}</b></td><td></td></tr>` : ''}
-    ${fp.length ? `<tr><td colspan="6"><b>${t('rk_faults_total', { n: fp.length })}</b> ${goTab('reliability', t('dt_reliability'))}</td><td class="n"><b>${expKnown ? totalP(faults) : PEND()}</b></td><td></td></tr>` : ''}
+  return `<div class="card span2"><h3>${t('rk_title')}</h3>
+    <div class="tablewrap"><table><thead><tr><th colspan="6">${t('rk_comp')}</th><th class="n">${t('rk_exp')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
+    ${fp.length ? `<tr><td colspan="6"><b>${t('rk_faults_total', { n: fp.length })}</b> ${goTab('reliability', t('dt_reliability'))}</td><td class="n"><b>${expKnown ? totalP(sumKnown(fp, f => f.expected_eur)) : PEND()}</b></td><td></td></tr>` : ''}
     ${cr.length ? `<tr><td colspan="8" class="small muted">${t('rk_certain')}</td></tr>${certainRows(d, cr)}` : ''}
     ${cd.repairs_certain != null ? `<tr><td colspan="6"><b>${t('co_certain')}</b></td><td class="n"><b>${euro(cd.repairs_certain)}</b></td><td></td></tr>` : ''}
     <tr><td colspan="6"><b>${t('rk_repairs_total')}</b></td><td class="n"><b>${eP(d.components?.repairs)}</b></td><td></td></tr></tbody></table></div></div>`;
@@ -303,7 +288,7 @@ function costBlocks(d) {
   B.insurance = ins.length ? tbl([[t('date')], [t('premium'), 1], [t('status')], [t('mp_src')]], ins.map(x => `<tr><td>${esc(x.quote_date ?? x.year ?? '')}</td><td class="n">${eP(x.annual_premium_eur)}</td><td>${esc(tv(x.premium_status) ?? '')}${[x.insurer, x.tariff].filter(Boolean).map(v => ' · ' + esc(v)).join('')} ${noteBox(x.notes)}</td><td>${srcLink(d, x.source_id)}</td></tr>`)) : (d.annual_insurance != null ? facts([[t('premium'), euro(d.annual_insurance)]]) : none());
   B.tax = (d.tax || []).length ? d.tax.map(x => `${facts([[t('co_tax_year'), eP(x.annual_tax_eur) + stTag(x.status) + ' ' + srcLink(d, x.source_id)], ...(x.registered_from || x.registered_to ? [[t('co_window'), `${esc(x.registered_from ?? '…')} – ${esc(x.registered_to ?? '…')}`]] : []), ...(d.tax_exempt_months ? [[t('co_exempt'), `${num(d.tax_exempt_months, 0)} ${t('co_months')}`]] : [])])}${x.basis ? `<div class="small muted">${esc(x.basis)}</div>` : ''}`).join('') : (d.annual_tax != null ? facts([[t('co_tax_year'), euro(d.annual_tax)]]) : none());
   B.maintenance = facts([[t('co_scheduled'), eP(cd.maintenance_scheduled)], [t('co_certain'), eP(cd.maintenance_certain)], ...(cd.maintenance_diy_hours ? [[t('co_hours'), num(cd.maintenance_diy_hours, 1) + ' h']] : [])]) + certainTbl(d, 'maintenance') + goTab('maintenance', t('dt_maintenance'));
-  B.repairs = facts([[t('co_certain'), eP(cd.repairs_certain)], [t('co_expected'), eP(cd.repairs_expected)], ...(cd.repairs_diy_hours ? [[t('co_hours'), num(cd.repairs_diy_hours, 1) + ' h']] : [])]) + certainTbl(d, 'repairs') + goTab('maintenance', t('dt_maintenance')) + ' ' + goTab('reliability', t('dt_reliability'));
+  B.repairs = facts([[t('co_certain'), eP(cd.repairs_certain)], [t('co_expected'), eP(cd.repairs_expected)]]) + certainTbl(d, 'repairs') + goTab('maintenance', t('dt_maintenance')) + ' ' + goTab('reliability', t('dt_reliability'));
   B.tyres = (d.tyres || []).length ? d.tyres.map(x => facts([[t('co_tyre_size'), `${esc(x.size ?? '')} ${esc(tv(x.tyre_type) ?? '')}${stTag(x.status)} ${srcLink(d, x.source_id)}`], [t('co_tyre_price'), `${eP(x.price_per_tyre_eur)} × ${x.tyres_per_set == null ? PEND() : x.tyres_per_set}`], [t('co_tyre_life'), x.life_km == null ? PEND() : num(x.life_km, 0) + ' km'], [t('co_fitting'), eP(x.fitting_per_set_eur)]]) + (x.notes ? `<div class="small muted">${esc(x.notes)}</div>` : '')).join('') + certainTbl(d, 'tyres') : none();
   const ps = certainOf(d, 'purchase_sale');
   B.purchase_sale = (d.is_reference ? '' : facts([[t('asking_price'), eP(d.price_eur)]])) + (ps.length ? certainTbl(d, 'purchase_sale') : none());
@@ -342,7 +327,7 @@ async function draw(id, quiet = false) {
       <div class="row">${d.url ? `<a class="btn ghost sm" href="${safeUrl(d.url)}" target="_blank" rel="noopener">${t('open_listing')}</a>` : ''}<button class="btn sm${VIEWING ? '' : ' ghost'}" type="button" data-viewing>${VIEWING ? t('viewing_exit') : '📋 ' + t('viewing_start')}</button></div></div>
       ${d.is_reference ? '' : decisionBar(d)}
       ${gaps(S.todo.listings.find(x => x.listing_id === d.id)?.todo)}
-      <div style="margin-top:12px">${facts([[t('asking_price'), d.is_reference ? t('owned') : eP(d.price_eur)], ...leaseFacts(d), [t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km'], [t('registration'), d.first_registration ? esc(d.first_registration) : PEND()],
+      <div style="margin-top:12px">${facts([[t('asking_price'), d.is_reference ? t('owned') : eP(d.price_eur)], [t('mileage'), d.mileage_km == null ? PEND() : num(d.mileage_km, 0) + ' km'], [t('registration'), d.first_registration ? esc(d.first_registration) : PEND()],
         [t('engine'), `<a href="${modelsHref({ engine: d.engine_code })}">${esc(d.engine_code)}</a> · ${esc(d.engine_description ?? '')}`], [t('generation'), `<a href="${modelsHref({ make: d.make, model: d.model })}">${esc(d.generation)}</a> ${d.generation_start_year ?? '?'}–${d.generation_end_year ?? '?'}`],
         ...(d.is_reference ? [] : [[t('seller'), d.seller ? esc(d.seller) + (d.location ? ', ' + esc(d.location) : '') : PEND()], ...(sellerRating(d) ? [[t('seller_rating'), sellerRating(d)]] : []), [t('accident_free'), d.accident_free_claim == null ? PEND() : claim(d.accident_free_claim ? t('yes') : t('no'))], [t('owners'), claim(d.owners_claim)],
         [t('hu'), claim(d.hu_claim)], [t('history'), claim(d.service_history_claim)], [t('equipment'), d.equipment ? esc(d.equipment) : PEND()], [t('verdict'), d.verdict ? `<b>${esc(d.verdict)}</b>` : PEND()]]), [t('notes'), d.notes ? esc(d.notes) : PEND()]])}</div></div>

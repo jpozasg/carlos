@@ -29,7 +29,7 @@ class AppTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         d = Path(self.tmp.name)
         config.DATA_DIR, config.DB, config.MD_DIR, config.MEDIA_DIR = d, d / 'cars.sqlite', d / 'dossiers', d / 'media'
-        fx.build(config.DB)
+        fx.build(config.DB, repair_faults=True)
         auth.FAILS.clear()
         self.gaps = []   # the done gate's grading (#218) is stubbed: the fixture cars are not fully researched
         patcher = mock.patch.object(server.Handler, 'missing_items', lambda h, owner, lid: list(self.gaps))
@@ -158,7 +158,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual({(m['item'], m['level']) for m in d['maintenance']},
                          {('Engine oil and filter (DIY)', 'engine'), ('Timing belt with water pump (workshop)', 'engine'),
                           ('HU/AU inspection', 'generation')})
-        self.assertEqual([r['component'] for r in d['repair_risks']], ['Turbocharger'])
+        self.assertEqual([r['component'] for r in d['fault_plan']], ['Turbocharger'])
         self.assertEqual(d['consumption'], 5.8)                               # engine-level consumption
         self.assertEqual(d['tyres'][0]['level'], 'generation')
         self.assertEqual((d['engine_row']['code'], d['generation_row']['name'], d['generation']), ('BC12T', 'Gen2', 'Gen2'))
@@ -168,7 +168,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(v['siblings'], {'same_engine': [V_B], 'same_generation': [V_B]})
         a = self.req('GET', f'/api/listings/{CAR_A}')[1]
         self.assertEqual({m['level'] for m in a['maintenance']}, {'engine', 'generation'})
-        self.assertEqual({r['component'] for r in a['repair_risks']}, {'Water pump', 'Rear axle bushings'})
+        self.assertEqual({r['component'] for r in a['fault_plan']}, {'Water pump', 'Rear axle bushings'})
         self.assertIn(SRC_GUIDE, {s['id'] for s in a['sources']})           # engine-level source listed
 
     def test_target_levels_174(self):
@@ -182,7 +182,7 @@ class AppTest(unittest.TestCase):
         gb = self.agent('POST', 'gearboxes', {'code': '0XX', 'family_id': gf, 'type': 'DCT', 'gears': 7})[1]['id']
         self.assertEqual(self.agent('POST', 'gearboxes', {'code': '0YY', 'type': 'ROBOT'})[0], 400)          # fixed code
         self.assertEqual(self.agent('PATCH', f'vehicles/{V_A}', {'gearbox_id': gb})[0], 200)
-        self.sql_write('UPDATE reliability_items SET archived=1')   # the fixture's weak points would conflict (#254)
+        self.sql_write('UPDATE faults SET archived=1')   # the fixture's priced repairs would conflict with the faults filed here
         fault = {'component': 'Timing chain', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
                  'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
                  'source_id': SRC_GUIDE}
@@ -218,28 +218,20 @@ class AppTest(unittest.TestCase):
         finally:
             c.close()
 
-    def test_review_flags_168(self):
-        """#168: a flag lives on its level and is cleared only when two different workers resolve it with the same
-        conclusion; a CONFIRMED review or a lone resolution keeps it open; it cannot be cleared by hand; every review is
-        kept; the variant and every inheriting listing show it."""
-        st, f = self.agent('POST', 'review_flags', {'engine_id': E_A, 'kind': 'SOURCES_DISAGREE', 'what': 'Chain life',
-                                                    'why': 'ADAC and the guide disagree'})
-        self.assertEqual(st, 201)
-        rev = lambda w, o, con: self.agent('POST', 'flag_reviews', {'flag_id': f['id'], 'worker': w, 'outcome': o,
-                                                                    'conclusion': con, 'finding': 'checked'})[0]
-        status = lambda: next(x for x in self.req('GET', f'/api/vehicles/{V_A}')[1]['review_flags'] if x['id'] == f['id'])['status']
-        self.assertEqual(rev('run 1', 'RESOLVED', 'guide outdated'), 201)
-        self.assertEqual(rev('run 1', 'RESOLVED', 'guide outdated'), 400)                 # the same worker twice: not independent
-        self.assertEqual(rev('run 2', 'CONFIRMED', 'guide outdated'), 201)
-        self.assertEqual(rev('run 3', 'RESOLVED', 'ADAC outdated'), 201)                  # a different conclusion
-        self.assertEqual(status(), 'OPEN')
-        self.assertEqual(self.agent('PATCH', f"review_flags/{f['id']}", {'status': 'CLEARED'})[0], 400)
-        a = self.req('GET', f'/api/listings/{CAR_A}')[1]
-        self.assertEqual([x['id'] for x in a['review_flags']], [f['id']])                 # inherited by the listing
-        self.assertEqual(len(a['review_flags'][0]['reviews']), 3)
-        self.assertEqual(rev('run 4', 'RESOLVED', 'guide outdated'), 201)
-        self.assertEqual(status(), 'CLEARED')
+    def test_retired_tables_are_read_only_397(self):
+        """reliability_items, repair_risks, review_flags and flag_reviews (retired with #351) are no longer writable through the
+        agent API (403 for every method) and stay out of the writable tables; the old rows can still be read."""
+        for t in ('reliability_items', 'repair_risks', 'review_flags', 'flag_reviews'):
+            self.assertEqual(self.agent('POST', t, {'component': 'x'})[0], 403, t)
+            self.assertEqual(self.agent('PATCH', f'{t}/1', {'archived': 1})[0], 403, t)
+            self.assertEqual(self.agent('DELETE', f'{t}/1')[0], 403, t)
+            self.assertNotIn(t, self.agent('GET', 'schema')[1]['writable_tables'])
+            self.assertEqual(self.req('GET', f'/api/admin/data/{t}')[0], 200, t)
+        self.assertTrue(self.req('GET', '/api/admin/data/reliability_items')[1])      # the fixture's old rows are still there
+
+    def test_models_page_faults_and_no_reliability_stats(self):
         # what the Models page shows for the new levels; reliability_stats is gone (#353): not writable
+        self.sql_write('UPDATE faults SET archived=1')   # the fixture's priced repairs would conflict with the faults filed here
         self.agent('POST', 'faults', {'generation_id': G1, 'component': 'Trim', 'component_code': 'BODY_FITTINGS', 'part': 'CHASSIS', 'consequence': 'COSMETIC',
                                       'existence': 'CONFIRMED', 'frequency_band': 'rare', 'shape': 'RANDOM',
                                       'parts_eur': 50, 'source_id': SRC_GUIDE})
@@ -307,8 +299,8 @@ class AppTest(unittest.TestCase):
 
     def test_scoped_rows_need_exactly_one_level(self):
         base = {'item': 'x', 'interval_km': 10000, 'schedule': 'ITEM', 'diy': 0, 'reference_cost_eur': 10, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE}
-        self.assertEqual(self.agent('POST', 'repair_risks', {'component': 'x', 'km_from': 0, 'km_to': 1, 'probability': 0.1,
-                                                            'source_id': SRC_GUIDE})[0], 400)                    # no level
+        self.assertEqual(self.agent('POST', 'faults', {'component': 'x', 'component_code': 'COOLING', 'part': 'ENGINE', 'consequence': 'COST', 'existence': 'REPORTED',
+                                                       'curve_km': [[0, 0], [1, 0.1]], 'parts_eur': 1, 'source_id': SRC_GUIDE})[0], 400)  # no level
         self.assertEqual(self.agent('POST', 'maintenance_items', base)[0], 201)        # no level: a global default (#174)
         self.assertEqual(self.agent('POST', 'maintenance_items', {**base, 'vehicle_id': V_A, 'engine_id': E_A})[0], 400)  # two levels
         st, r = self.agent('POST', 'maintenance_items', {**base, 'engine_id': E_A})
@@ -342,16 +334,6 @@ class AppTest(unittest.TestCase):
         self.assertEqual(len(self.req('GET', '/api/engines')[1]), 3)
 
     # --- calculation ---
-    def test_maintenance_schedule(self):
-        small = {'interval_km': 15000, 'interval_months': 12, 'reference_cost_eur': 130}
-        big = {'interval_km': 30000, 'interval_months': 24, 'reference_cost_eur': 270}
-        wear = {'interval_km': None, 'interval_months': None, 'reference_cost_eur': 850}
-        m = costs.scheduled_maintenance
-        self.assertEqual(m([small, big, wear], 60000, 48), 800)
-        self.assertEqual(m([small, big], 90000, 72), 1200)
-        self.assertEqual(m([small, big], 20000, 48), 800)    # few km: the interval in months governs
-        self.assertIsNone(m([wear], 60000, 48))
-
     def test_components_from_the_fixture(self):
         us = self.units()
         a, b, ref = us[CAR_A], us[CAR_B], us[REF]
@@ -362,9 +344,11 @@ class AppTest(unittest.TestCase):
         self.assertEqual(a['components']['tax'], 94 * 4)
         # maintenance (60,000 km, 48 months): oil 4×50, plugs 1×40, HU 2×163, pads 1×80 = 646
         self.assertAlmostEqual(a['components']['maintenance'], 646)
-        self.assertAlmostEqual(a['diy_hours'], 4 * 1 + 0.5 + 1.5 + 0.4 * (60000 / 70000) * 2, places=2)
-        # repairs: certain 500 + water pump 0.3 × 370 × (50000/60000 of its window) + bushings 0.4 × 60 (DIY parts) × 60000/70000
-        self.assertAlmostEqual(a['components']['repairs'], 500 + 0.3 * 370 * 50000 / 60000 + 0.4 * 60 * 60000 / 70000, places=2)
+        self.assertAlmostEqual(a['diy_hours'], 4 * 1 + 0.5 + 1.5, places=2)
+        # repairs: certain 500 + faults (90,000 to 150,000 km): water pump 0.3 × 50/60 of its curve × 370; bushings F(150,000) = 0.4,
+        # F(90,000) = 0.4 × 10/70, so the chance (0.4 − 0.4 × 10/70) / (1 − 0.4 × 10/70) × 210
+        f0 = 0.4 * 10 / 70
+        self.assertAlmostEqual(a['components']['repairs'], 500 + 0.3 * 50 / 60 * 370 + (0.4 - f0) / (1 - f0) * 210, places=2)
         self.assertAlmostEqual(a['components']['tyres'], km / 45000 * (4 * 70 + 125))
         self.assertEqual(a['components']['purchase_sale'], 34 + 159)
         self.assertEqual(a['components']['depreciation'], 6000 - 4000)
@@ -387,10 +371,10 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(a['metrics']['inspection'])                 # nothing checked yet
 
     def test_unknown_price_makes_the_component_unknown(self):
-        self.agent('POST', 'repair_risks', {'vehicle_id': V_A, 'component': 'Mystery', 'km_from': 0, 'km_to': 300000,
-                                            'probability': 0.5, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})
-        self.assertEqual(self.agent('POST', 'repair_risks', {'vehicle_id': V_A, 'component': 'X', 'km_from': 0, 'km_to': 300000,
-                                                             'probability': 0.5, 'source_id': SRC_GUIDE, 'parts_eur': 1})[0], 201)
+        fault = {'vehicle_id': V_A, 'component_code': 'FUEL_SYSTEM', 'part': 'ENGINE', 'consequence': 'COST', 'existence': 'REPORTED',
+                 'curve_km': [[0, 0], [300000, 0.5]], 'probability_basis': 'ESTIMATE', 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'component': 'Mystery'})[0], 201)              # no price yet
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'component': 'X', 'component_code': 'IGNITION', 'parts_eur': 1})[0], 201)
         a = self.units()[CAR_A]
         self.assertIsNone(a['components']['repairs'])                      # certain 500 € does not hide the unknown part
         self.assertIn('repairs', a['missing_components'])
@@ -421,9 +405,9 @@ class AppTest(unittest.TestCase):
             self.assertAlmostEqual(be['resale_end'], exp, places=1)
             self.assertAlmostEqual(be['end_advantage'], -a['delta_vs_reference'], delta=1)
             month[y] = a['known_cost_per_month']
-        self.assertAlmostEqual(month[4], 315.17, places=2)
-        self.assertAlmostEqual(month[6], 302.4, delta=0.05)
-        self.assertAlmostEqual(month[8], 295.27, delta=0.05)                      # was 286.13
+        self.assertAlmostEqual(month[4], 316.33, places=2)
+        self.assertAlmostEqual(month[6], 304.22, delta=0.05)
+        self.assertAlmostEqual(month[8], 297.61, delta=0.05)                      # was 286.13
         # a row without a horizon is taken as given; an electric car's expected value is the low case (10 %/year)
         self.sql_write('UPDATE valuations SET horizon_years=NULL WHERE listing_id=?', (CAR_A,))
         self.assertAlmostEqual(self.tco_at(8)[CAR_A]['components']['depreciation'], 2000, places=1)
@@ -470,8 +454,8 @@ class AppTest(unittest.TestCase):
         """C6: a risk without a mileage, a free electricity price, a warranty of unknown age and a fix at an unknown km."""
         self.sql_write('UPDATE listings SET mileage_km=NULL WHERE id=?', (CAR_A,))
         d = self.req('GET', f'/api/listings/{CAR_A}')[1]
-        self.assertTrue(d['repair_risks'])
-        self.assertTrue(all(r['expected_eur'] is None and r['share'] is None for r in d['repair_risks']))
+        self.assertTrue(d['fault_plan'])
+        self.assertTrue(all(r['expected_eur'] is None and r['probability'] is None for r in d['fault_plan']))
         self.assertIsNone(d['components']['repairs'])
         # a price of 0 is a known price (fuel 0), only an unset one is unknown; the table forbids 0, the live preview accepts it
         self.req('POST', '/api/parameters', {'home_charging': 'wallbox', 'home_charging_pct': 100, 'electricity_home_eur_kwh': 0.4})
@@ -540,7 +524,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(plan['occurrences'], 0)                              # 60,000 km / 48 months < one whole interval
         self.assertAlmostEqual(d['components']['maintenance'], before - 48 / 72 * 600)   # months governed: 0.667 occurrences
         self.assertAlmostEqual(sum(x['cost_eur'] for x in d['maintenance_plan']), d['components']['maintenance'])
-        self.assertAlmostEqual(sum(x['expected_eur'] for x in d['repair_risks']) + 0, d['cost_detail']['repairs_expected'])
+        self.assertAlmostEqual(sum(x['expected_eur'] for x in d['fault_plan']), d['cost_detail']['repairs_expected'])
 
     def test_figures_the_ui_totals_rely_on(self):
         """The UI never recomputes: per month = subtotal / period_months, and the repairs component = certain + risks + weak points
@@ -557,7 +541,7 @@ class AppTest(unittest.TestCase):
         d = self.req('GET', f'/api/listings/{CAR_B}')[1]
         cd = d['cost_detail']
         self.assertTrue(d['fault_plan'])
-        self.assertAlmostEqual(cd['repairs_expected'], sum(x['expected_eur'] for x in d['repair_risks']) + sum(x['expected_eur'] for x in d['fault_plan']))
+        self.assertAlmostEqual(cd['repairs_expected'], sum(x['expected_eur'] for x in d['fault_plan']))
         self.assertAlmostEqual(d['components']['repairs'], (cd['repairs_certain'] or 0) + cd['repairs_expected'])
         self.agent('PATCH', f"faults/{f['id']}", {'parts_eur': None, 'labor_eur': None})
         d = self.req('GET', f'/api/listings/{CAR_B}')[1]
@@ -571,7 +555,7 @@ class AppTest(unittest.TestCase):
         get = lambda: self.req('GET', f'/api/listings/{CAR_B}')[1]
         base = get()
         self.assertIsNotNone(base['components']['repairs'])
-        self.assertTrue(base['repair_risks'])
+        self.assertTrue(base['fault_plan'])
         # (a) a PRESENT history cost is a certain repair although unit_costs lists nothing
         src = self.agent('POST', 'sources', {'title': 'Workshop quote', 'source_type': 'listing'})[1]['id']
         self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_B, 'job': 'CLUTCH', 'item': 'Worn clutch', 'status': 'PRESENT', 'category': 'repairs',
@@ -580,7 +564,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(d['cost_detail']['repairs_certain'], 200)
         self.assertEqual([x for x in d['unit_costs'] if x['category'] == 'repairs'], [])
         self.assertAlmostEqual(d['components']['repairs'], 200 + d['cost_detail']['repairs_expected'])
-        # (b) no mileage: expected repairs unknown, so the component is unknown although risk_plan lists rows
+        # (b) no mileage: expected repairs unknown, so the component is unknown although the fault plan lists rows
         mileage = base['mileage_km']
         self.assertEqual(self.agent('PATCH', f'listings/{CAR_B}', {'mileage_km': None})[0], 200)
         d = get()
@@ -588,8 +572,8 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(d['components']['repairs'])
         self.assertEqual(self.agent('PATCH', f'listings/{CAR_B}', {'mileage_km': mileage})[0], 200)
         # (c) only a certain repair, nothing researched: the component stays unknown
-        for r in base['repair_risks']:
-            self.assertEqual(self.agent('PATCH', f"repair_risks/{r['id']}", {'archived': 1})[0], 200)
+        for r in base['fault_plan']:
+            self.assertEqual(self.agent('PATCH', f"faults/{r['id']}", {'archived': 1})[0], 200)
         d = get()
         self.assertEqual(d['cost_detail']['repairs_certain'], 200)
         self.assertIsNone(d['components']['repairs'])
@@ -688,96 +672,26 @@ class AppTest(unittest.TestCase):
         e2, v2, l2 = self.ev_listing('Plug-in hybrid', listing_id='PH1')
         self.assertIsNone(self.units()[l2['id']]['components']['fuel'])  # plug-in hybrids: not supported yet
 
-    def test_new_car_150(self):
-        """A new car (issue #150): registered today for tax, age 0, its schedule starts at 0 with the first HU at 36 months,
-        and a reliability part whose every source check is N/A is unknown, never a clean record. Since #165 (second-hand
-        only) a capture refuses a new car; the costing stays for listings captured before."""
-        from carlos.costs import due, is_new
-        from carlos import research
-        from capture_listing import validate
+    def test_new_car_and_lease_are_refused_165(self):
+        """Second-hand purchases only (#165): a capture refuses a new car and a lease offer; a used ad without a first
+        registration is not special (its gap is listed in the to-do); the legacy lease columns keep their controlled codes."""
+        import capture_listing
         cap = {'url': 'https://x.example/1', 'platform': 'mobile.de', 'captured_at': '2026-11-06', 'vehicle_id': 1, 'mileage_km': 0, 'price_eur': 22990}
         with self.assertRaises(ValueError):
-            validate(cap)  # a new car is not captured any more (#165)
-        validate({**cap, 'mileage_km': 0, 'listing': {'first_registration': '2024-03'}})  # a registered car with 0 km is used
+            capture_listing.validate(cap)  # a new car is not captured
+        capture_listing.validate({**cap, 'mileage_km': 0, 'listing': {'first_registration': '2024-03'}})  # a registered car with 0 km is used
         with self.assertRaises(ValueError):
-            validate({**cap, 'price_eur': 0})  # a price is never 0
-        self.assertTrue(is_new({'first_registration': None, 'mileage_km': 0}))
-        self.assertFalse(is_new({'first_registration': '2025-01', 'mileage_km': 10}))
-        self.assertFalse(is_new({'first_registration': None, 'mileage_km': None}))  # unknown is not new
-        hu = {'id': 9, 'job': 'HU', 'interval_km': None, 'interval_months': 24}
-        self.assertEqual([due(hu, 0, m, frozenset(), True) for m in (24, 36, 48, 60)], [0, 1, 1, 2])
-        self.assertEqual(due(hu, 0, 48, frozenset()), 2.0)  # a used car: the expected share
-        oil = {'id': 8, 'job': 'OIL_SERVICE', 'interval_km': 15000, 'interval_months': 12}
-        self.assertEqual(due(oil, 40000, 30, frozenset(), True), 2)  # whole intervals from 0
+            capture_listing.validate({**cap, 'price_eur': 0})  # a price is never 0
+        for lease in ({'lease_monthly_eur': 224}, {'lease_kind': 'abo'}, {'lease_includes': 'insurance'}):
+            with self.assertRaises(ValueError):
+                capture_listing.validate({**cap, 'mileage_km': 50000, 'listing': {'first_registration': '2020-01', **lease}})
         e, v, l = self.ev_listing('Petrol', listing_id='NEW1', mileage_km=0, first_registration=None, price_eur=22990)
-        self.agent('POST', 'tax_data', {'vehicle_id': v['id'], 'annual_tax_eur': 40, 'status': 'VERIFIED', 'source_id': SRC_GUIDE,
-                                        'registered_from': '2025-01'})
-        u = self.units()[l['id']]
-        self.assertAlmostEqual(u['components']['tax'], 40 * u['period_months'] / 12)  # the window covers a car registered today
-        self.assertEqual(u['metrics']['age'], 0)
-        gap = 'listing field missing: first_registration'
-        todo = lambda: next(x for x in self.req('GET', '/api/agent/todo')[1]['listings'] if x['listing_id'] == l['id'])['todo']
-        self.assertNotIn(gap, todo())  # a new car has no registration yet (#162)
-        self.agent('PATCH', f"listings/{l['id']}", {'mileage_km': 5000})
-        self.assertIn(gap, todo())  # a used car without it still gets the item
-
-    def test_lease_data_127(self):
-        post = lambda b: self.req('POST', '/api/parameters', b)[0]
-        self.assertEqual(post({'acquisition_mode': 'rent'}), 400)
-        self.assertEqual(post({'acquisition_mode': 'both', 'lease_rate_max_eur': 300}), 200)
-        e, v, l = self.ev_listing('Petrol', listing_id='LS1', price_eur=None, lease_monthly_eur=224, lease_term_months=48)
+        todo = next(x for x in self.req('GET', '/api/agent/todo')[1]['listings'] if x['listing_id'] == l['id'])['todo']
+        self.assertIn('listing field missing: first_registration', todo)
         self.assertEqual(self.agent('PATCH', f"listings/{l['id']}", {'lease_kind': 'rent'})[0], 400)          # controlled code
         self.assertEqual(self.agent('PATCH', f"listings/{l['id']}", {'lease_includes': 'insurance, tax'})[0], 400)  # no spaces
         self.assertEqual(self.agent('PATCH', f"listings/{l['id']}", {'lease_includes': 'insurance,tax,gap'})[0], 200)
-        todo = {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[l['id']]
-        self.assertIn('lease field not stated: lease_fees_eur (ask the dealer; null is never 0)', todo)
-        self.assertIn('lease kind not recorded: km, residual or abo', todo)
-        self.assertNotIn('listing field missing: price_eur', todo)  # a lease-only ad has no purchase price
-        import capture_listing  # second-hand purchases only (#165): a capture never writes a lease
-        cap = {'url': 'https://x', 'platform': 'p', 'captured_at': '2026-11-05', 'vehicle_id': v['id'], 'price_eur': 9000}
-        for lease in ({'lease_monthly_eur': 224}, {'lease_kind': 'abo'}, {'lease_includes': 'insurance'}):
-            with self.assertRaises(ValueError):
-                capture_listing.validate({**cap, 'listing': lease})
-        capture_listing.validate({**cap, 'listing': {'first_registration': '2020-01'}})
-
-    def test_lease_costs_129(self):
-        from carlos.costs import lease_costs
-        running = lambda km, months: ({'fuel': 100.0, 'tax': 50.0, 'maintenance': 200.0, 'repairs': 300.0, 'tyres': 80.0},
-                                      {'taxable': months, 'maint': None, 'maint_hours': None, 'risk': None, 'risk_hours': None,
-                                       'wear': None, 'unpriced': [], 'km': km, 'months': months})
-        u = {'lease_term_months': 48, 'lease_includes': 'insurance,tax', 'lease_km_per_year': 8000, 'lease_extra_km_eur': 0.1,
-             'lease_fewer_km_eur': None, 'lease_fees_eur': 1000, 'lease_kind': 'km', 'lease_down_payment_eur': 0, 'lease_monthly_eur': 224}
-        p = {'annual_km': 10000, 'ownership_years': 4}
-        parts, det, ins = lease_costs(u, p, running, None, 0)
-        self.assertEqual((parts['insurance'], parts['tax'], parts['maintenance']), (0, 0, 200))  # inside the rate: 0, never twice
-        self.assertAlmostEqual(parts['purchase_sale'], 1000 + 8000 * 0.1)                      # fees + 8,000 extra km
-        self.assertEqual(parts['depreciation'], 224 * 48)                                      # down payment + rate × term
-        u2 = {**u, 'lease_includes': None}
-        self.assertIsNone(lease_costs(u2, p, running, None, 0)[0]['insurance'])               # needs a Vollkasko quote
-        self.assertEqual(lease_costs(u2, p, running, {'id': 1, 'annual_premium_eur': 600}, 0)[0]['insurance'], 2400)
-        self.assertIsNone(lease_costs({**u, 'lease_kind': 'residual'}, p, running, None, 0)[0]['depreciation'])
-        self.assertIsNone(lease_costs({**u, 'lease_extra_km_eur': None}, p, running, None, 0)[0]['purchase_sale'])
-        self.assertEqual(lease_costs({**u, 'lease_km_per_year': 15000}, p, running, None, 0)[0]['purchase_sale'], 1000)  # no refund stated
-        self.assertAlmostEqual(lease_costs({**u, 'lease_km_per_year': 15000, 'lease_fewer_km_eur': 0.05}, p, running, None, 0)[0]['purchase_sale'],
-                               1000 - 20000 * 0.05)
-        # through the API: a lease-only ad is costed as a lease; cash now, the rate cap and break-even by term
-        self.req('POST', '/api/parameters', {'ownership_years': 4, 'annual_km': 10000, 'lease_rate_max_eur': 200})
-        e, v, l = self.ev_listing('Petrol', listing_id='LS2', price_eur=None, lease_kind='km', lease_monthly_eur=224, lease_term_months=36,
-                                  lease_km_per_year=10000, lease_down_payment_eur=500, lease_fees_eur=900, lease_includes='insurance')
-        x = self.units()[l['id']]
-        self.assertEqual(x['offer'], 'lease')
-        self.assertEqual(x['components']['insurance'], 0)
-        self.assertEqual(x['components']['depreciation'], 500 + 224 * 36)
-        self.assertEqual(x['metrics']['cash_now'], 500 + 900)
-        self.assertEqual(x['budget_status'], 'over_max')  # the rate is above the highest lease rate
-        self.assertEqual(x['breakeven'], {'ready': False, 'missing': ['lease term differs from the ownership period']})
-        self.assertIsNone(x['delta_vs_reference'])
-        # an ad with both offers is bought, whatever acquisition_mode is stored: second-hand purchases only (#165)
-        e, v, l3 = self.ev_listing('Petrol', listing_id='LS3', lease_kind='km', lease_monthly_eur=224, lease_term_months=48)
-        self.req('POST', '/api/parameters', {'acquisition_mode': 'lease'})
-        x = self.units()[l3['id']]
-        self.assertEqual(x['offer'], 'purchase')
-        self.assertIsNotNone(x['offers']['lease'])
+        self.assertNotIn('offer', self.units()[l['id']])   # every car is costed as a purchase
 
     def test_electric_research_contract_125(self):
         e, v, l = self.ev_listing()
@@ -964,7 +878,7 @@ class AppTest(unittest.TestCase):
         from carlos import consistency
         self.assertTrue(consistency.same_fault('Timing chain stretch', 'timing-chain stretch N47'))
         self.assertFalse(consistency.same_fault('Timing chain', 'Timing belt'))
-        self.sql_write('UPDATE reliability_items SET archived=1')   # the fixture's weak points would conflict (#254)
+        self.sql_write('UPDATE faults SET archived=1')   # the fixture's priced repairs would conflict with the faults filed here
         base = {'component': 'Timing chain stretch', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
                 'source_id': SRC_GUIDE}
@@ -1020,6 +934,7 @@ class AppTest(unittest.TestCase):
         """A fault with an inspection_action and a recall row each get a checklist item (linked by fault_id / recall_id); until then
         lst.checklist is MISSING, afterwards met; a fault without an action is not required; the helper is idempotent."""
         from capture_listing import checklist_items
+        self.sql_write('UPDATE faults SET archived=1')   # the fixture's priced repairs would conflict with the faults filed here
         grade = lambda: {i['id']: i['grade'] for i in self.units()[CAR_A]['research']}['lst.checklist']
         fault = {'component': 'Water pump seal', 'component_code': 'COOLING', 'part': 'ENGINE', 'consequence': 'COST', 'existence': 'REPORTED', 'engine_id': E_A,
                  'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 100, 'labor_eur': 100, 'source_id': SRC_GUIDE}
@@ -1044,6 +959,8 @@ class AppTest(unittest.TestCase):
     def test_duplicate_detector_221(self):
         """The read-only detector lists faults a variant would carry twice, not distinct-marked ones, and sibling-engine lift candidates."""
         from carlos import consistency
+        self.sql_write('UPDATE faults SET archived=1')   # the fixture's priced repairs would conflict with the faults filed here
+        n0 = self.sql('SELECT max(id) FROM faults')[0][0]
         ins = "INSERT INTO faults (component, part, consequence, existence, source_id, {}, notes) VALUES (?, 'ENGINE', 'COST', 'REPORTED', ?, ?, ?)"
         self.sql_write(ins.format('engine_id'), ('Timing chain stretch', SRC_GUIDE, E_A, None))
         self.sql_write(ins.format('generation_id'), ('Timing chain stretching', SRC_GUIDE, G1, None))
@@ -1051,8 +968,8 @@ class AppTest(unittest.TestCase):
         with sqlite3.connect(config.DB) as c:
             c.row_factory = sqlite3.Row
             pairs, lifts = consistency.duplicates(c)
-            self.assertEqual(list(pairs), [(1, 2)])
-            c.execute("UPDATE faults SET notes='Distinct from fault #1: tensioner' WHERE id=2")
+            self.assertEqual(list(pairs), [(n0 + 1, n0 + 2)])
+            c.execute(f"UPDATE faults SET notes='Distinct from fault #{n0 + 1}: tensioner' WHERE id={n0 + 2}")
             self.assertEqual(consistency.duplicates(c)[0], {})
             self.assertIn('Double counted: 0', consistency.duplicates_report(c))
 
@@ -1148,21 +1065,6 @@ class AppTest(unittest.TestCase):
         self.sql_write("UPDATE listings SET is_reference=1 WHERE id=?", (CAR_A,))
         go()
         self.assertEqual(parts()['INSURANCE'], 'SKIPPED')
-
-    def test_duplicate_guard_reliability_254(self):
-        """A recall filed on two levels, and a defect filed both as a fault and a reliability item, are refused (409)."""
-        self.sql_write('UPDATE reliability_items SET archived=1')
-        rel = {'component': 'Camshaft adjuster (EA211)', 'issue': 'x', 'severity': 'HIGH', 'part': 'ENGINE', 'is_recall': 1, 'frequency_status': 'PENDING',
-               'inspection_action': 'dealer VIN check', 'source_id': SRC_GUIDE}
-        self.assertEqual(self.agent('POST', 'reliability_items', {**rel, 'engine_id': E_A})[0], 201)
-        st, r = self.agent('POST', 'reliability_items', {**rel, 'component': 'Camshaft adjuster (EA211): oil and fuel loss', 'generation_id': G1})
-        self.assertEqual(st, 409, r)
-        self.assertEqual(r['conflict'][0]['table'], 'reliability_items')
-        self.assertEqual(self.agent('POST', 'reliability_items', {**rel, 'component': 'Parking brake', 'part': 'CHASSIS', 'is_recall': 0, 'generation_id': G1})[0], 201)
-        fault = {'component': 'Parking brake cable', 'component_code': 'PARKING_BRAKE', 'part': 'CHASSIS', 'consequence': 'COST', 'existence': 'REPORTED', 'generation_id': G1,
-                 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 100, 'labor_eur': 100, 'source_id': SRC_GUIDE}
-        st, r = self.agent('POST', 'faults', fault)
-        self.assertEqual((st, r['conflict'][0]['table']), (409, 'reliability_items'))     # already a reliability item: one table only
 
     def test_parallel_claims_never_share_a_request_113(self):
         for i in range(3):
@@ -1373,7 +1275,6 @@ class AppTest(unittest.TestCase):
         fam = self.agent('POST', 'engine_families', {'name': 'AM'})[1]['id']
         self.assertEqual(self.agent('PATCH', f'engines/{E_A}', {'family_id': fam})[0], 200)
         self.sql_write('UPDATE reliability_items SET archived=1')
-        self.sql_write('UPDATE repair_risks SET archived=1')
         self.sql_write('UPDATE faults SET archived=1')
         fault = {'component': 'Timing chain', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'existence': 'REPORTED',
                  'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
@@ -1404,22 +1305,6 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'unknown recall'})[0], 400)
         self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'KBA-14729R'})[0], 201)
         self.assertEqual(self.agent('POST', 'recalls', {**rc, 'code': 'VW-2019-08-CAM_ADJUSTER'})[0], 201)
-
-    def test_one_open_flag_per_level_and_kind_337(self):
-        flag = {'engine_id': E_A, 'kind': 'SOURCES_DISAGREE', 'what': 'engine code A', 'why': 'sources differ'}
-        st, a = self.agent('POST', 'review_flags', flag)
-        self.assertEqual(st, 201, a)
-        st, b = self.agent('POST', 'review_flags', {**flag, 'what': 'timing drive B'})
-        self.assertEqual((st, b['id'], b.get('merged')), (200, a['id'], True))
-        c = sqlite3.connect(config.DB)
-        n, what = c.execute("SELECT COUNT(*), what FROM review_flags WHERE engine_id=? AND kind='SOURCES_DISAGREE'", (E_A,)).fetchone()
-        c.close()
-        self.assertEqual(n, 1)
-        self.assertIn('engine code A', what); self.assertIn('timing drive B', what)
-        st, o = self.agent('POST', 'review_flags', {**flag, 'kind': 'OTHER'})        # another kind: a new row
-        self.assertEqual((st, o['id'] != a['id']), (201, True))
-        self.sql_write("UPDATE review_flags SET status='CLEARED'")
-        self.assertEqual(self.agent('POST', 'review_flags', flag)[0], 201)            # a cleared flag may repeat
 
     def test_rel_sources_357(self):
         """Contract v10: a source key with its rating (or an N/A check) satisfies the fixed reliability items; recalls stay."""
@@ -1617,12 +1502,13 @@ class AppTest(unittest.TestCase):
         self.assertTrue(w({'applies_from': '2010', 'applies_to': '2011-06'}, '2011-06'))
         self.assertFalse(w({'applies_from': '2011-07'}, '2011-06') or w({'applies_to': '2010-12'}, '2011-06'))
         self.assertTrue(w({'applies_to': '2011'}, '2011-06'))                                # coarser side compares years
-        self.assertEqual(self.agent('POST', 'reliability_items', {'generation_id': G1, 'component': 'x', 'severity': 'LOW', 'part': 'CHASSIS',
-                                                                  'source_id': SRC_GUIDE, 'applies_from': '2011-13'})[0], 400)
-        names = lambda: {r['component'] for r in self.req('GET', f'/api/listings/{CAR_A}')[1]['reliability']}   # CAR_A: 2011-06
-        for comp, lo, hi in (('Early rust', None, '2011-12'), ('Facelift wiring', '2012-01', None)):
-            self.assertEqual(self.agent('POST', 'reliability_items', {'generation_id': G1, 'component': comp, 'severity': 'LOW', 'part': 'CHASSIS',
-                                                                      'source_id': SRC_GUIDE, 'applies_from': lo, 'applies_to': hi})[0], 201)
+        fault = {'generation_id': G1, 'consequence': 'COST', 'existence': 'CONFIRMED', 'curve_km': [[100000, 0.1], [200000, 0.4]],
+                 'probability_basis': 'ESTIMATE', 'parts_eur': 50, 'source_id': SRC_GUIDE}
+        self.assertEqual(self.agent('POST', 'faults', {**fault, 'component': 'x', 'component_code': 'BODY_RUST', 'part': 'CHASSIS', 'applies_from': '2011-13'})[0], 400)
+        names = lambda: {r['component'] for r in self.req('GET', f'/api/listings/{CAR_A}')[1]['fault_plan']}   # CAR_A: 2011-06
+        for comp, code, part, lo, hi in (('Early rust', 'BODY_RUST', 'CHASSIS', None, '2011-12'), ('Facelift wiring', 'WIRING', 'ELECTRICS', '2012-01', None)):
+            self.assertEqual(self.agent('POST', 'faults', {**fault, 'component': comp, 'component_code': code, 'part': part,
+                                                           'applies_from': lo, 'applies_to': hi})[0], 201)
         self.assertIn('Early rust', names())
         self.assertNotIn('Facelift wiring', names())
 
@@ -1667,12 +1553,12 @@ class AppTest(unittest.TestCase):
         """Issue #58: archived rows drop out of every read and calculation and can be restored; delete refuses while a
         row is referenced, removes a listing with its own rows, and is logged."""
         a = self.req('GET', f'/api/listings/{CAR_A}')[1]
-        chain = next(r for r in a['reliability'] if r['component'] == 'Timing chain')
-        self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 1})[0], 200)
+        pump = next(r for r in a['fault_plan'] if r['component'] == 'Water pump')
+        self.assertEqual(self.agent('PATCH', f"faults/{pump['id']}", {'archived': 1})[0], 200)
         a2 = self.req('GET', f'/api/listings/{CAR_A}')[1]
-        self.assertNotIn(chain['id'], [r['id'] for r in a2['reliability']])
-        self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 0})[0], 200)   # restore
-        self.assertEqual(self.agent('PATCH', f"reliability_items/{chain['id']}", {'archived': 2})[0], 400)
+        self.assertNotIn(pump['id'], [r['id'] for r in a2['fault_plan']])
+        self.assertEqual(self.agent('PATCH', f"faults/{pump['id']}", {'archived': 0})[0], 200)   # restore
+        self.assertEqual(self.agent('PATCH', f"faults/{pump['id']}", {'archived': 2})[0], 400)
         st, r = self.agent('DELETE', f"vehicles/{V_A}")
         self.assertEqual(st, 400); self.assertIn('listings.vehicle_id', r['error'])            # still used by a listing
         self.assertEqual(self.agent('DELETE', 'listings')[0], 405)
@@ -1792,7 +1678,6 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('POST', 'change_log', {'table_name': 'x'})[0], 404)
         self.assertEqual(self.agent('PATCH', 'listings/999', {'verdict': 'x'})[0], 404)
         self.assertEqual(self.agent('PATCH', f'listings/{CAR_A}', {'source_id': None})[0], 400)
-        self.assertEqual(self.agent('POST', 'repair_risks', {'vehicle_id': V_A, 'component': 'X', 'km_from': 10, 'km_to': 5, 'probability': 0.1, 'parts_eur': 1, 'source_id': SRC_GUIDE})[0], 400)
 
     def test_agent_write_logs_and_regenerates_markdown(self):
         st, r = self.agent('PATCH', f'listings/{CAR_A}', {'verdict': 'Strong candidate, inspection pending'})

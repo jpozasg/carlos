@@ -35,10 +35,9 @@ JOBS = ['OIL_SERVICE', 'AIR_FILTER', 'CABIN_FILTER', 'SPARK_PLUGS', 'TIMING_DRIV
 # engines.fuel_type (#121): a full hybrid is costed as petrol; an electric car's energy is electricity (kWh)
 FUEL_TYPES = ['Petrol', 'Diesel', 'Hybrid', 'Plug-in hybrid', 'Electric']
 HOME_CHARGING = ['none', 'socket', 'wallbox', 'wallbox_planned']
-# leasing (#127): the kind of lease offer, what its rate may include (TCO keys plus GAP cover), the account's choice
+# leasing (#127): legacy columns of `listings`; a lease is out of scope (#165), only the codes of those columns are kept
 LEASE_KINDS = ['km', 'residual', 'abo']
 LEASE_INCLUDES = ['insurance', 'tax', 'maintenance', 'repairs', 'tyres', 'gap']
-ACQUISITION_MODES = ['buy', 'lease', 'both']
 # The setup's DIY choices (preference diy_jobs, the values of DIY in static/js/pages/start.js) → the jobs they cover. A
 # job with a code is DIY for an account exactly when one of its choices covers it; a job no choice covers (HU, brake
 # fluid, drive belt) is a workshop job. "yearly service" has no job of its own: rows without a code keep their diy flag.
@@ -64,14 +63,13 @@ EV_CHARGING_LOSS = 0.08
 # Kfz-Steuer of electric cars (§ 3d KraftStG as amended by the 8. KraftStÄndG, in force 2026-01-01): first registered by
 # this month → exempt for 10 years, until this month at the latest (year, month)
 EV_TAX_EXEMPT_REGISTERED_BY, EV_TAX_EXEMPT_UNTIL = (2030, 12), (2035, 12)
-# a new car (issue #150): no first registration and under this mileage (delivery/demo km); its first HU is due 36 months
-# after registration, then every 24 (StVZO Anlage VIII 2.1)
-NEW_CAR_MAX_KM, NEW_CAR_FIRST_HU_MONTHS = 100, 36
+# a new car (no first registration, under this mileage = delivery/demo km) is refused at capture (#165)
+NEW_CAR_MAX_KM = 100
 # Insurance: the reference car uses the premium the user actually pays (USER DATA) over comparison quotes.
 USER_PREMIUM = 'USER DATA'
 
 # Knowledge tables attach to exactly one level: variant (vehicle_id), engine (engine_id) or generation (generation_id).
-SCOPED_TABLES = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'repair_risks', 'tyre_data',
+SCOPED_TABLES = ('observations', 'insurance_data', 'tax_data', 'maintenance_items', 'reliability_items', 'tyre_data',
                  'research_checks',  # research_checks: the contract's recorded source checks (issue #114)
                  'faults', 'recalls',  # target design (#174): faults, recalls
                  'review_flags')  # problems to review on a level (#168)
@@ -107,7 +105,7 @@ RESALE_YEARLY_LOSS = {'expected': 0.06, 'low': 0.10, 'high': 0.03}
 MARKET_MIN_PER_BAND, MARKET_MAX_AGE_DAYS = 5, 183  # resale sample (#166): ≥ 5 cars in each of the three bands, 6 months
 
 # knowledge rows that may carry a first-registration window (applies_from/applies_to, issue #153)
-WINDOWED_TABLES = ('maintenance_items', 'repair_risks', 'reliability_items', 'faults', 'recalls')
+WINDOWED_TABLES = ('maintenance_items', 'reliability_items', 'faults', 'recalls')
 
 # Controlled component codes of faults (#221 phase 3, docs/design-two-agent-research.md section 4): {part: [(code, covers, pattern)]}.
 # `pattern` (first match wins, in this order) feeds the back-fill and the suggestion in 400 texts, never a silent code on insert.
