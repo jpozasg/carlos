@@ -4,7 +4,7 @@ import { S, applyTheme, loadAll, renderShell, refreshTco } from '../app.js';
 import { post, get } from '../api.js';
 import * as i18n from '../i18n.js';
 import { t } from '../i18n.js';
-import { $, esc, num, store, toast } from '../ui.js';
+import { $, esc, euro, num, store, toast } from '../ui.js';
 
 const KEYS = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'fuel_price_date', 'diesel_price_eur_l', 'diesel_price_date', 'budget_ideal_eur', 'budget_max_eur', 'exclude_over_max', 'postal_code', 'drivers_count', 'driver_age', 'sf_class', 'insurance_cover', 'insurance_deductible_eur', 'purchase_mode',
   'home_charging', 'home_charging_pct', 'electricity_home_eur_kwh', 'electricity_home_date', 'electricity_public_eur_kwh', 'electricity_public_date', 'wallbox_cost_eur'];
@@ -30,7 +30,7 @@ function form() {
   const p = S.saved, f = (k, label, extra = '') => `<div class="field"><label for="${k}">${label}</label>${extra}</div>`;
   const inp = (k, type, attrs = '') => `<input id="${k}" type="${type}" ${attrs} value="${p[k] == null ? '' : esc(String(p[k]).replace(/\.0$/, ''))}">`;
   const sel = k => { const cur = p[k] == null ? '' : String(p[k]).replace(/\.0$/, ''); const vals = [...new Set(['', ...OPTS[k], ...(cur && !OPTS[k].includes(cur) ? [cur] : [])])];
-    return `<select id="${k}">${vals.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v === '' ? '—' : k === 'purchase_mode' ? t('pm_' + v) : k === 'home_charging' ? t('hc_' + v) : k === 'exclude_over_max' ? t('eo_' + v) : k === 'insurance_deductible_eur' ? v + ' €' : esc(v)}</option>`).join('')}</select>`; };
+    return `<select id="${k}">${vals.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v === '' ? '—' : k === 'purchase_mode' ? t('pm_' + v) : k === 'home_charging' ? t('hc_' + v) : k === 'exclude_over_max' ? t('eo_' + v) : k === 'insurance_deductible_eur' ? euro(+v) : esc(v)}</option>`).join('')}</select>`; };
   return `<form id="paramForm" novalidate>
     <fieldset><legend>${t('calc_group')}</legend><p class="small muted" style="margin:0 0 10px">${t('calc_group_hint')}</p><div class="fields">
       ${f('annual_km', t('p_annual_km'), `<div class="pair"><input id="annual_km_range" type="range" min="5000" max="40000" step="1000" value="${p.annual_km}" aria-hidden="true" tabindex="-1">${inp('annual_km', 'number', 'min="1" step="500" inputmode="numeric"')}</div>`)}

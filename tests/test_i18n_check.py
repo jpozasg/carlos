@@ -54,10 +54,12 @@ class I18nCheck(unittest.TestCase):
                       'static/js/i18n.js': "export const LANGS = { en: 'en-GB', pl: 'pl-PL' };"})
             self.assertEqual(chk.run(d, Path(d) / 'fixed.json')[0], [])
 
-    def test_repository_runs(self):  # runs without crashing; failures are tracked in the skill, not asserted here
-        root = SCRIPT.parents[4]
-        errors, warnings = chk.run(root)
-        self.assertIsInstance(errors, list)
+    def test_repository_has_no_errors(self):  # a regression in the language files, codes or euro/unit formatting fails the suite
+        errors, warnings = chk.run(SCRIPT.parents[4])
+        # TEMPORARY (issue #382): the two euro-sign literals in pages owned by the data-truth package (compare.js, dossier.js);
+        # delete this filter when that package replaces them with num() + t('unit_eur_km' / 'unit_eur_l' / 'unit_eur_kwh').
+        errors = [e for e in errors if not (e.startswith('format: js/pages/compare.js:') or e.startswith('format: js/pages/dossier.js:'))]
+        self.assertEqual(errors, [])
 
 
 if __name__ == '__main__':
