@@ -178,20 +178,15 @@ def shape_curves(f):
 
 
 def amount(x):
-    """Parts plus labour of a cost row; None when it has neither figure (a pending price, never 0)."""
+    """Parts plus labour of a cost row or a fault (its workshop price); None when it has neither figure (a pending price, never 0)."""
     return None if x['parts_eur'] is None and x['labor_eur'] is None else (x['parts_eur'] or 0) + (x['labor_eur'] or 0)
-
-
-def fault_price(f):
-    """Workshop price of a fault (parts + labour); None without a price."""
-    return amount(f)
 
 
 def fault_severity(f):
     """Derived, never chosen (owner, 2026-11-06, #168): HIGH when it can destroy the engine or gearbox or costs ≥ SEVERITY_HIGH_EUR, or
     strands the car / is a safety risk and costs ≥ SEVERITY_MEDIUM_EUR (cheaper: LOW-MEDIUM, #285); MEDIUM from SEVERITY_MEDIUM_EUR
     or when the car is unusable until fixed; LOW below that while the car still drives."""
-    price = fault_price(f) or 0
+    price = amount(f) or 0
     if f['consequence'] == 'ENGINE_DAMAGE' or price >= config.SEVERITY_HIGH_EUR:
         return 'HIGH'
     if f['consequence'] in ('STRANDS', 'SAFETY'):  # #285: a cheap stranding or safety fault (a coil, bulbs, tie-rod ends) must not empty a part
@@ -240,7 +235,7 @@ def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=Non
                     limit = None if by_years is None else min(f['warranty_km'] or float('inf'), by_years)
                     if limit is not None and km_now < limit < float('inf'):
                         cover = conditional(km_c, k0, min(k0 + km_period, k0 + limit - km_now), config.CURVE_END_KM) * f['warranty_share']
-        price = fault_price(f)
+        price = amount(f)
         out.append({**{k: f.get(k) for k in ('id', 'component', 'part', 'issue', 'consequence', 'existence', 'probability_basis',
                                               'frequency_band', 'shape', 'inspection_action', 'applies_from', 'applies_to',
                                               'window_uncertain', 'source_id', 'notes')},
@@ -774,7 +769,8 @@ def tco_rows(c, p):
                             if any(x['diy_hours'] is not None for x in costs) or det['maint_hours'] or det['risk_hours'] else None),
                  cost_detail={'repairs_certain': certain_eur('repairs'), 'repairs_expected': det['risk'], 'tyre_wear': det['wear'],
                               'maintenance_certain': certain_eur('maintenance'), 'maintenance_scheduled': det['maint'],
-                              'tyres_certain': certain_eur('tyres'), 'resale_rescaled_from_years': (vals.get(u['id'], {}).get('resale_end') or {}).get('rescaled_from_years'), 'fuel_price_eur_l': price_l, 'electricity_eur_kwh': price_kwh,
+                              'tyres_certain': certain_eur('tyres'), 'fuel_price_eur_l': price_l, 'electricity_eur_kwh': price_kwh,
+                              'resale_rescaled_from_years': (vals.get(u['id'], {}).get('resale_end') or {}).get('rescaled_from_years'),
                               'wallbox_eur': wallbox or None,
                               'maintenance_diy_hours': det['maint_hours'], 'repairs_diy_hours': det['risk_hours'],
                               **({'lease': det['lease']} if u['offer'] == 'lease' else {})},
