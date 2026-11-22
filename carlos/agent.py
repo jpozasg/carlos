@@ -31,7 +31,8 @@ FIXED_CODES = {'valuations.kind': ['sale_today', 'resale_end'], 'unit_costs.cate
                'recalls.part': config.RELIABILITY_PARTS,
                'maintenance_items.kind': ['JOB', 'WEAR'], 'listing_history.status': ['DONE', 'PRESENT', 'OPEN', 'NOT AFFECTED'],
                'listing_history.evidence': ['DOCUMENTED', 'SELLER CLAIM', 'OBSERVED', 'VIN CHECK'],
-               'listing_history.category': ['maintenance', 'repairs'], 'listing_history.job': config.JOBS}
+               'listing_history.category': ['maintenance', 'repairs'], 'listing_history.job': config.JOBS,
+               'faults.job': config.JOBS}
 # Tables the agent may write. Those in the second set require source_id on insert.
 AGENT_TABLES = {'generations', 'engines', 'vehicles', 'listings', 'sources', 'observations', 'insurance_data', 'tax_data',
                 'maintenance_items', 'valuations', 'unit_costs', 'inspection_items', 'listing_events',
@@ -506,7 +507,8 @@ def save_media(c, listing_id, body, query):
     if c.execute('SELECT 1 FROM listings WHERE id=?', (listing_id,)).fetchone() is None:
         raise NotFound(f'listings id={listing_id} does not exist')
     digest = hashlib.sha256(body).hexdigest()
-    dup = c.execute('SELECT id FROM listing_media WHERE listing_id=? AND sha256=?', (listing_id, digest)).fetchone()
+    # an archived (removed) photo counts too: a re-capture must not bring back a photo the owner removed (UNIQUE listing_id, sha256)
+    dup = c.execute('SELECT id FROM main.listing_media WHERE listing_id=? AND sha256=?', (listing_id, digest)).fetchone()
     if dup:
         return dup['id'], False
     if storage_usage(max_age=0)['total_bytes'] + len(body) > config.STORAGE_BUDGET:
@@ -527,7 +529,37 @@ def save_media(c, listing_id, body, query):
                       ('listing_media', cur.lastrowid, 'insert', json.dumps({'file_path': rel, 'bytes': len(body)})))
     except Exception:
         # without a DB row the file would be orphaned; but if a concurrent upload already registered it, keep it
-        if c.execute('SELECT 1 FROM listing_media WHERE file_path=?', (rel,)).fetchone() is None:
+        if c.execute('SELECT 1 FROM main.listing_media WHERE file_path=?', (rel,)).fetchone() is None:
             path.unlink(missing_ok=True)
         raise
     return cur.lastrowid, True
+
+
+def photo_write(c, media_id, method, data, user_id):
+    """Removes a listing photo of this account, for a photo that shows a plate or a VIN (owner-approved). PATCH
+    {"archived": 1|0} hides or restores it at once (the file stays). DELETE {"id": <same id>, "confirm": true} deletes the
+    row and its file for good: only an archived photo, and only after the owner confirmed that exact photo. The
+    listing_media_all view is scoped to the account's listings, so another account's photo is NotFound."""
+    row = c.execute('SELECT id, file_path, archived FROM listing_media_all WHERE id=?', (media_id,)).fetchone()
+    if row is None:
+        raise NotFound(f'listing_media id={media_id} does not exist')
+    log = 'INSERT INTO main.change_log (table_name,row_id,action,old_json,new_json,user_id) VALUES (?,?,?,?,?,?)'
+    if method == 'PATCH':
+        if set(data) != {'archived'} or data['archived'] not in (0, 1):
+            raise ValueError('PATCH {"archived": 1} hides the photo, {"archived": 0} shows it again')
+        with c:
+            c.execute('UPDATE main.listing_media SET archived=? WHERE id=?', (data['archived'], media_id))
+            c.execute(log, ('listing_media', media_id, 'update', json.dumps({'archived': row['archived']}),
+                            json.dumps({'archived': data['archived']}), user_id))
+        return {'table': 'listing_media', 'id': media_id, 'archived': data['archived']}
+    if data.get('id') != media_id or data.get('confirm') is not True:
+        raise ValueError('Permanent delete needs {"id": <this photo id>, "confirm": true}: the owner confirmed this exact photo')
+    if not row['archived']:
+        raise ValueError('Hide the photo first (PATCH {"archived": 1}): only a removed photo is deleted for good')
+    with c:
+        c.execute('DELETE FROM main.listing_media WHERE id=?', (media_id,))
+        c.execute(log, ('listing_media', media_id, 'delete', json.dumps({'file_path': row['file_path']}), '{}', user_id))
+    f = (config.MEDIA_DIR / row['file_path']).resolve()  # the file goes after the row commits: never a row without its file
+    if f.is_relative_to(config.MEDIA_DIR.resolve()):
+        f.unlink(missing_ok=True)
+    return {'table': 'listing_media', 'id': media_id, 'deleted': True}

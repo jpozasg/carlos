@@ -3,21 +3,33 @@
 import { S } from '../app.js';
 import { get, post, patch, del } from '../api.js';
 import { t } from '../i18n.js';
-import { $, esc, toast, empty, safeUrl } from '../ui.js';
+import { $, esc, toast, empty, safeUrl, busy } from '../ui.js';
 import { statusTag, partsHtml } from '../requests.js';
 
-let root, users = [], reqs = [], lastInvite = null, workers = [], lastToken = null, changes = [], eraseId = null;
+let root, users = [], reqs = [], lastInvite = null, workers = [], lastToken = null, changes = [], ask = null, eraseId = null;
 const WS = { idle: '', working: 'good', error: 'bad', down: 'bad', deactivated: '' };
 const uname = id => esc(users.find(u => u.id === id)?.username ?? (id == null ? '—' : '#' + id));
+// a destructive action asks first, in place of its button, and names the account (WDG destructive); the confirm row
+// shows until Confirm or Cancel, and is dropped when the admin leaves the page
+const gate = (key, btn) => ask?.key === key
+  ? `<span class="confirm" role="alert"><span class="small">${ask.text}</span> <button class="btn sm" type="button" data-yes>${t('confirm_yes')}</button> <button class="btn ghost sm" type="button" data-no>${t('cancel')}</button></span>`
+  : btn;
+const setAsk = (key, text, go) => { ask = { key, text, go }; draw(); root.querySelector('[data-no]')?.focus(); };  // focus starts on Cancel
+// the invite link or token as text: the clipboard when the browser allows it, else the text is selected for a manual copy
+async function copy(id) {
+  const box = $(id);
+  if (await navigator.clipboard?.writeText(box.textContent).then(() => true, () => false)) { toast(t('copied')); return; }
+  const r = document.createRange(); r.selectNodeContents(box); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast(t('copy_select'));
+}
 function workersHtml() {
   const rows = workers.map(w => `<tr><td><b>${esc(w.name)}</b></td><td><span class="tag ${WS[w.status] ?? ''}">${esc(t('ws_' + w.status))}</span></td>
     <td class="small">${esc(w.last_seen ?? '—')}</td>
     <td class="small">${w.url ? `<a href="${safeUrl(w.url)}" target="_blank" rel="noopener">${esc(w.url)}</a><div class="muted">${esc(w.username ?? '')}${w.listing_id ? ` · #${w.listing_id}` : ''}${w.unit ? ` · ${t('wk_on', { u: esc(t('rp_' + w.unit)) })}` : ''}${w.parent_id ? ` · request #${w.parent_id}` : ''}</div>` : '—'}</td>
     <td class="small">${w.last_error ? `${esc(w.last_error)}<div class="muted">${esc(w.last_error_at ?? '')}</div>` : '—'}</td>
-    <td class="row"><button class="btn ghost sm" type="button" data-wtoken="${w.id}">${t('worker_regen')}</button><button class="btn ghost sm" type="button" data-wactive="${w.id}" data-to="${w.is_active ? 0 : 1}">${w.is_active ? t('deactivate') : t('activate')}</button></td></tr>`).join('');
+    <td class="row"><button class="btn ghost sm" type="button" data-wtoken="${w.id}">${t('worker_regen')}</button>${gate('wact:' + w.id, `<button class="btn ghost sm" type="button" data-k="wact:${w.id}" data-wactive="${w.id}" data-to="${w.is_active ? 0 : 1}">${w.is_active ? t('deactivate') : t('activate')}</button>`)}</td></tr>`).join('');
   return `<h3>${t('workers')}</h3><p class="small muted">${t('workers_lead')}</p>
     <form id="newWorker" class="row" style="margin-bottom:12px"><div class="field"><label for="nw_name">${t('worker_name')}</label><input id="nw_name" pattern="[\\w.-]{2,40}" required></div><button class="btn" type="submit" style="align-self:flex-end">${t('worker_create')}</button></form>
-    ${lastToken ? `<p class="small" style="margin:0 0 4px">${t('worker_token_hint', { n: esc(lastToken.name) })}</p><div class="token-box" style="margin-bottom:12px">${esc(lastToken.token)}</div>` : ''}
+    ${lastToken ? `<p class="small" style="margin:0 0 4px">${t('worker_token_hint', { n: esc(lastToken.name) })}</p><div class="token-box" id="wk_tok">${esc(lastToken.token)}</div><button class="btn ghost sm" type="button" data-copy="wk_tok" style="margin:8px 0 12px">${t('copy')}</button>` : ''}
     <div class="tablewrap"><table><thead><tr><th>${t('worker_name')}</th><th>${t('status')}</th><th>${t('worker_last_seen')}</th><th>${t('worker_job')}</th><th>${t('worker_error')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="6">${empty('')}</td></tr>`}</tbody></table></div>`;
 }
 function changesHtml() {
@@ -34,14 +46,15 @@ function eraseCard(u) {  // a card under the table: a table cell cannot hold the
 function draw() {
   const rows = users.map(u => `<tr><td><b>${esc(u.username)}</b>${u.id === S.me.id ? ` <span class="tag ref">${t('you')}</span>` : ''}</td><td>${esc(t('role_' + u.role))}</td>
     <td>${u.is_active ? `<span class="tag good">${t('active')}</span>` : `<span class="tag">${t('inactive')}</span>`}${u.has_password ? '' : ` <span class="tag warn">${t('no_password')}</span>`}</td><td class="small">${esc(u.created_at)}</td>
-    <td class="row"><button class="btn ghost sm" type="button" data-invite="${u.id}">${t('invite_link')}</button>
-      ${u.id !== S.me.id ? `<button class="btn ghost sm" type="button" data-active="${u.id}" data-to="${u.is_active ? 0 : 1}">${u.is_active ? t('deactivate') : t('activate')}</button><button class="btn ghost sm" type="button" data-role="${u.id}" data-to="${u.role === 'admin' ? 'user' : 'admin'}">${u.role === 'admin' ? t('make_user') : t('make_admin')}</button><button class="btn ghost sm" type="button" data-erase="${u.id}">${t('erase_account')}</button>` : ''}</td></tr>
-      `).join('');
+    <td class="row">${gate('inv:' + u.id, `<button class="btn ghost sm" type="button" data-k="inv:${u.id}" data-invite="${u.id}">${t('invite_link')}</button>`)}
+      ${u.id !== S.me.id ? gate('act:' + u.id, `<button class="btn ghost sm" type="button" data-k="act:${u.id}" data-active="${u.id}" data-to="${u.is_active ? 0 : 1}">${u.is_active ? t('deactivate') : t('activate')}</button>`)
+        + gate('role:' + u.id, `<button class="btn ghost sm" type="button" data-k="role:${u.id}" data-role="${u.id}" data-to="${u.role === 'admin' ? 'user' : 'admin'}">${u.role === 'admin' ? t('make_user') : t('make_admin')}</button>`)
+        + `<button class="btn ghost sm" type="button" data-erase="${u.id}">${t('erase_account')}</button>` : ''}</td></tr>`).join('');
   root.innerHTML = `<div class="section"><h2>${t('tab_admin')}</h2><p class="lead">${t('admin_lead')}</p>
     <div class="card" style="margin-bottom:16px">${workersHtml()}</div>
     <div class="card" style="margin-bottom:16px"><h3>${t('new_user')}</h3><form id="newUser" class="row"><div class="field"><label for="nu_name">${t('username')}</label><input id="nu_name" pattern="[\\w.-]{2,40}" required></div>
       <div class="field"><label for="nu_role">${t('role')}</label><select id="nu_role" class="inline"><option value="user">${t('role_user')}</option><option value="admin">${t('role_admin')}</option></select></div><button class="btn" type="submit" style="align-self:flex-end">${t('create_invite')}</button></form>
-      ${lastInvite ? `<p class="small" style="margin:12px 0 4px">${t('invite_created', { u: esc(lastInvite.username) })}</p><div class="token-box">${esc(lastInvite.invite)}</div>` : ''}</div>
+      ${lastInvite ? `<p class="small" style="margin:12px 0 4px">${t('invite_created', { u: esc(lastInvite.username) })}</p><div class="token-box" id="inv_tok">${esc(lastInvite.invite)}</div><button class="btn ghost sm" type="button" data-copy="inv_tok" style="margin-top:8px">${t('copy')}</button>` : ''}</div>
     <div class="tablewrap"><table><thead><tr><th>${t('username')}</th><th>${t('role')}</th><th>${t('status')}</th><th>${t('created')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>
     ${eraseId != null && users.find(x => x.id === eraseId) ? eraseCard(users.find(x => x.id === eraseId)) : ''}
     <h3 style="margin-top:24px">${t('req_queue')}</h3><p class="small muted">${t('req_queue_lead')}</p>
@@ -61,17 +74,30 @@ function bind() {
     if (e.target.id === 'newWorker') { try { const name = $('nw_name').value.trim(); const r = await post('/api/admin/workers', { name }); lastToken = { name, token: r.token }; await reload(); } catch (err) { toast(err.message, true); } return; }
     try { const r = await post('/api/admin/users', { username: $('nu_name').value.trim(), role: $('nu_role').value }); lastInvite = r; await reload(); } catch (err) { toast(err.message, true); } });
   root.addEventListener('click', async e => {
+    const yes = e.target.closest('[data-yes]'); if (yes) { const a = ask; ask = null; await busy(yes, a.go); return; }
+    if (e.target.closest('[data-no]')) { const k = ask?.key; ask = null; draw(); if (k) root.querySelector(`[data-k="${k}"]`)?.focus(); return; }
+    const cp = e.target.closest('[data-copy]'); if (cp) { await copy(cp.dataset.copy); return; }
     const wt = e.target.closest('[data-wtoken]'); if (wt) { try { const r = await post(`/api/admin/workers/${wt.dataset.wtoken}/token`, {}); lastToken = { name: workers.find(w => w.id === +wt.dataset.wtoken)?.name, token: r.token }; draw(); } catch (err) { toast(err.message, true); } return; }
-    const wa = e.target.closest('[data-wactive]'); if (wa) { try { await patch(`/api/admin/workers/${wa.dataset.wactive}`, { is_active: +wa.dataset.to }); await reload(); } catch (err) { toast(err.message, true); } return; }
+    const wa = e.target.closest('[data-wactive]'); if (wa) { const id = wa.dataset.wactive, to = +wa.dataset.to;
+      const go = async () => { try { await patch(`/api/admin/workers/${id}`, { is_active: to }); await reload(); } catch (err) { toast(err.message, true); } };
+      if (to) return go();
+      setAsk(`wact:${id}`, t('confirm_deactivate_worker', { u: esc(workers.find(w => w.id === +id)?.name) }), go); return; }
     if (e.target.closest('[data-older]')) { try { changes = changes.concat(await get(`/api/admin/changes?limit=50&before=${changes[changes.length - 1].id}`)); draw(); } catch (err) { toast(err.message, true); } return; }
-    const inv = e.target.closest('[data-invite]'); if (inv) { try { const r = await post(`/api/admin/users/${inv.dataset.invite}/invite`, {}); lastInvite = { username: users.find(u => u.id === +inv.dataset.invite)?.username, invite: r.invite }; draw(); } catch (err) { toast(err.message, true); } return; }
     const er = e.target.closest('[data-erase]'); if (er) { eraseId = +er.dataset.erase; draw(); $('er_name')?.focus(); return; }
     if (e.target.closest('[data-erase-cancel]')) { eraseId = null; draw(); return; }
-    const ac = e.target.closest('[data-active]'); if (ac) { try { await patch(`/api/admin/users/${ac.dataset.active}`, { is_active: +ac.dataset.to }); await reload(); } catch (err) { toast(err.message, true); } return; }
-    const ro = e.target.closest('[data-role]'); if (ro) { try { await patch(`/api/admin/users/${ro.dataset.role}`, { role: ro.dataset.to }); await reload(); } catch (err) { toast(err.message, true); } } });
+    const inv = e.target.closest('[data-invite]'); if (inv) { const id = +inv.dataset.invite, u = users.find(x => x.id === id);
+      setAsk(`inv:${id}`, t('confirm_invite', { u: esc(u?.username) }), async () => { try { const r = await post(`/api/admin/users/${id}/invite`, {}); lastInvite = { username: u?.username, invite: r.invite }; draw(); } catch (err) { toast(err.message, true); } }); return; }
+    const ac = e.target.closest('[data-active]'); if (ac) { const id = ac.dataset.active, to = +ac.dataset.to;
+      const go = async () => { try { await patch(`/api/admin/users/${id}`, { is_active: to }); await reload(); } catch (err) { toast(err.message, true); } };
+      if (to) return go();
+      setAsk(`act:${id}`, t('confirm_deactivate_user', { u: esc(users.find(x => x.id === +id)?.username) }), go); return; }
+    const ro = e.target.closest('[data-role]'); if (ro) { const id = ro.dataset.role, role = ro.dataset.to;
+      setAsk(`role:${id}`, t(role === 'admin' ? 'confirm_role_admin' : 'confirm_role_user', { u: esc(users.find(x => x.id === +id)?.username) }),
+        async () => { try { await patch(`/api/admin/users/${id}`, { role }); await reload(); } catch (err) { toast(err.message, true); } }); } });
 }
 export async function render(main) {
   if (S.me?.role !== 'admin') { main.innerHTML = `<div class="card err">${t('admin_only')}</div>`; return; }
-  if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="admin"></div>'; root = main.firstElementChild; bind(); }
+  // invite links, tokens and an open confirm stay until the admin leaves the page (the page is rebuilt on return)
+  if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="admin"></div>'; root = main.firstElementChild; lastInvite = null; lastToken = null; ask = null; bind(); }
   await reload();
 }

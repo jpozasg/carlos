@@ -144,7 +144,8 @@ def fault_done_ages(h, today):
     return {fid: age_years(x['event_date'], today) for fid, x in last.items()}
 
 
-def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=None, annual_km=None, by_id=None, chance=None, done_age=None):
+def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=None, annual_km=None, by_id=None, chance=None, done_age=None,
+               covered=frozenset()):
     """Per-fault expected repair cost over the period (#174, #168): the chance it fails during the owner's km and years
     (the larger of the km and age chances, never both) given it has not failed yet, × its price. A sourced usage
     multiplier applies when the account's usage is heavy (short trips). After a documented fix (history DONE at km) the
@@ -152,7 +153,9 @@ def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=Non
     the DONE date; unknown without it, then the km curve alone and `age_unknown`); a fixed_fault_id instead follows the
     replacement part's curve from there. An unknown km at the fix is unknown, never 0. The owner's own chance for the period
     (`chance`, owner_chances, #379) replaces it. Extended warranty cover reduces the cost of
-    the share that falls while it applies. p or price None = unknown."""
+    the share that falls while it applies. A fault a certain repair of the listing fixes (`covered`, C3) adds no expected
+    cost: the certain cost counts it. A fault done with its job's DIY choice (`diy`) is priced at its DIY parts and its
+    hours (`diy_hours_expected`, never priced); p or price None = unknown."""
     done, by_id, chance, done_age = done or {}, by_id or {}, chance or {}, done_age or {}
     out = []
     for f in faults:
@@ -187,15 +190,19 @@ def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=Non
         oc = chance.get(f['id']) if fixed else None
         if oc:  # the owner's evidence for this car replaces the curve after its fix; no warranty cover is assumed for it (#379)
             p, cover, age_unknown = oc['probability'], 0.0, False
-        price = amount(f)
+        diy = bool(f.get('diy'))  # the account's DIY choice for its job (C4): DIY parts price and hours, else the workshop price
+        price = f.get('diy_parts_eur') if diy else amount(f)
+        hours = None if not diy or not f.get('diy_hours') or p is None else round(p * f['diy_hours'], 2)
         out.append({**{k: f.get(k) for k in ('id', 'component', 'part', 'issue', 'consequence', 'existence', 'probability_basis',
                                               'frequency_band', 'shape', 'inspection_action', 'applies_from', 'applies_to',
-                                              'window_uncertain', 'source_id', 'notes')},
+                                              'window_uncertain', 'source_id', 'notes', 'job')},
                     'level': f.get('level'), 'severity': fault_severity(f), 'price_eur': price, 'repaired_at_km': d, 'fixed': fixed,
                     'repaired_years_ago': done_age.get(f['id']) if fixed else None, 'age_unknown': age_unknown,
                     'probability': None if p is None else round(p, 4), 'warranty_cover': round(cover, 4),
-                    'owner_chance': {**oc, 'source': 'user_data'} if oc else None,
-                    'expected_eur': None if p is None or (p and price is None) else round(max(0.0, p - cover) * (price or 0), 2)})
+                    'owner_chance': {**oc, 'source': 'user_data'} if oc else None, 'diy': diy, 'diy_hours_expected': hours,
+                    'covered_by_certain': f['id'] in covered,
+                    'expected_eur': 0.0 if f['id'] in covered else None if p is None or (p and price is None)
+                    else round(max(0.0, p - cover) * (price or 0), 2)})
     return out
 
 
@@ -414,9 +421,9 @@ class Knowledge:
             if self.heavy:
                 rs = [{**r, 'interval_km': r.get('interval_km_heavy') or r['interval_km'],
                        'interval_months': r.get('interval_months_heavy') or r['interval_months']} for r in rs]
-        if self.jobs is None or table != 'maintenance_items':
+        if self.jobs is None or table not in ('maintenance_items', 'faults'):  # faults with a job too (C4)
             return rs
-        return [{**r, 'diy': int(r['job'] in self.jobs), 'diy_as_stored': r['diy']} if r.get('job') else r for r in rs]
+        return [{**r, 'diy': int(r['job'] in self.jobs), 'diy_as_stored': r.get('diy')} if r.get('job') else r for r in rs]
 
     def consumption(self, v, fuel_type=None):
         """The primary consumption row: one real-world source per drivetrain (l/100 km, or kWh/100 km for an electric car)."""
@@ -594,6 +601,9 @@ def tco_rows(c, p, know=None):
         energy = price_kwh if electric else price_l
         # a planned wallbox is a cost of choosing an electric car (purchase side, paid now); unknown cost = unknown component
         wallbox = (p.get('wallbox_cost_eur') if p.get('home_charging') == 'wallbox_planned' else 0) if electric and not u['is_reference'] else 0
+        # C3: a fault that a certain repair of this listing fixes (unit_costs.fault_id, or a PRESENT history item) is not expected too
+        covered = frozenset({x['fault_id'] for x in history.get(u['id'], []) if x['status'] == 'PRESENT' and x['fault_id']} |
+                            {x['fault_id'] for x in costs if x['category'] == 'repairs' and x['fault_id']})
         # certain one-off costs of the listing plus the model's expected costs; the expected part unknown (no fault or
         # tyre research, an unpriced fault, no mileage) makes the whole component unknown, never a smaller number
         add = lambda cat, expected: None if expected is None or cat in no_figure else (unit_cost[cat] or 0) + expected
@@ -605,7 +615,9 @@ def tco_rows(c, p, know=None):
             taxable = ev_tax_months(reg, today, months_) if electric else months_
             maint, maint_hours = maintenance_cost(m_rows, km_, months_, restarted)
             fp = fault_plan(f_rows, u['mileage_km'], km_, age_now, months_, know.heavy, faults_done, p['annual_km'], know.faults_by_id, own_chance,
-                            faults_done_age)
+                            faults_done_age, covered)
+            # the owner's hours of the DIY faults: shown, never priced; an unknown chance or missing hours makes them unknown
+            fault_hours = None if any(x['diy'] and x['diy_hours_expected'] is None for x in fp) else round(sum(x['diy_hours_expected'] or 0 for x in fp), 2)
             # faults (#174): any unknown chance or price makes the repairs unknown; no fault research = unknown
             risk = None if not f_rows or any(x['expected_eur'] is None for x in fp) else sum(x['expected_eur'] for x in fp)
             wear = tyre_cost(know.tyres(v), km_)
@@ -617,7 +629,7 @@ def tco_rows(c, p, know=None):
             return {'fuel': u['consumption'] * km_ / 100 * energy if u['consumption'] is not None and energy is not None else None,
                     'tax': None if taxable is None else 0.0 if taxable == 0 else annual_tax * taxable / 12 if annual_tax is not None else None,
                     'maintenance': add('maintenance', maint), 'repairs': add('repairs', risk), 'tyres': add('tyres', wear)}, \
-                {'taxable': taxable, 'maint': maint, 'maint_hours': maint_hours, 'risk': risk,
+                {'taxable': taxable, 'maint': maint, 'maint_hours': maint_hours, 'fault_hours': fault_hours, 'risk': risk,
                  'wear': wear, 'unpriced': unpriced, 'km': km_, 'months': years * 12 if months_ is None else months_, 'faults': fp}
 
         run, det = running(km, years * 12)
@@ -658,8 +670,9 @@ def tco_rows(c, p, know=None):
                  missing_components=[k for k in config.TCO_COMPONENTS if parts[k] is None], tco_complete=complete,
                  tco_pessimistic=rest + dep_pess if complete and dep_pess is not None else None,
                  tco_optimistic=rest + dep_opt if complete and dep_opt is not None else None,
-                 diy_hours=(sum(x['diy_hours'] or 0 for x in costs) + (det['maint_hours'] or 0)
-                            if any(x['diy_hours'] is not None for x in costs) or det['maint_hours'] else None),
+                 diy_hours=None if det['fault_hours'] is None else (
+                     sum(x['diy_hours'] or 0 for x in costs) + (det['maint_hours'] or 0) + det['fault_hours']
+                     if any(x['diy_hours'] is not None for x in costs) or det['maint_hours'] or det['fault_hours'] else None),
                  cost_detail={'repairs_certain': certain_eur('repairs'), 'repairs_expected': det['risk'], 'tyre_wear': det['wear'],
                               'maintenance_certain': certain_eur('maintenance'), 'maintenance_scheduled': det['maint'],
                               'tyres_certain': certain_eur('tyres'), 'fuel_price_eur_l': price_l, 'electricity_eur_kwh': price_kwh,
@@ -693,12 +706,15 @@ def tco_rows(c, p, know=None):
             age if u['first_registration'] else None, reg_year)
         rc = recall_checks.get(u['id'], {})
         insp_ok, insp_problem = counts.get('OK', 0) - rc.get('OK', 0), counts.get('PROBLEM', 0) - rc.get('PROBLEM', 0)
+        # the share of the checklist (recall checks left out) that is checked; the points are scaled by it
+        insp_total = sum(counts.get(s, 0) - rc.get(s, 0) for s in ('PENDING', 'OK', 'PROBLEM'))
         u['metrics'] = {
             'cost_month': u['known_cost_per_month'] if complete else None,
             'cash_now': cash_now(u, parts),
             'mileage': u['mileage_km'], 'age': age,
             'reliability': rel['score'],
             'inspection': insp_problem if insp_ok or insp_problem else None,
+            'inspection_coverage': round((insp_ok + insp_problem) / insp_total, 4) if insp_ok or insp_problem else None,
             'power': u['power_ps'],
             # ranking inputs (#169): the purchase price for the budget curve,
             # Euro NCAP adjusted for the test regime, the distance to view (per account, on the listing)
@@ -794,6 +810,7 @@ def listing_detail(c, listing_id, p, ranked, know=None):
              events=q('SELECT * FROM listing_events WHERE listing_id=? ORDER BY event_date, id'),
              snapshots=q('SELECT * FROM listing_snapshots WHERE listing_id=? ORDER BY captured_at, id'),
              media=q('SELECT * FROM listing_media WHERE listing_id=? ORDER BY id'),
+             removed_media=q('SELECT id, captured_at FROM listing_media_all WHERE listing_id=? AND archived=1 ORDER BY id'),
              reliability=know.of('reliability_items', v, reg), maintenance=know.of('maintenance_items', v, reg),
              insurance=know.of('insurance_data', v), tax=know.of('tax_data', v), observations=know.of('observations', v),
              tyres=know.of('tyre_data', v),

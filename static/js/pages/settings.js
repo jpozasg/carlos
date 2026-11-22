@@ -10,12 +10,13 @@ const KEYS = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'fuel_price_da
   'home_charging', 'home_charging_pct', 'electricity_home_eur_kwh', 'electricity_home_date', 'electricity_public_eur_kwh', 'electricity_public_date', 'wallbox_cost_eur'];
 const CALC = ['annual_km', 'ownership_years', 'fuel_price_eur_l', 'diesel_price_eur_l', 'budget_ideal_eur', 'budget_max_eur', 'electricity_home_eur_kwh', 'electricity_public_eur_kwh', 'home_charging_pct', 'wallbox_cost_eur'];
 const OPTS = { purchase_mode: ['cash', 'financing'], home_charging: ['none', 'socket', 'wallbox', 'wallbox_planned'], exclude_over_max: ['1', '0'] };
-let root, previewTimer;
+let root, previewTimer, draft = null;  // unsaved parameter edits, kept across a redraw (mode or language switch)
 const val = k => { const e = $(k); return e.type === 'number' ? (e.value === '' ? null : Number(e.value)) : e.value; };
 const dirty = () => KEYS.some(k => String(val(k) ?? '').replace(/\.0$/, '') !== String(S.saved[k] ?? '').replace(/\.0$/, ''));
+const snap = () => { if ($('paramForm')) draft = Object.fromEntries(KEYS.map(k => [k, $(k).value])); };  // the form's raw values; cleared on save and discard
 
 function form() {
-  const p = S.saved, f = (k, label, extra = '') => `<div class="field"><label for="${k}">${label}</label>${extra}</div>`;
+  const p = draft || S.saved, f = (k, label, extra = '') => `<div class="field"><label for="${k}">${label}</label>${extra}</div>`;
   const inp = (k, type, attrs = '') => `<input id="${k}" type="${type}" ${attrs} value="${p[k] == null ? '' : esc(String(p[k]).replace(/\.0$/, ''))}">`;
   const sel = k => { const cur = p[k] == null ? '' : String(p[k]).replace(/\.0$/, ''); const vals = [...new Set(['', ...OPTS[k], ...(cur && !OPTS[k].includes(cur) ? [cur] : [])])];
     return `<select id="${k}">${vals.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${v === '' ? '—' : k === 'purchase_mode' ? t('pm_' + v) : k === 'home_charging' ? t('hc_' + v) : k === 'exclude_over_max' ? t('eo_' + v) : esc(v)}</option>`).join('')}</select>`; };
@@ -97,8 +98,8 @@ function bind() {
     paramUi(); if (CALC.includes(id.replace('_range', ''))) { clearTimeout(previewTimer); previewTimer = setTimeout(preview, 350); } });
   root.addEventListener('click', async e => {
     if (e.target.id === 'fuelToday') { $('fuel_price_date').value = new Date().toISOString().slice(0, 10); paramUi(); return; }
-    if (e.target.id === 'discardParams') { await loadAll(); renderShell(); draw(); return; }
-    const md = e.target.closest('[data-mode-pick]'); if (md) { applyTheme(md.dataset.modePick); draw(); return; }
+    if (e.target.id === 'discardParams') { draft = null; await loadAll(); renderShell(); draw(); return; }
+    const md = e.target.closest('[data-mode-pick]'); if (md) { snap(); applyTheme(md.dataset.modePick); draw(); return; }
     const ex = e.target.closest('[data-export]');  // the person's own rows, as the Settings page shows them (the login, not a viewed account)
     if (ex) { await busy(ex, async () => { try { const d = await get('/api/account/export'); const a = document.createElement('a'); const url = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }));
       a.href = url; a.download = `carlos-${S.me.username}.json`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (err) { toast(err.message, true); } }); return; }
@@ -110,10 +111,11 @@ function bind() {
     e.preventDefault();
     if (e.target.id === 'pwForm') { try { await post('/api/account/password', { old: $('pw_old').value, new: $('pw_new').value }); toast(t('pw_changed')); e.target.reset(); } catch (err) { toast(err.message, true); } return; }
     const body = {}; KEYS.forEach(k => { $(k).removeAttribute('aria-invalid'); body[k] = val(k); });
-    try { await post('/api/parameters', body); toast(t('saved')); await loadAll(); renderShell(); draw(); }
+    try { await post('/api/parameters', body); draft = null; toast(t('saved')); await loadAll(); renderShell(); draw(); }
     catch (err) { const k = KEYS.find(k => (err.message || '').startsWith(k)); if (k) { $(k).setAttribute('aria-invalid', 'true'); $(k).focus(); } toast(t('not_saved', { m: err.message }), true); } });
 }
 export async function render(main) {
-  if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="settings"></div>'; root = main.firstElementChild; bind(); }
+  if (!root || !main.contains(root)) { main.innerHTML = '<div data-page="settings"></div>'; root = main.firstElementChild; draft = null; bind(); }
+  else snap();  // a language switch re-renders this page while it is still mounted: keep what was typed
   draw();
 }
