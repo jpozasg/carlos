@@ -1,0 +1,2 @@
+// Colour-mode bootstrap: a classic script in <head> (before first paint, no flash). External, so the CSP needs no inline script.
+try{var md=JSON.parse(localStorage.getItem('carlos.mode')||'"auto"');if(md!=='auto')document.documentElement.dataset.mode=md;if(md==='light'||md==='auto'&&matchMedia('(prefers-color-scheme: light)').matches)document.querySelector('meta[name=theme-color]').content='#e9ebee'}catch(e){}
