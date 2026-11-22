@@ -52,7 +52,7 @@ Follow `docs/cost-research-protocol.md` step by step; delegate one car to one re
 - Viewing mode: the user writes `viewing` entries, checklist notes and photos from a phone; they are user observations, kept verbatim. If a note is not in English, add an English `user_data` entry translating it.
 
 ## The ranking and the objectivity rules
-`docs/ranking.md`: eight non-overlapping criteria (reliability = the mean of the fixed external sources per slot - engine, HU defects, breakdowns - with coverage instead of zeros, see "Reliability" below), weights from the questionnaire (`ranking_answers`) or set by hand (`ranking_weights`), min–max normalisation among the candidates, coverage instead of zeros. The score is only as fair as the data: follow the severity, status and quality rules there for every car.
+`docs/ranking.md`: eight non-overlapping criteria (reliability = the mean of the fixed external sources per slot - engine, HU defects, breakdowns - with coverage instead of zeros, see "Reliability" below), weights from the questionnaire (`ranking_answers`) or set by hand (`ranking_weights`), fixed score curves per criterion (a car's points never depend on the other candidates), coverage instead of zeros. The score is only as fair as the data: follow the severity, status and quality rules there for every car.
 
 ## Reliability: a harness for fixed sources (issue #351)
 Carlos does not research reliability; it records what a few fixed sources publish, each on the level it covers, and links to them. The same sources for every car:

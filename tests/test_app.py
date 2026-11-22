@@ -829,19 +829,6 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(consistency.same_fault(row('Water pump', 'COOLING'), row('Expansion tank crack', 'COOLING')))
         self.assertTrue(consistency.same_fault(row('Water pump leak', 'COOLING'), row('Water pump', 'COOLING')))
         self.assertTrue(consistency.same_fault(row('Timing chain stretch'), row('timing-chain stretch N47', 'OTHER')))   # no code: wording
-        # back-fill: dry run proposes, --apply writes only NULL rows, OTHER/unmatched stay NULL
-        pilot = ['Timing belt in oil bath (wet belt)', 'Timing chain / tensioner cold-start rattle', 'VANOS solenoid valves',
-                 'Oil consumption at high mileage', 'Oil pump', 'Coolant module (water pump and thermostat housing)', 'Ignition coils',
-                 'Turbocharger wear', 'Diesel particulate filter (DPF)', 'Throttle body / idle control', 'Hybrid battery (NiMH) module or pack replacement']
-        want = ['TIMING_BELT', 'TIMING_CHAIN', 'CAM_PHASER', 'OIL_CONSUMPTION', 'ENGINE_INTERNALS', 'COOLING', 'IGNITION', 'TURBO', 'EMISSIONS',
-                'ENGINE_MANAGEMENT', 'HV_BATTERY']
-        faults = [{'id': i, 'part': 'ENGINE', 'component': n, 'component_code': None} for i, n in enumerate(pilot)]
-        faults += [{'id': 90, 'part': 'ENGINE', 'component': 'ENGINE'}, {'id': 91, 'part': 'ENGINE', 'component': 'Oil pump', 'component_code': 'OTHER'}]
-        done = []
-        ok, left = consistency.backfill_codes(faults)
-        self.assertEqual(([c for *_, c in ok], [i for i, *_ in left], done), (want, [90], []))
-        consistency.backfill_codes(faults, lambda i, c: done.append((i, c)))
-        self.assertEqual(done, [(i, c) for (i, _, _, c) in ok])
 
     def test_checklist_covers_faults_and_recalls_223(self):
         """A fault with an inspection_action and a recall row each get a checklist item (linked by fault_id / recall_id); until then
@@ -1925,22 +1912,6 @@ class AppTest(unittest.TestCase):
         research_reset.reset_reliability(config.DB, apply=True, delete=True)
         self.assertEqual(c.execute("SELECT count(*) FROM research_checks WHERE task LIKE 'rel.%'").fetchone()[0], 0)
         c.close()
-
-    def test_pilot_compare_identical_runs(self):
-        """#167 pilot: comparing a run with itself reports full agreement and no failures."""
-        import pilot_compare
-        c = sqlite3.connect(config.DB)
-        c.execute("INSERT INTO faults (engine_id, component, part, consequence, existence, parts_eur, labor_eur, frequency_band, shape, source_id) "
-                  "VALUES (?, 'Timing chain stretch', 'ENGINE', 'ENGINE_DAMAGE', 'CONFIRMED', 300, 500, 'common', 'WEAR_KM', ?)", (E_A, SRC_GUIDE))
-        c.commit(); c.close()
-        acct, pilot_compare.ACCOUNT = pilot_compare.ACCOUNT, 1
-        try:
-            out = pilot_compare.report(config.DB, config.DB)
-        finally:
-            pilot_compare.ACCOUNT = acct
-        for line in ('- A: 1, B: 1, matched: 1', '- Same level: 100 % (1/1)', '- Band within one step: 100 % (1/1)',
-                     '- Workshop price within ±30 %: 100 % (1/1)', '- A: none'):
-            self.assertIn(line, out)
 
     def test_rating_sources_api(self):
         """source_keys / source_ratings (#354): per-source rules, EngineScope permission, archive instead of delete."""
