@@ -63,6 +63,12 @@ Carlos does not research reliability; it records what a few fixed sources publis
 - **Recording:** `source_key(source, ...)` maps a level to the page (`external_key` verbatim, `url`, `source_id`; `fuel_type` for GW-Info only) and `rating(...)` stores the published figures; a new edition inserts new rows and archives the old ones. A source that does not cover the level is a `research_checks` row `rel.autoscore|rel.enginescope|rel.adac_gwinfo|rel.adac|rel.tuev` with `N/A` and the reason; the research contract (v10) is met by a key (plus a rating where the source has them) or that check.
 - **Terms and method:** read every page by hand in the owner's browser (new tab, one page per engine or generation, never in bulk); never scrape, never pass a CAPTCHA or login. Autoscore is for own use only (no resale; its issue table and cost estimates are not stored). EngineScope's terms (section 6) forbid reproducing its scores and verdicts or derivative works without written permission, and section 7 forbids scraping. `docs/cost-research-protocol.md` step 2 has the procedure.
 
+## Working mode (owner, 2026-11-22)
+- **Finish the plan without asking.** Once a plan is agreed, work through every step, launching subagents in parallel, and do not stop to ask whether to continue. Report only at the end, or when a decision that only the owner can make blocks a step.
+- **Ask only for owner decisions**, as one multiple-choice question per decision, batched. Never ask "shall I continue", never list what is left unless the owner asks.
+- **Short replies.** State the result and the next action in a few lines. No status narration between steps.
+- **Never leave work undone that can be done.** If a step is blocked, do the next unblocked step before reporting.
+
 ## Skills: loaded automatically, per kind of change (owner, 2026-11-22)
 The owner never has to name a skill. Before editing, classify the change and invoke the skills in that row with the Skill tool; a subagent's prompt starts with the same instruction. Project skills live in `.claude/skills/` (committed); external ones are installed per machine (`docs/skills.md`). A change that touches several rows loads all of them. The Definition of Done of each skill is part of "done".
 
