@@ -25,7 +25,7 @@ function detailLine(p) {
   if (d.staged) { const n = Object.values(d.staged).reduce((a, b) => a + b, 0);
     return [t('rp_staged', { n }) + ' (' + Object.entries(d.staged).map(([k, v]) => `${k} ${v}`).join(', ') + ')', d.last ? t('rp_last', { s: d.last }) : ''].filter(Boolean).join(' · '); }
   if (d.disputes != null) return t('rp_disputes', { a: d.answered ?? 0, n: d.disputes });
-  if (d.written != null) return t('rp_merge', { p: Math.round((d.agreement ?? 0) * 100), w: d.written, k: d.skipped ?? 0, f: d.disagreements ?? 0 });
+  if (d.written != null) return t('rp_merge', { p: d.agreement == null ? t('pending').toLowerCase() : Math.round(d.agreement * 100) + ' %', w: d.written, k: d.skipped ?? 0, f: d.disagreements ?? 0 });
   return '';
 }
 const unitName = u => t(/^(RESEARCH_[AB]|ARBITER|MERGE)$/.test(u) ? 'unit.' + u : 'rp_' + u);
