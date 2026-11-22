@@ -3,7 +3,7 @@ researches it with docs/prompts/research-car.md writing as the requester (X-Carl
 Every query names main.research_requests and filters by owner itself: the table is not shadowed by auth.scope."""
 import json, re, secrets
 from .auth import digest
-from . import research, research_units as ru
+from . import research, research_units as ru, urlcheck
 from .todo import quote_profile_gaps
 
 MAX_ATTEMPTS = 3         # a listing still incomplete after this many DONE reports is FAILED with the missing items (#218)
@@ -17,7 +17,7 @@ def clean_url(url):
     url = str(url or '').strip()
     if len(url) > 500 or not re.fullmatch(r'https?://[^\s/]+\.[^\s/]+(/\S*)?', url):
         raise ValueError('url: an http(s) link to the listing, at most 500 characters')
-    return url
+    return urlcheck.public_http_url(url)  # no credentials, IP literals, internal hosts or odd ports (H2)
 
 
 def _parts(c, parent_ids):

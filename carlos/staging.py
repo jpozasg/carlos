@@ -124,12 +124,17 @@ def write(c, req, table, row_id, data):
             raise ValueError(f'{table}: required column(s) missing: {", ".join(lacking)}')
     _check_refs(c, req, table, p)
     if op == 'patch':
-        base = c.execute(f'SELECT * FROM {table}_all WHERE id=?' if table in ARCHIVABLE else f'SELECT * FROM {table} WHERE id=?', (target,)).fetchone()
-        col, lid = (MODEL_LEVEL[table], target) if table in MODEL_LEVEL else _level({**dict(base), **p})
+        base = dict(c.execute(f'SELECT * FROM {table}_all WHERE id=?' if table in ARCHIVABLE else f'SELECT * FROM {table} WHERE id=?', (target,)).fetchone())
+        # the row as it is AND as the PATCH leaves it must be in scope: adding an in-scope level column to an out-of-scope row is a way in (#386)
+        levels = [(MODEL_LEVEL[table], target)] if table in MODEL_LEVEL else [_level(base), _level({**base, **p})]
     else:
-        col, lid = _level(p)
-    if req['scope'] and col and lid is not None and lid > 0 and [col, lid] not in json.loads(req['scope']):
-        raise NotAllowed(f'{col}={lid} is already researched or outside this run (scope: {req["scope"]}); it is read-only context')
+        levels = [_level(p)]
+    for col, lid in levels:
+        if req['scope'] and col and lid is not None and lid > 0 and [col, lid] not in json.loads(req['scope']):
+            raise NotAllowed(f'{col}={lid} is already researched or outside this run (scope: {req["scope"]}); it is read-only context')
+        if op == 'patch' and not col and base.get('owner_id') != req['owner_id']:  # a global default or a shared source has no level to check
+            raise NotAllowed(f'{table} id={target} has no level (a global default or a shared source): a research run files a new row instead of patching it')
+    col, lid = levels[-1]
     if col and lid is not None and lid < 0:
         _staged(c, req, -lid, {v: k for k, v in MODEL_LEVEL.items()}.get(col))
     key = key_of(kind, table, p, target)
@@ -160,6 +165,60 @@ def write(c, req, table, row_id, data):
                          p.get('component_code'), stored)).lastrowid
     c.commit()
     return {'table': table, 'id': -fid, 'staged': True}
+
+
+# Tables each non-staged unit may write with its request token (#386, N2). The legacy units and a request without a unit stay
+# unrestricted until that prompt is retired; any other unit is refused. The staged runs are limited by `write` (scope) above.
+UNIT_TABLES = {
+    'CAPTURE': {'generations', 'engines', 'vehicles', 'sources', 'listings', 'listing_snapshots', 'inspection_items', 'listing_events'},
+    'TAX': {'tax_data', 'sources', 'research_checks', 'listing_events'},
+    'LISTING': {'valuations', 'unit_costs', 'maintenance_resets', 'inspection_items', 'listing_events', 'listing_history', 'sources',
+                'research_checks', 'listings'},
+    'INSURANCE': {'listing_quotes', 'sources', 'listing_events'},
+}
+
+
+def variant_chain(c, listing_id):
+    """[[level column, id]] of the listing's variant and every level above it (generation, engine, gearbox, families, body style):
+    the catalogue rows a unit working on that listing may touch. [] when the listing has no variant."""
+    v = c.execute('SELECT v.id, v.generation_id, v.engine_id, v.gearbox_id, v.body_style_id, e.family_id engine_family, g.family_id gearbox_family '
+                  'FROM main.listings l JOIN main.vehicles v ON v.id=l.vehicle_id JOIN main.engines e ON e.id=v.engine_id '
+                  'LEFT JOIN main.gearboxes g ON g.id=v.gearbox_id WHERE l.id=?', (listing_id,)).fetchone()
+    if v is None:
+        return []
+    return [[k, i] for k, i in (('vehicle_id', v['id']), ('generation_id', v['generation_id']), ('engine_id', v['engine_id']),
+                                ('gearbox_id', v['gearbox_id']), ('engine_family_id', v['engine_family']),
+                                ('gearbox_family_id', v['gearbox_family']), ('body_style_id', v['body_style_id'])) if i]
+
+
+def check_unit_write(c, req, table, row_id, data):
+    """The generic /api/agent write of a non-staged unit (CAPTURE, TAX, LISTING, INSURANCE; `req` is its research_requests row):
+    its own tables only; a new row on a level only on a level of its listing's variant chain; a PATCH of a shared catalogue row
+    only on that chain too (CAPTURE never patches one: the research run does). Raises NotAllowed (403)."""
+    unit, allowed = req['unit'], UNIT_TABLES.get(req['unit'])
+    if allowed is None:
+        if unit is None or unit in ru.LEGACY_UNITS:  # the legacy single run and its units: unrestricted until that prompt is retired
+            return
+        raise NotAllowed(f'{unit} writes nothing through /api/agent')  # MERGE, and a unit added later stays closed until it is listed above
+    if table not in allowed:
+        raise NotAllowed(f'{unit} writes only {", ".join(sorted(allowed))}, not {table}')
+    data = data if isinstance(data, dict) else {}  # agent_write answers 400 for anything else
+    levels = []
+    if row_id is None:
+        if unit != 'CAPTURE' and table != 'listings':  # the capture's listing and variant do not exist yet; a listing's vehicle_id is a pointer
+            levels = [_level(data)]
+    else:
+        base = c.execute(f'SELECT * FROM main.{table} WHERE id=?', (row_id,)).fetchone()  # table is one of the fixed names above
+        if base is not None and 'owner_id' in base.keys() and base['owner_id'] is None:  # a shared catalogue row (another account's row is hidden by the scope: 404)
+            if unit == 'CAPTURE':
+                raise NotAllowed(f'CAPTURE does not change shared catalogue rows ({table} id={row_id}); the research run does')
+            levels = [_level(dict(base)), _level({**dict(base), **data})]
+            if any(col is None for col, _ in levels):
+                raise NotAllowed(f'{table} id={row_id} has no level (a global default or a shared source): {unit} does not change it')
+    chain = variant_chain(c, req['listing_id']) if levels and req['listing_id'] else []
+    for col, lid in levels:
+        if col is not None and [col, lid] not in chain:
+            raise NotAllowed(f"{col}={lid} is outside the variant of listing {req['listing_id']}: {unit} writes only on that car's levels")
 
 
 def _fault_conflicts(c, req, p, mine, distinct):
