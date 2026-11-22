@@ -349,6 +349,34 @@ class UnitScopeTest(unittest.TestCase):
         self.assertEqual(self.sql("SELECT table_name, row_id, action FROM change_log WHERE request_id=101 AND table_name IN ('generations','engines') "
                                   "ORDER BY id"), [('generations', G1, 'reuse'), ('engines', E_A, 'reuse')])
 
+    def test_a_capture_makes_its_new_variant_under_a_reused_level_but_edits_nothing_there(self):  # LOW-1, owner 2026-11-23
+        self.reuse_chain()
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/generations', {'make': 'Beta', 'model': 'City', 'name': 'Gen2', 'start_year': 2012})[1]['id'], G2)
+        st, v = self.api('CAPTURE', 'POST', 'agent/vehicles', {'generation_id': G2, 'engine_id': E_A, 'trim': 'Reused 1.4', 'transmission': 'Manual',
+                                                               'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                               'hsn': '7171', 'tsn': 'RRR', 'technical_status': 'VERIFIED'})
+        self.assertEqual(st, 201, v)  # its own new variant on a reused generation and engine
+        self.assertEqual(self.sql('SELECT generation_id FROM vehicles WHERE id=?', (v['id'],)), [(G2,)])
+
+    def test_a_capture_edits_nothing_on_a_reused_level_it_did_not_create(self):  # LOW-1: an edit or a level row on a reused level is 403
+        _, v = self.claim()  # its own variant on G1 and E_A, created by the run
+        self.assertEqual(self.api('CAPTURE', 'POST', 'agent/generations', {'make': 'Beta', 'model': 'City', 'name': 'Gen2', 'start_year': 2012})[1]['id'], G2)
+        st, e = self.api('CAPTURE', 'PATCH', f'agent/vehicles/{v}', {'generation_id': G2})
+        self.assertEqual(st, 403, e)
+        self.assertEqual(self.sql('SELECT generation_id FROM vehicles WHERE id=?', (v,)), [(G1,)])
+        st, e = self.api('CAPTURE', 'POST', 'agent/sources', {'title': 'Guide', 'url': 'https://example.test/g', 'source_type': 'buying_guide',
+                                                              'quality': 'A', 'accessed_date': fx.TODAY, 'generation_id': G2})
+        self.assertEqual(st, 403, e)
+        self.assertEqual(self.sql("SELECT count(*) FROM sources WHERE title='Guide'"), [(0,)])
+
+    def test_a_capture_writes_on_a_level_it_created_itself(self):  # LOW-1: the run's own insert is its level
+        self.reuse_chain()
+        st, g = self.api('CAPTURE', 'POST', 'agent/generations', {'make': 'Gamma', 'model': 'New', 'name': 'Gen1', 'start_year': 2020})
+        self.assertEqual((st, g.get('existing')), (201, None), g)
+        st, e = self.api('CAPTURE', 'POST', 'agent/sources', {'title': 'Guide', 'url': 'https://example.test/g', 'source_type': 'buying_guide',
+                                                              'quality': 'A', 'accessed_date': fx.TODAY, 'generation_id': g['id']})
+        self.assertEqual(st, 201, e)
+
     # ---------------------------------------------------------------- staged runs: rows without a level
     def test_staged_run_cannot_patch_a_row_without_a_level(self):
         self.sql("INSERT INTO maintenance_items (id, item, schedule, interval_months, reference_cost_eur, status, source_id) "

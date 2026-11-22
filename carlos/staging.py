@@ -210,11 +210,13 @@ def check_media(c, req, listing_id):
         raise NotAllowed(f"request {req['id']} uploads photos only for its own listing (listing {listing_id} is not one of them)")
 
 
-def _run_made(c, req, col, lid):
-    """True when this run itself inserted or reused the level row `lid` of column `col` (change_log insert or reuse with its request id)."""
+def _run_made(c, req, col, lid, actions=('insert',)):
+    """True when this run itself inserted the level row `lid` of column `col` (change_log insert with its request id). A reuse of a
+    shared catalogue row is not made by the run (LOW-1): it stays usable for reads, its writes must be on the run's own chain,
+    except a CAPTURE's new variant (check_unit_write)."""
     table = {v: k for k, v in MODEL_LEVEL.items()}[col]
-    return c.execute("SELECT 1 FROM main.change_log WHERE request_id=? AND table_name=? AND row_id=? AND action IN ('insert','reuse')",
-                     (req['id'], table, lid)).fetchone() is not None
+    return c.execute(f"SELECT 1 FROM main.change_log WHERE request_id=? AND table_name=? AND row_id=? AND action IN ({','.join('?' * len(actions))})",
+                     (req['id'], table, lid, *actions)).fetchone() is not None
 
 
 def _capture_variant(c, req, listing_id, vid):
@@ -287,8 +289,11 @@ def check_unit_write(c, req, table, row_id, data):
                 on_own_listing(data.get('listing_id'))
             levels = [(k, v) for k, v in {**b, **data}.items() if k in config.LEVEL_COLUMNS and v is not None]
     chain = variant_chain(c, own) if levels and own else []
+    new_variant = unit == 'CAPTURE' and table == 'vehicles' and row_id is None  # owner 2026-11-23: a new variant may sit on a level the run reused
     for col, lid in levels:
         if [col, lid] in chain or _run_made(c, req, col, lid):
+            continue
+        if new_variant and col in ('generation_id', 'engine_id') and _run_made(c, req, col, lid, ('insert', 'reuse')):
             continue
         if not (unit == 'CAPTURE' and table == 'listings' and col == 'vehicle_id' and _capture_variant(c, req, own, lid)):
             raise NotAllowed(f"{col}={lid} is outside the variant of this run's listing ({own}): {unit} writes only on that car's levels")
