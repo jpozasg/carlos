@@ -1788,6 +1788,7 @@ class AppTest(unittest.TestCase):
         self.assertIn(' 400 ', self.raw_http(head % '-1'))                              # answered at once, no wait for a body
         self.assertIn(' 400 ', self.raw_http(head % 'abc'))
         self.assertIn(' 413 ', self.raw_http(head % str(server.MAX_JSON_BYTES + 1)))
+        self.assertIn(' 414 ', self.raw_http('GET /' + 'a' * 70000 + ' HTTP/1.0\r\n\r\n'))             # an error before the headers exist still answers
 
     def test_stalled_client_is_dropped(self):
         import socket, time

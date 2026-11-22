@@ -159,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
     def end_headers(self):  # also covers send_error pages
         for k, v in SECURITY_HEADERS:
             self.send_header(k, v)
-        if self.headers.get('X-Forwarded-Proto') == 'https':
+        if getattr(self, 'headers', None) and self.headers.get('X-Forwarded-Proto') == 'https':  # no headers yet on a malformed request line
             self.send_header('Strict-Transport-Security', 'max-age=15552000')
         super().end_headers()
 
