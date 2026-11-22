@@ -5,7 +5,7 @@ Copied from the audit and re-checked against the code at 67f98cb (two commits la
 ## HIGH
 
 ### H1. The headless research run is not isolated from the worker/admin credentials
-- Where: `worker.py` `work_one()`: `env = {**os.environ, ...}` and `subprocess.Popen(..., cwd=ROOT, ...)`; `pilot.py` runs claude with `--allowedTools Bash,Read,Write,Edit,...`.
+- Where: `worker.py` `work_one()`: `env = {**os.environ, ...}` and `subprocess.Popen(..., cwd=ROOT, ...)`.
 - Exploit: the run inherits `WORKER_TOKEN` (`docs/deployment.md`, "On the desktop", claims only the per-request token reaches the run). Injected listing text makes the run call `POST /api/worker/claim` and receive other accounts' per-request tokens. Re-check: in the admin fallback (no `WORKER_TOKEN`) `work_one()` sets `AGENT_TOKEN=<the admin token>` for the run itself. When the worker checkout is the server checkout (true on this development machine: `data/` mode 755, `cars.sqlite` 644, `.env` 600 sit in the same checkout), `.env` holds the admin `AGENT_TOKEN` and `data/cars.sqlite` is readable by `Bash`/`Read`; "only the API, never open data/" is a prompt sentence, not a control. The deployment doc says the desktop checkout is code only; that holds only where `data/` and `.env` are absent.
 - Fix: build `env` from an allow-list (PATH, HOME, `CAR_API`, `AGENT_TOKEN` = request token, Claude auth vars), drop `WORKER_TOKEN`; run the worker as a separate OS user or container without access to the server's `.env` and `data/`; deny `Read(.env)`, `Read(data/**)`, `Bash(sqlite3*)`, `Bash(curl*127.0.0.1*)` in the tool list; never run worker and server from one checkout.
 

@@ -1,6 +1,6 @@
 # Design: research flow fixes after the pilot (2026-11-09)
 
-Design only; nothing here is implemented yet. Evidence: `~/pilot-archive/compare-round3-dual.md` (`pilot_compare.py`): maintenance
+Status (2026-11-22): partly implemented and historical. Done: the engine and engine family pool (#331), the maintenance interval source order and tie-break (#341), the lean contract (#295) and the retirement of review flags and `SOURCES_DISAGREE` (#351). `pilot_compare.py` was deleted after the pilot, so the sections about it are moot. Not checked item by item; read the code and `docs/cost-research-protocol.md` before relying on any rule below. Evidence: `~/pilot-archive/compare-round3-dual.md` (`pilot_compare.py`): maintenance
 jobs on the same level agreed on the interval in 44 % (14/32; round 1: 53 %), research checks in 72 %, faults matched 24 of
 36/40 with 8 of 24 on different levels (5 of them engine family vs engine), recalls 0 codes in common (15 vs 14), 20 open
 `SOURCES_DISAGREE` flags. Constraints: Python stdlib only, no data deleted (outdated rows are archived), schema changes only as

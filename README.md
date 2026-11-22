@@ -10,7 +10,7 @@ It was built and tested with German data (the official BMF road-tax calculator, 
 
 - Python standard library only (runs on a Raspberry Pi 2B), SQLite, no build step.
 - Accounts: every person has their own private cars, models, parameters and dossiers.
-- Ten switchable looks (instrument cluster by default, friendly, garage night, seventies brochure, olive workshop, terminal, cute, circuit board, arcade, Hyrule), light and dark where the look allows. Design decisions: `docs/design.md`.
+- One look (the instrument cluster), with light and dark mode. Design decisions: `docs/design.md`.
 - English, Spanish, German and Polish UI.
 - Designed to be filled by AI agents through a write API with strict rules (sources, no invented data, same method for every car). See `AGENTS.md`.
 

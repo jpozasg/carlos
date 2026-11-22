@@ -166,21 +166,6 @@ def consumption(v, value, n, lo, hi, source_id, notes='', level='variant', elect
                                  'notes': ('Primary consumption figure (same source for all cars, user decision 2026-11-03). ' + notes).strip()})
 
 
-def reliability(v, component, issue, evidence, severity, source_id, inspection_action, frequency_status='PENDING',
-                level='variant', *, part, recall=False, applies_from=None, applies_to=None):
-    """Known weak point; inspection_action becomes a checklist item for every listing of the model. Engine faults go
-    on the engine (level='engine'), body/chassis faults on the generation, variant-only quirks on the variant.
-    part (required): ENGINE (incl. intake, cooling, turbo, injection, timing drive, emissions), GEARBOX (gearbox,
-    clutch, driveshafts), CHASSIS (suspension, steering, brakes, body, rust, exhaust pipes) or ELECTRICS. Each part
-    counts its 3 worst points. recall=True for a manufacturer recall: it counts until its checklist item is OK or N/A.
-    applies_from/applies_to ('YYYY-MM'): only for cars first registered in that window (#153): a fault fixed by the
-    facelift, a recall's build range. Never to split facts that hold for the whole generation."""
-    return post('reliability_items', {**scope(v, level), 'component': component, 'issue': issue, 'evidence': evidence,
-                                      'severity': severity, 'frequency_status': frequency_status, 'source_id': source_id,
-                                      'inspection_action': inspection_action, 'part': part, 'is_recall': 1 if recall else 0,
-                                      'applies_from': applies_from, 'applies_to': applies_to})
-
-
 def source_key(source_key, external_key, url, source_id, *, engine_id=None, generation_id=None, fuel_type=None, notes=None):
     """Link one level to a reliability source's page (#354): AUTOSCORE/ENGINESCOPE on an engine, TUEV_REPORT,
     ADAC_PANNENSTATISTIK and ADAC_GWINFO (fuel_type) on a generation. external_key is verbatim as the source prints it."""
@@ -217,13 +202,6 @@ def checklist_from_reliability(listing_id):
         post('inspection_items', {'listing_id': listing_id, 'item': item, 'status': 'PENDING', **link})
         added += 1
     return added
-
-
-def deactivate_packages(v, listing_id):
-    """Old service packages stay as history but stop counting once an item schedule exists."""
-    for m in listing(listing_id)['maintenance']:
-        if m['schedule'] == 'PACKAGE' and m['active']:
-            patch('maintenance_items', m['id'], {'active': 0})
 
 
 def item(v, name, km, months, diy, parts, workshop, hours, source_id, status, notes, level='variant', job=None,
@@ -289,14 +267,6 @@ def _post_fault(v, component, part, consequence, existence, source_id, band, sha
                            'existence': existence, 'source_id': source_id, 'frequency_band': band, 'shape': shape,
                            'curve_km': curve_km, 'curve_age': curve_age, 'parts_eur': parts, 'labor_eur': labor,
                            'diy_parts_eur': diy_parts, 'diy_hours': hours, **more})
-
-
-def flag_review(flag_id, worker, outcome, conclusion, finding, source_id=None):
-    """Records one review of a review flag (#168): outcome CONFIRMED (the problem stands) or RESOLVED; `conclusion` is a
-    short fixed wording of the result (e.g. 'faults complete', 'stats outdated'); two different workers resolving it with
-    the same conclusion clear the flag. `worker` names this run (e.g. 'request 42')."""
-    return post('flag_reviews', {'flag_id': flag_id, 'worker': worker, 'review_date': DAY, 'outcome': outcome,
-                                 'conclusion': conclusion, 'finding': finding, 'source_id': source_id})
 
 
 def tyres(v, size, price_per_tyre, source_id, notes, life_km=TYRE_LIFE_KM, fitting=TYRE_FITTING_EUR, level='variant'):
