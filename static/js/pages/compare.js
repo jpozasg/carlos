@@ -79,7 +79,7 @@ function overview(all) {
       <td class="n"><b>${eP(u.known_cost_subtotal)}</b>${u.tco_complete ? '' : ` <span class="tag warn" title="${esc(u.missing_components.map(comp).join(', '))}">${t('subtotal_partial')}</span>`}</td>
       <td class="n">${u.is_reference ? dash : d == null ? PEND() : `<span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲ +' : '▼ '}${euro(d)}</span>`}</td>
       <td>${tagsHtml(u)}</td></tr>`; }).join('');
-  return `<div class="tablewrap"><table class="ov"><thead><tr><th><span class="sr-only">${t('compare')}</span></th><th class="n">#</th><th>${t('g_unit')}</th><th>${t('score')}</th>
+  return `<div class="tablewrap ov-wrap"><table class="ov"><thead><tr><th><span class="sr-only">${t('compare')}</span></th><th class="n">#</th><th>${t('g_unit')}</th><th>${t('score')}</th>
     <th class="n">${t('asking_price')}</th><th class="n">${t('km')}</th><th class="n">${t('age')}</th><th class="n">${t('eur_month')}</th><th class="n">${t('ov_total', { y: S.p.ownership_years })}</th>
     <th class="n"><abbr title="${esc(t('delta_help'))}">${t('delta')}</abbr></th><th>${t('ov_status')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }

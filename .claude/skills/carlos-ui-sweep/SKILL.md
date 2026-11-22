@@ -24,7 +24,7 @@ Needs the Python `playwright` package (Arch: `pacman -S python-playwright`, see 
 2. `python app.py` with `CARLOS_DATA` and `CARLOS_PORT` set (log in `server.log` in the `--out` directory); waits for `/login`.
 3. Logs in over HTTP, sets the `carlos_session` cookie, sets `carlos.lang` and `carlos.mode` in `localStorage` before each page load.
 4. Per page: waits until the skeleton is gone, probes overflow, clipped text, raw `undefined` / `NaN` / `null` / `[object`, bare i18n keys, `h1` count; collects console errors, page errors and HTTP >= 400; full-page screenshot to `shots/` in the `--out` directory.
-5. Writes `report.md` and `report.json` (same directory); exit 1 when any page has a PROBLEM. Notes do not fail: clipped text (judge each; an intentional ellipsis with the full text in reach is fine) and "no h1" (no route renders one yet, audit S7; once it does, a page with 0 h1 should become a PROBLEM in the script).
+5. Writes `report.md` and `report.json` (same directory); exit 1 when any page has a PROBLEM. Notes do not fail: clipped text (judge each; an intentional ellipsis with the full text in reach is fine) . A page with no h1 is a PROBLEM (#424); visually hidden text (`.sr-only`) is not checked for clipping.
 
 Fixture ids: listings 1 (own car), 2, 3; variants 1-4. Routes live in `ROUTES` at the top of `sweep.py`: add a route when a page is added. In the default fixture every car has a complete TCO; listing 3 is stale and over the ideal budget; variant 4 (`models/4`) has NULL HSN/TSN, gearbox and body fields.
 

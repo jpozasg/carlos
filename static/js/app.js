@@ -11,6 +11,7 @@ const PAGES = {
   models: () => import('./pages/models.js'), sources: () => import('./pages/sources.js'), settings: () => import('./pages/settings.js'),
   admin: () => import('./pages/admin.js'), start: () => import('./pages/start.js') };
 const NAV = ['compare', 'ranking', 'models', 'sources', 'settings'];
+const TITLE = { compare: 'tab_compare', ranking: 'tab_ranking', listing: 'page_car', models: 'tab_models', sources: 'tab_sources', settings: 'tab_settings', admin: 'tab_admin', start: 'page_setup' };
 // "view as account" (issue #142): the admin's session sends this cookie, so every page and photo shows that account
 export const viewing = () => +(document.cookie.match(/(?:^|; )carlos_view=(\d+)/) || [])[1] || null;
 const viewCookie = id => `carlos_view=${id || ''}; path=/; SameSite=Strict${id ? '' : '; max-age=0'}${location.protocol === 'https:' ? '; Secure' : ''}`;
@@ -88,6 +89,8 @@ export async function route() {
   } catch (e) {
     main.innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p><button class="btn ghost" type="button" data-reload>${t('retry')}</button></div>`;
   }
+  // one h1 per route (#424): a page without its own visible title gets a visually hidden one; the dossier names the car itself
+  if (!main.querySelector('h1')) main.insertAdjacentHTML('afterbegin', `<h1 class="sr-only">${esc(t(TITLE[key]))}</h1>`);
   if (!r.q.keep) { scrollTo({ top: 0 }); main.focus({ preventScroll: true }); }  // screen readers and keyboard start at the new page
 }
 
