@@ -1160,6 +1160,10 @@ class AppTest(unittest.TestCase):
         for path in ('/api/parameters', '/api/preferences', '/api/tco'):                          # a unit queued before the pause
             self.assertEqual(self.req('GET', path, token=rt)[0], 403, path)
         self.assertEqual(self.req('POST', '/api/preferences', {'insurance_worker_quotes': 'yes'}, token=None, cookie=c2)[0], 403)
+        # and when the worker claims it, it is SKIPPED with the reason instead of being handed out (the claim then finds nothing)
+        self.sql_write("UPDATE research_requests SET status='QUEUED', request_token_hash=NULL, claimed_at=NULL, worker=NULL WHERE unit='INSURANCE'")
+        self.assertIsNone(self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request'])
+        self.assertEqual(self.sql("SELECT status, result FROM research_requests WHERE unit='INSURANCE'")[0], ('SKIPPED', rq.WORKER_QUOTES_PAUSED))
         c = db.connect()
         try:
             parent = {'listing_id': CAR_A, 'owner_id': uid2}
@@ -1173,6 +1177,7 @@ class AppTest(unittest.TestCase):
         costed like a worker quote, logged, clears the to-do line; never another account's car or the reference car."""
         uid2, c2 = self.second_account()
         st, adm = self.login()
+        today = datetime.date.today()
         post = lambda body, ck=adm: self.req('POST', '/api/ui/listing_quotes', body, token=None, cookie=ck)
         self.agent('PATCH', 'insurance_data/1', {'quote_date': '2026-01-01'})
         todo = lambda: {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[CAR_A]
@@ -1195,13 +1200,30 @@ class AppTest(unittest.TestCase):
         # validation
         for bad in ({'premium_eur': 0}, {'premium_eur': -5}, {'premium_eur': 'abc'}, {'premium_eur': None}, {'premium_eur': True}, {'premium_eur': 30000},
                     {'period': 'week'}, {'quote_date': '2999-01-01'}, {'quote_date': 'yesterday'}, {'cover': 'Gold'}, {'deductible_eur': -1},
-                    {'insurer': 'x' * 81}, {'sf_class': 'SF 12345678'}, {'listing_id': 'x'}, {'listing_id': 99999}, {'listing_id': REF}):
+                    {'insurer': 'x' * 81}, {'sf_class': 'SF 12345678'}, {'listing_id': 'x'}, {'listing_id': 99999}, {'listing_id': REF},
+                    {'premium_eur': 10 ** 400}, {'premium_eur': float('nan')}, {'deductible_eur': 10 ** 400}, {'listing_id': 10 ** 400},
+                    {'insurer': {'a': 1}}, {'tariff': ['x']}, {'sf_class': 5}, {'cover': ['Vollkasko']}, {'period': {'x': 1}},
+                    {'quote_date': (today - datetime.timedelta(days=config.QUOTE_MAX_AGE_DAYS + 1)).isoformat()}, {'quote_date': '2999-01-01'}):
             self.assertEqual(post({**good, **bad})[0], 400, bad)
+        self.assertIn('older than', post({**good, 'quote_date': '2001-01-01'})[1]['error'])           # an accurate message, not "future"
+        self.assertIn('future', post({**good, 'quote_date': '2999-01-01'})[1]['error'])
+        # free text: control characters and runs of whitespace become one space (it reaches the log and the Markdown dossiers)
+        st, rr = post({**good, 'insurer': 'Ex\nample\x00  AG', 'tariff': 'a\r\n\t b', 'sf_class': 'SF\x7f1', 'premium_eur': 701})
+        self.assertEqual(st, 201, rr)
+        self.assertEqual(self.sql('SELECT insurer, tariff FROM listing_quotes WHERE id=?', (rr['id'],))[0], ('Ex ample AG', 'a b'))
+        self.assertNotRegex(self.sql("SELECT text FROM listing_events WHERE listing_id=? ORDER BY id DESC LIMIT 1", (CAR_A,))[0][0], r'[\x00-\x1f\x7f]')
+        # an older quote entered later never replaces a fresher one; the oldest accepted date and one day ahead (browser clock) are fine
+        old = (today - datetime.timedelta(days=config.QUOTE_MAX_AGE_DAYS)).isoformat()
+        self.assertEqual(post({**good, 'premium_eur': 123, 'period': 'year', 'quote_date': old})[0], 201)
+        self.assertEqual(self.units()[CAR_A]['annual_insurance'], 8412.0)
+        st, rr = post({**good, 'premium_eur': 702, 'period': 'year', 'quote_date': (today + datetime.timedelta(days=1)).isoformat()})
+        self.assertEqual(st, 201, rr)
+        self.assertEqual(self.sql('SELECT quote_date FROM listing_quotes WHERE id=?', (rr['id'],))[0][0], today.isoformat())  # clamped to the server's today
         self.assertEqual(self.req('PATCH', f'/api/ui/listing_quotes/{r["id"]}', {'premium_eur': 1}, token=None, cookie=adm)[0], 404)
         self.assertEqual(post(good, ck='nope')[0], 401)
         # another account cannot quote this car, and its own quote does not appear in this account
         self.assertEqual(post(good, ck=c2)[0], 400)
-        self.assertEqual(self.sql('SELECT count(*) FROM listing_quotes WHERE listing_id=?', (CAR_A,))[0][0], 2)
+        self.assertEqual(self.sql('SELECT count(*) FROM listing_quotes WHERE listing_id=?', (CAR_A,))[0][0], 5)
 
     def test_duplicate_guard_reliability_254(self):
         """A recall filed on two levels, and a defect filed both as a fault and a reliability item, are refused (409)."""

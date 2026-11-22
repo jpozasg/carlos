@@ -324,7 +324,14 @@ function quoteForm(d, hasQuote) {
     </div><p class="hint err" id="q-err" role="alert" hidden></p><div class="row" style="margin-top:10px"><button class="btn" type="submit">${t('q_submit')}</button></div></form></details>`;
 }
 async function saveQuote(form) {
-  const dec = id => { const v = $(id).value.trim().replace(',', '.'); return v === '' ? null : Number(v); };
+  // "1.234,56", "1,234.56", "45,90 EUR": spaces, NBSP and the euro sign go; when both separators appear the last one is the decimal point;
+  // anything that is not a finite number is NaN (never sent: Infinity would reach the server as null)
+  const dec = id => {
+    let v = $(id).value.replace(/[\s\u00a0\p{Sc}]/gu, ''); if (v === '') return null;
+    const i = Math.max(v.lastIndexOf(','), v.lastIndexOf('.'));
+    if (i >= 0) v = v.slice(0, i).replace(/[.,]/g, '') + '.' + v.slice(i + 1);
+    const n = /^\d+(\.\d*)?$|^\.\d+$/.test(v) ? Number(v) : NaN; return Number.isFinite(n) ? n : NaN;
+  };
   const bad = (id, key) => { const e = $(id + '-err'); e.textContent = t(key); e.hidden = false; $(id).setAttribute('aria-invalid', 'true'); return $(id); };
   form.querySelectorAll('.hint.err').forEach(e => { e.hidden = true; e.textContent = ''; }); form.querySelectorAll('[aria-invalid]').forEach(e => e.removeAttribute('aria-invalid'));
   const premium = dec('q_premium'), ded = dec('q_deductible'), date = $('q_date').value;
@@ -415,7 +422,7 @@ function bind() {
       if (ok) toast(t('photos_added', { n: ok })); await refresh(); } });
   root.addEventListener('submit', e => { if (e.target.id === 'quoteForm') { e.preventDefault(); saveQuote(e.target); } });
   root.addEventListener('click', async e => {
-    const tp =e.target.closest('[data-tab-pick]'); if (tp) { e.preventDefault(); pickTab(tp.dataset.tabPick); return; }
+    const tp = e.target.closest('[data-tab-pick]'); if (tp) { e.preventDefault(); pickTab(tp.dataset.tabPick); return; }
     const jp = e.target.closest('[data-jump]'); if (jp) { e.preventDefault(); document.getElementById(jp.dataset.jump)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     if (e.target.closest('[data-viewing]')) { VIEWING = !VIEWING; if (VIEWING) TAB = 'viewing'; await draw(D.id); return; }
     const dc = e.target.closest('[data-decide]'); if (dc) { const k = dc.dataset.decide;

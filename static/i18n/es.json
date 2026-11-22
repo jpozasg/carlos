@@ -1143,6 +1143,6 @@
  "q_err_deductible": "Introduce 0 o más, o déjalo vacío.",
  "q_err_server": "No se guardó el presupuesto: {m}",
  "q_valid_until": "Válido hasta {d}",
- "q_expired": "Caducado el {d}",
+ "q_expired": "Caducado el {d}; se sigue usando en el coste",
  "wq_owner_only": "Solo para la cuenta del propietario hasta que responda un abogado (22 nov 2026): las demás cuentas introducen los presupuestos a mano."
 }

@@ -1,6 +1,7 @@
 """A manual insurance quote entered by the account for one of its own cars (issue #399): the same `listing_quotes` row a
 worker quote is, so the cost calculation reads it the same way. Nothing here contacts a comparison site."""
-import datetime, math
+import datetime, re
+from . import config
 from .agent import agent_write
 
 COVERS = ('Haftpflicht', 'Teilkasko', 'Vollkasko')
@@ -16,13 +17,18 @@ def _num(d, key, required=False):
         if required:
             raise ValueError(f'{key} is required')
         return None
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not abs(v) <= 1e9:  # also refuses nan, inf and a 400-digit integer
         raise ValueError(f'{key} must be a number')
     return float(v)
 
 
 def _text(d, key, limit):
-    v = str(d.get(key) or '').strip()
+    """Free text from the form: a string only, control characters and runs of whitespace become one space (the text reaches the
+    log and the Markdown dossiers, which agents re-read)."""
+    v = d.get(key)
+    if v is not None and not isinstance(v, str):
+        raise ValueError(f'{key} must be text')
+    v = ' '.join(re.sub(r'[\x00-\x1f\x7f-\x9f\u2028\u2029]', ' ', v or '').split())
     if len(v) > limit:
         raise ValueError(f'{key}: at most {limit} characters')
     return v or None
@@ -34,7 +40,7 @@ def manual_quote(c, uid, d, today):
     if not isinstance(d, dict):
         raise ValueError('Expected a JSON object')
     lid = d.get('listing_id')
-    row = c.execute('SELECT is_reference FROM listings WHERE id=?', (lid,)).fetchone() if isinstance(lid, int) and not isinstance(lid, bool) else None
+    row = c.execute('SELECT is_reference FROM listings WHERE id=?', (lid,)).fetchone() if isinstance(lid, int) and not isinstance(lid, bool) and 0 < lid < 2 ** 62 else None
     if row is None:
         raise ValueError('listing_id: no such car in this account')
     if row[0]:
@@ -49,12 +55,16 @@ def manual_quote(c, uid, d, today):
     annual = round(amount * (12 if period == 'month' else 1), 2)
     if annual > MAX_ANNUAL_EUR:
         raise ValueError(f'premium_eur: more than {MAX_ANNUAL_EUR} EUR per year is not a plausible premium')
+    day = datetime.date.fromisoformat(today)
     try:
         dt = datetime.date.fromisoformat(str(d.get('quote_date') or today))
     except ValueError:
         raise ValueError('quote_date must be a date like 2026-11-22')
-    if dt > datetime.date.fromisoformat(today) or dt.year < 2000:
+    if dt > day + datetime.timedelta(days=1):  # one day of slack: the browser's clock may be ahead of the server's
         raise ValueError('quote_date cannot be in the future')
+    if (day - dt).days > config.QUOTE_MAX_AGE_DAYS:
+        raise ValueError(f'quote_date is older than {config.QUOTE_MAX_AGE_DAYS} days: a quote that old has expired, get a new one')
+    dt = min(dt, day)
     insurer, tariff, sf = _text(d, 'insurer', 80), _text(d, 'tariff', 80), _text(d, 'sf_class', 8)
     cover, ded = d.get('cover') or None, _num(d, 'deductible_eur')
     if cover not in (None, *COVERS):

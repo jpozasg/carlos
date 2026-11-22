@@ -405,9 +405,10 @@ def history_effects(h, m_rows):
 
 
 def quote_for(qs, is_reference):
-    """The listing's insurance quote behind the cost: the reference car's own premium (USER DATA), else the newest."""
+    """The listing's insurance quote behind the cost: the reference car's own premium (USER DATA), else the newest by quote date
+    (a later entry of an older quote never replaces a fresher one), then by id. An expired quote is still used (owner decides)."""
     user = [q for q in qs if q['premium_status'] == config.USER_PREMIUM] if is_reference else []
-    return max(user or qs, key=lambda q: q['id'], default=None)
+    return max(user or qs, key=lambda q: (q.get('quote_date') or '', q['id']), default=None)
 
 
 def diy_choice(c):

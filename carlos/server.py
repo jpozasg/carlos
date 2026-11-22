@@ -513,7 +513,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self.admin:
                 raise NotAllowed('The research queue is worked by the shared worker (an admin token)')
             if path == '/api/worker/claim' and method == 'POST':
-                self.send_json({'request': rq.claim(c, self.read_json().get('worker'))})
+                self.send_json({'request': rq.claim(c, self.read_json().get('worker'), missing=self.missing_items)})
             elif req and method == 'POST':
                 self.send_json(rq.finish(c, int(req[1]), self.read_json(), missing=self.missing_items, staged=self.staged_missing))
             else:
@@ -636,7 +636,7 @@ class Handler(BaseHTTPRequestHandler):
             self.read_json()
             with c:
                 c.execute("UPDATE main.workers SET last_seen=datetime('now') WHERE id=?", (w['id'],))
-            self.send_json({'request': rq.claim(c, w['name'], w['id'])})
+            self.send_json({'request': rq.claim(c, w['name'], w['id'], self.missing_items)})
         elif req and method == 'POST':
             own = c.execute("SELECT 1 FROM main.research_requests WHERE id=? AND worker=? AND status='RUNNING'", (int(req[1]), w['name'])).fetchone()
             if own is None:

@@ -116,7 +116,7 @@ def everything(c):
     return out
 
 
-def claim(c, worker, worker_id=None):
+def claim(c, worker, worker_id=None, missing=None):
     """Takes the oldest QUEUED request (or an abandoned RUNNING one) for `worker`, atomically; None when idle.
     The request gets a fresh per-request token (issue #141), returned once as `request_token`."""
     worker = str(worker or 'worker').strip()[:60]
@@ -143,6 +143,15 @@ def claim(c, worker, worker_id=None):
     if not row:
         return None
     r = dict(c.execute(f'SELECT {COLS} FROM main.research_requests WHERE id=?', (row[0],)).fetchone())
+    if r['unit'] == 'INSURANCE' and not owner_is_admin(c, r['owner_id']):  # queued before the pause (#399): skipped, never run
+        with c:
+            c.execute("UPDATE main.research_requests SET status='SKIPPED', result=?, finished_at=datetime('now'), request_token_hash=NULL WHERE id=?",
+                      (WORKER_QUOTES_PAUSED, r['id']))
+            if worker_id is not None:
+                c.execute("UPDATE main.workers SET state='idle', request_id=NULL WHERE id=?", (worker_id,))
+        if r['parent_id'] is not None:
+            _closed(c, r['id'], missing)  # lets the parent finish (INSURANCE is the last stage)
+        return claim(c, worker, worker_id, missing)
     r['missing'] = json.loads(r['missing']) if r['missing'] else []
     r['scope'] = json.loads(r['scope']) if r['scope'] else None
     return {**r, 'request_token': raw}

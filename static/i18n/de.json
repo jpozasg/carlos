@@ -1143,6 +1143,6 @@
  "q_err_deductible": "Gib 0 oder mehr ein oder lass das Feld leer.",
  "q_err_server": "Das Angebot wurde nicht gespeichert: {m}",
  "q_valid_until": "Gültig bis {d}",
- "q_expired": "Abgelaufen am {d}",
+ "q_expired": "Abgelaufen am {d}; wird weiter für die Kosten verwendet",
  "wq_owner_only": "Nur für das eigene Konto des Betreibers, bis ein Anwalt geantwortet hat (22.11.2026): andere Konten tragen Angebote von Hand ein."
 }

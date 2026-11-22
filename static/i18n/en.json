@@ -1143,6 +1143,6 @@
  "q_err_deductible": "Enter 0 or more, or leave it empty.",
  "q_err_server": "The quote was not saved: {m}",
  "q_valid_until": "Valid until {d}",
- "q_expired": "Expired {d}",
+ "q_expired": "Expired {d}; still used in the cost",
  "wq_owner_only": "Only for the owner's own account until a lawyer has answered (22 Nov 2026): other accounts enter quotes by hand."
 }

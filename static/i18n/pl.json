@@ -1146,6 +1146,6 @@
  "q_err_deductible": "Wpisz 0 lub więcej albo zostaw puste.",
  "q_err_server": "Oferta nie została zapisana: {m}",
  "q_valid_until": "Ważna do {d}",
- "q_expired": "Wygasła {d}",
+ "q_expired": "Wygasła {d}; nadal używana w kosztach",
  "wq_owner_only": "Tylko dla własnego konta właściciela, dopóki nie odpowie prawnik (22.11.2026): pozostałe konta wpisują oferty ręcznie."
 }
