@@ -164,6 +164,7 @@ tr.off td{opacity:.55}tr.refrow td{background:var(--ref-soft)}
 .rrow:hover .rmark.refmark{transform:translate(-50%,-50%) rotate(45deg) scale(1.25)}
 .rval{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--readout)}
 .rval b{font-size:15px}.rval small{display:block;font-size:12px;font-weight:600}
+.rval small.tag{display:inline-block;max-width:100%;white-space:normal;text-align:right;line-height:1.25}  /* '(unvollständig)' wraps in the 90px phone column */
 @media (prefers-reduced-motion:reduce){.rmark{transition:none}}
 @media (max-width:640px){.rhead{grid-template-columns:1fr 90px}.rhead .car-h{display:none}.rrow{grid-template-columns:1fr 90px;grid-template-areas:"car val" "track track"}.rrow .car{grid-area:car}.rtrack{grid-area:track;height:22px}.rval{grid-area:val}}
 

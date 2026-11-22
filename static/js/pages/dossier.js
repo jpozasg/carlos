@@ -150,7 +150,7 @@ function rankCard(d) {  // the reference car is scored too (issue #72), only not
     <p class="small muted" style="margin:8px 0 0"><a href="#/ranking">${t('ranking_edit')}</a></p></div>`;
 }
 // the source as a visible link (title, quality letter), not a bare id
-const srcName = (d, id) => { const x = id == null ? null : d.sources.find(s => s.id === id); return !x ? PEND() : `${x.url ? `<a href="${safeUrl(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title)} ${qTag(x.quality)}`; };
+const srcName = (d, id) => { const x = id == null ? null : d.sources.find(s => s.id === id); return id == null ? PEND() : !x ? `#${id}` : `${x.url ? `<a href="${safeUrl(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title)} ${qTag(x.quality)}`; };
 const srcLink = (d, id) => { const x = d.sources.find(s => s.id === id); return x ? qTag(x.quality, x.title + (x.limitations ? ' — ' + x.limitations : '')) : ''; };
 // one row per certain one-off cost of this car (unit_costs of a category), named, so a total never hides what it includes
 const certainOf = (d, cat) => d.unit_costs.filter(x => x.category === cat).map(x => ({ ...x, eur: x.parts_eur == null && x.labor_eur == null ? null : (x.parts_eur || 0) + (x.labor_eur || 0) }));  // no price = pending, never 0
@@ -174,22 +174,26 @@ function maintenanceCard(d) {
       <td>${intervalTxt(r.interval_km, r.interval_months)}</td><td>${r.diy ? t('mp_diy') : t('mp_ws')}</td><td class="n">${eP(r.price_eur)}</td>
       <td class="n">×${num(r.occurrences, 2)}</td><td class="n">${eP(r.cost_eur)}${r.diy_hours ? `<div class="small muted">${num(r.diy_hours, 1)} h</div>` : ''}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
     ${certainRows(d, cm)}
-    <tr><td colspan="6"><b>${t('mp_total')}</b></td><td class="n"><b>${totalP(tot)}</b>${hrs ? `<div class="small muted">${num(hrs, 1)} h</div>` : ''}</td><td></td></tr></tbody></table></div></div>`;
+    <tr><td colspan="6"><b>${t('mp_total')}</b></td><td class="n"><b>${d.components?.maintenance != null ? euro(d.components.maintenance) : totalP(tot)}</b>${hrs ? `<div class="small muted">${num(hrs, 1)} h</div>` : ''}</td><td></td></tr></tbody></table></div></div>`;
 }
 function risksCard(d) {
   const rows = (d.repair_risks || []).slice().sort((a, b) => (b.expected_eur || 0) - (a.expected_eur || 0)), fp = d.fault_plan || [], cr = certainOf(d, 'repairs');
   if (!rows.length && !fp.length && !cr.length) return `<div class="card span2"><h3>${t('rk_title')}</h3>${empty(t('rk_none'))}</div>`;
-  // the repairs component = certain + risks + weak points (carlos/costs.py), one total with the same parts as the Costs tab
-  const risks = sumKnown(rows, r => r.expected_eur), faults = sumKnown(fp, f => f.expected_eur), all = sumKnown([...rows.map(r => r.expected_eur), ...fp.map(f => f.expected_eur), ...cr.map(x => x.eur)], v => v);
+  // the repairs component = certain + risks + weak points (carlos/costs.py). The total is the server's figure: it is unknown
+  // (NULL) without a mileage, without any researched risk or weak point, or with an unpriced one, and it also counts the
+  // PRESENT items of the car's history. The two expected rows are shown only while the server knows that part.
+  const cd = d.cost_detail || {}, expKnown = cd.repairs_expected != null;
+  const risks = sumKnown(rows, r => r.expected_eur), faults = sumKnown(fp, f => f.expected_eur);
   return `<div class="card span2"><h3>${t('rk_title')}</h3><p class="small muted" style="margin-top:0">${t('rk_lead')}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('rk_comp')}</th><th>${t('level')}</th><th>${t('rk_window')}</th><th class="n">${t('rk_prob')}</th><th class="n">${t('mp_price')}</th><th class="n">${t('rk_share')}</th><th class="n">${t('rk_exp')}</th><th>${t('mp_src')}</th></tr></thead><tbody>
     ${rows.map(r => `<tr${r.share ? '' : ' class="muted"'}><td><span title="${esc(r.evidence ?? '')}${r.notes ? ' — ' + esc(r.notes) : ''}">${esc(r.component)}</span>${r.diy ? ` <span class="tag">${t('mp_diy')}</span>` : ''}</td><td>${lvlTag(r.level, r)}</td>
       <td>${rangeTxt(r.km_from, r.km_to)}</td><td class="n">${pct(r.probability)}</td><td class="n">${eP(r.price_eur)}</td>
       <td class="n">${pct(r.share)}</td><td class="n">${eP(r.expected_eur)}</td><td>${srcLink(d, r.source_id)}</td></tr>`).join('')}
-    ${rows.length ? `<tr><td colspan="6"><b>${t('rk_total')}</b></td><td class="n"><b>${totalP(risks)}</b></td><td></td></tr>` : ''}
-    ${fp.length ? `<tr><td colspan="6"><b>${t('rk_faults_total', { n: fp.length })}</b> ${goTab('reliability', t('dt_reliability'))}</td><td class="n"><b>${totalP(faults)}</b></td><td></td></tr>` : ''}
+    ${rows.length ? `<tr><td colspan="6"><b>${t('rk_total')}</b></td><td class="n"><b>${expKnown ? totalP(risks) : PEND()}</b></td><td></td></tr>` : ''}
+    ${fp.length ? `<tr><td colspan="6"><b>${t('rk_faults_total', { n: fp.length })}</b> ${goTab('reliability', t('dt_reliability'))}</td><td class="n"><b>${expKnown ? totalP(faults) : PEND()}</b></td><td></td></tr>` : ''}
     ${cr.length ? `<tr><td colspan="8" class="small muted">${t('rk_certain')}</td></tr>${certainRows(d, cr)}` : ''}
-    <tr><td colspan="6"><b>${t('rk_repairs_total')}</b></td><td class="n"><b>${totalP(all)}</b></td><td></td></tr></tbody></table></div></div>`;
+    ${cd.repairs_certain != null ? `<tr><td colspan="6"><b>${t('co_certain')}</b></td><td class="n"><b>${euro(cd.repairs_certain)}</b></td><td></td></tr>` : ''}
+    <tr><td colspan="6"><b>${t('rk_repairs_total')}</b></td><td class="n"><b>${eP(d.components?.repairs)}</b></td><td></td></tr></tbody></table></div></div>`;
 }
 // what is known about this car (#174): jobs done, faults present or ruled out, recalls checked; and its insurance quotes
 function historyCard(d) {

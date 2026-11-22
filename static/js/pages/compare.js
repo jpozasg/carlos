@@ -60,7 +60,7 @@ function ruler(all) {
     return `<a class="rrow${u.is_reference ? ' ref' : ''}${u.rank === 1 ? ' top' : ''}" href="#/listing/${u.id}">
       <span class="car">${u.is_reference ? '' : `<span class="rk">${u.rank ?? '–'}</span>`}${thumb(u, 'sm')}<span style="min-width:0"><span class="nm">${carLabel(u)}</span><small>${u.is_reference ? t('your_car') : esc(u.location ?? u.platform ?? '')}</small></span></span>
       <span class="rtrack">${refX != null && !u.is_reference ? `<i class="rline" style="left:${refX}%"></i>` : ''}${v == null ? '' : `<i class="rmark${u.is_reference ? ' refmark' : u.tco_complete ? '' : ' partial'}" style="left:${refX ?? x(v)}%" data-x="${x(v)}" title="${esc(euro(v))}${t('per_month')}${u.tco_complete ? '' : ' ' + esc(t('partial_short'))}"></i>`}</span>
-      <span class="rval">${v == null ? PEND() : `<b>${euro(v)}</b>${u.tco_complete ? '' : ` <small class="tag warn" style="white-space:normal">${t('partial_short')}</small>`}${u.is_reference || d == null ? '' : `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${euro(Math.abs(d) / u.period_months)}${t('per_month')}</small>`}`}</span></a>`; }).join('');
+      <span class="rval">${v == null ? PEND() : `<b>${euro(v)}</b>${u.tco_complete ? '' : ` <small class="tag warn">${t('partial_short')}</small>`}${u.is_reference || d == null ? '' : `<small class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${euro(Math.abs(d) / u.period_months)}${t('per_month')}</small>`}`}</span></a>`; }).join('');
   return `<div class="section"><h2>${t('ruler_title')}</h2><p class="lead">${t(none ? 'ruler_waiting' : 'ruler_lead')}</p>
     <div class="ruler"><div class="rhead"><span class="car-h">${t('g_unit')}</span><span class="ticks">${ticks.map(v => `<span style="left:${x(v)}%">${euro(v)}</span>`).join('')}</span><span style="text-align:right">${t('ruler_axis')}</span></div>${rows}</div></div>`;
 }
@@ -182,10 +182,12 @@ function draw() {
   selected = new Set([...selected].filter(id => ids.has(id)));
   if (!selected.size) S.units.forEach(u => selected.add(u.id));
   // a car added after the last visit joins the comparison (it used to be left out of Costs, Break-even and Details silently)
-  let seen = new Set(store.get('knownIds', null) ?? (selected.size ? ids : []));  // first run with this rule: every car present is known
+  // first run with this rule (no stored list): every car present is known, so nobody's saved selection is reset; the list is pruned to cars still present
+  const stored = store.get('knownIds', null), seen = new Set(Array.isArray(stored) ? (ids.size ? stored.filter(id => ids.has(id)) : stored) : ids);
   const fresh = [...ids].filter(id => !seen.has(id));
-  if (fresh.length) { fresh.forEach(id => { selected.add(id); seen.add(id); }); store.set('selected', [...selected]); store.set('knownIds', [...seen]); }
-  else if (ids.size && store.get('knownIds', null) == null) store.set('knownIds', [...seen]);
+  fresh.forEach(id => { selected.add(id); seen.add(id); });
+  if (fresh.length) store.set('selected', [...selected]);
+  if (ids.size && (!Array.isArray(stored) || fresh.length || seen.size !== stored.length)) store.set('knownIds', [...seen]);
   if (store.get('costSel', null) == null) costSel = new Set(S.components);
   const all = ordered(), us = all.filter(u => selected.has(u.id));
   const hidden = S.units.length - all.length;  // cars the toggles above remove from every view

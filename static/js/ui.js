@@ -21,6 +21,8 @@ export const totalP = r => !r.n ? PEND() : r.missing ? `${euro(r.sum)} <span cla
 export const perMonth = (u, suffix = '') => u.known_cost_per_month == null ? PEND() : euro(u.known_cost_per_month) + suffix + (u.tco_complete ? '' : ` <span class="tag warn">${t('partial_short')}</span>`);
 // a share or probability (0-1) as a percentage; null stays pending, never "0 %"
 export const pct = (v, d = 0) => v == null ? PEND() : `${num(v * 100, d)}\u00a0%`;
+// parts + labour as one price: both unknown = pending, one unknown = the known part with the partial marker (never a complete price)
+export const partsLaborP = (a, b) => a == null && b == null ? PEND() : euro((a || 0) + (b || 0)) + (a == null || b == null ? ` <span class="tag warn">${t('partial_short')}</span>` : '');
 // "a–b" where one end may be open; both unknown = pending (never "—–—")
 export const rangeTxt = (a, b, d = 0) => a == null && b == null ? PEND() : `${a == null ? '…' : num(a, d)}–${b == null ? '…' : num(b, d)}`;
 // consumption with its unit as the data gives it (no invented unit) and the spread of the source (min-max, sample size) when known

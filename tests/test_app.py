@@ -438,6 +438,43 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(d['components']['repairs'])                         # unpriced weak point: unknown, so the UI shows "+n pending"
         self.assertIsNone(d['cost_detail']['repairs_expected'])
 
+    def test_repairs_total_cases_the_dossier_defers_to_the_server(self):
+        """The dossier's Repairs total is d.components.repairs, never a client sum: it is unknown without a mileage, with only a
+        certain repair (no researched risk), and it also counts PRESENT history items that no unit_costs row lists."""
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        get = lambda: self.req('GET', f'/api/listings/{CAR_B}')[1]
+        base = get()
+        self.assertIsNotNone(base['components']['repairs'])
+        self.assertTrue(base['repair_risks'])
+        # (a) a PRESENT history cost is a certain repair although unit_costs lists nothing
+        src = self.agent('POST', 'sources', {'title': 'Workshop quote', 'source_type': 'listing'})[1]['id']
+        self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_B, 'job': 'CLUTCH', 'item': 'Worn clutch', 'status': 'PRESENT', 'category': 'repairs',
+                                                                'parts_eur': 120, 'labor_eur': 80, 'evidence': 'OBSERVED', 'source_id': src})[0], 201)
+        d = get()
+        self.assertEqual(d['cost_detail']['repairs_certain'], 200)
+        self.assertEqual([x for x in d['unit_costs'] if x['category'] == 'repairs'], [])
+        self.assertAlmostEqual(d['components']['repairs'], 200 + d['cost_detail']['repairs_expected'])
+        # (b) no mileage: expected repairs unknown, so the component is unknown although risk_plan lists rows
+        mileage = base['mileage_km']
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_B}', {'mileage_km': None})[0], 200)
+        d = get()
+        self.assertIsNone(d['cost_detail']['repairs_expected'])
+        self.assertIsNone(d['components']['repairs'])
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_B}', {'mileage_km': mileage})[0], 200)
+        # (c) only a certain repair, nothing researched: the component stays unknown
+        for r in base['repair_risks']:
+            self.assertEqual(self.agent('PATCH', f"repair_risks/{r['id']}", {'archived': 1})[0], 200)
+        d = get()
+        self.assertEqual(d['cost_detail']['repairs_certain'], 200)
+        self.assertIsNone(d['components']['repairs'])
+
+    def test_valuation_sources_are_listed_with_the_dossier(self):
+        """A valuation's source is a link in the dossier, so the source must be in d.sources even when nothing else cites it."""
+        src = self.agent('POST', 'sources', {'title': 'Resale comparison', 'source_type': 'listing', 'url': 'https://example.test/resale'})[1]['id']
+        self.assertEqual(self.agent('POST', 'valuations', {'listing_id': CAR_B, 'kind': 'resale_end', 'expected_eur': 4000, 'status': 'ESTIMATED', 'source_id': src})[0], 201)
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        self.assertIn(src, {s['id'] for s in d['sources']})
+
     def test_certain_maintenance(self):
         """A scheduled job due at purchase is a certain maintenance cost: it adds to maintenance, never to repairs."""
         before = self.req('GET', f'/api/listings/{CAR_B}')[1]
