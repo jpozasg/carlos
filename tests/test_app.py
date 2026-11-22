@@ -305,6 +305,45 @@ class AppTest(unittest.TestCase):
                                                                'quote_date': datetime.date.today().isoformat(), 'source_id': SRC_QUOTE})[0], 201)
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['annual_insurance'], 777)
 
+    def test_owner_chance_on_one_car_379(self):
+        """#379 (owner decision 2026-11-22): after a DONE restart a fault costs nothing more (no fixed part's curve), unless the
+        owner gives this car its own chance for the period; that chance applies to this car only, is validated, logged as
+        user data, and the shared fault row and the other cars keep their figures. The BMW case: a chain replaced, due again."""
+        f1 = self.agent('POST', 'faults', {'component': 'Chain', 'component_code': 'ENGINE_INTERNALS', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE',
+                                           'existence': 'CONFIRMED', 'probability_basis': 'ESTIMATE', 'parts_eur': 400, 'labor_eur': 600,
+                                           'source_id': SRC_GUIDE, 'generation_id': G1, 'curve_km': [[100000, 0.1], [200000, 0.4]]})[1]['id']
+        plan = lambda lid: {x['id']: x for x in self.req('GET', f'/api/listings/{lid}')[1]['fault_plan']}[f1]
+        before_ref, shared = plan(REF), self.sql('SELECT * FROM faults WHERE id=?', (f1,))
+        src = self.agent('POST', 'sources', {'title': 'Invoice', 'source_type': 'listing'})[1]['id']
+        hist = self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'fault_id': f1, 'item': 'New chain', 'status': 'DONE', 'km': 80000,
+                                                      'evidence': 'DOCUMENTED', 'source_id': src})
+        self.assertEqual(hist[0], 201)
+        hA = hist[1]['id']
+        self.assertEqual((plan(CAR_A)['expected_eur'], plan(CAR_A)['owner_chance']), (0, None))   # today: a documented fix leaves no risk
+        st, adm = self.login()
+        chance = lambda row, body, ck=adm: self.req('PATCH', f'/api/ui/listing_history/{row}', body, token=None, cookie=ck)
+        self.assertEqual(chance(hA, {'owner_probability': 0.3, 'owner_reason': 'Chain stretched after 61,500 km; owner expects a repeat'})[0], 200)
+        p = plan(CAR_A)
+        self.assertAlmostEqual(p['expected_eur'], 300.0, places=2)                              # 0.3 x (400 + 600)
+        self.assertEqual((p['probability'], p['owner_chance']['source'], p['owner_chance']['reason'][:12]), (0.3, 'user_data', 'Chain stretc'))
+        self.assertEqual(plan(REF), before_ref)                          # the same fault on another car is unchanged
+        self.assertEqual(self.sql('SELECT * FROM faults WHERE id=?', (f1,)), shared)   # the shared row is unchanged
+        self.assertEqual(self.sql("SELECT kind FROM listing_events WHERE listing_id=? ORDER BY id DESC LIMIT 1", (CAR_A,))[0][0], 'user_data')
+        for bad in ({'owner_probability': 1.5, 'owner_reason': 'x'}, {'owner_probability': -0.1, 'owner_reason': 'x'},
+                    {'owner_probability': '0.3', 'owner_reason': 'x'}, {'owner_probability': True, 'owner_reason': 'x'},
+                    {'owner_probability': 0.3}, {'owner_probability': 0.3, 'owner_reason': '  '},
+                    {'owner_probability': 0.3, 'owner_reason': 'x', 'status': 'OPEN'}, {'owner_reason': 'x'}, {}):
+            self.assertEqual(chance(hA, bad)[0], 400, bad)
+        self.assertEqual(chance(hA, {'owner_probability': 0.3, 'owner_reason': 'x'}, ck='nope')[0], 401)
+        uid2, c2 = self.second_account()
+        self.assertEqual(chance(hA, {'owner_probability': 0.9, 'owner_reason': 'x'}, ck=c2)[0], 404)   # another account's row
+        self.assertAlmostEqual(plan(CAR_A)['expected_eur'], 300.0, places=2)                    # refusals changed nothing
+        hopen = self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'fault_id': f1, 'item': 'Chain rattle', 'status': 'OPEN', 'evidence': 'OBSERVED'})
+        self.assertEqual(hopen[0], 201)
+        self.assertEqual(chance(hopen[1]['id'], {'owner_probability': 0.3, 'owner_reason': 'x'})[0], 400)   # only a DONE repair
+        self.assertEqual(chance(hA, {'owner_probability': None})[0], 200)                       # null clears it: unknown, not zero
+        self.assertEqual((plan(CAR_A)['expected_eur'], plan(CAR_A)['owner_chance']), (0, None))
+
     def test_scoped_rows_need_exactly_one_level(self):
         base = {'item': 'x', 'interval_km': 10000, 'schedule': 'ITEM', 'diy': 0, 'reference_cost_eur': 10, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE}
         self.assertEqual(self.agent('POST', 'faults', {'component': 'x', 'component_code': 'COOLING', 'part': 'ENGINE', 'consequence': 'COST', 'existence': 'REPORTED',

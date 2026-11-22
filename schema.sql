@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=43). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=44). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -364,7 +364,9 @@ CREATE TABLE listing_history (
  parts_eur REAL CHECK (parts_eur IS NULL OR parts_eur >= 0), labor_eur REAL CHECK (labor_eur IS NULL OR labor_eur >= 0),
  diy_hours REAL CHECK (diy_hours IS NULL OR diy_hours >= 0),
  source_id INTEGER REFERENCES sources(id), notes TEXT,
- archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+ archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_probability REAL
+ CHECK (owner_probability IS NULL OR (owner_probability BETWEEN 0 AND 1 AND fault_id IS NOT NULL AND status = 'DONE')), owner_reason TEXT
+ CHECK (owner_reason IS NULL OR owner_probability IS NOT NULL),
  CHECK ((maintenance_item_id IS NOT NULL) + (fault_id IS NOT NULL) + (recall_id IS NOT NULL) + (job IS NOT NULL) >= 1),
  CHECK (status <> 'PRESENT' OR category IS NOT NULL));
 CREATE TABLE "maintenance_items" (

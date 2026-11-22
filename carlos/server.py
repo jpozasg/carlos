@@ -12,6 +12,7 @@ from .costs import Knowledge, budget, check_budget, days_since, listing_detail, 
 from .db import connect, params, rows
 from .models import model_tree, variant_detail
 from .quotes import manual_quote
+from .chance import owner_chance
 from .ranking import CRITERIA, TASKS, check_answers, rank, ranking_state, weights_from, weights_from_answers
 from .todo import todo
 
@@ -618,7 +619,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         # writes
         agent = re.fullmatch(r'/api/agent/([\w-]+)(?:/(-?\d+))?', path)
-        ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|listing_quotes|media|decision)(?:/(\d+))?', path)
+        ui = re.fullmatch(r'/api/ui/(inspection_items|listing_events|listing_quotes|listing_history|media|decision)(?:/(\d+))?', path)
         req = re.fullmatch(r'/api/(?:requests|worker/requests)/(\d+)', path)
         if (agent and agent[2] and method in ('PATCH', 'DELETE', 'POST') and self.admin and self.request is None
                 and self.headers.get('Authorization') and not self.headers.get('X-Carlos-Account')):
@@ -849,6 +850,8 @@ class Handler(BaseHTTPRequestHandler):
                                                              'text': verdicts[d] or 'Decision reset by the owner: back under review', 'source_id': src}, uid)
         elif kind == 'listing_quotes' and method == 'POST' and row_id is None:  # a manual insurance quote (#399)
             new_id = manual_quote(c, uid, data, today)
+        elif kind == 'listing_history' and method == 'PATCH' and row_id is not None:  # the owner's chance a fixed fault recurs (#379)
+            new_id = owner_chance(c, uid, row_id, data, lambda: self.user_source(c, uid, today), today)
         elif kind == 'listing_events' and method == 'POST':
             src = c.execute("SELECT id FROM sources WHERE source_type='user_reported' ORDER BY id LIMIT 1").fetchone()
             if src is None:
