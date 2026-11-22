@@ -4,7 +4,7 @@
 import { S, go, loadAll, renderShell, current } from '../app.js';
 import { get, post } from '../api.js';
 import { t } from '../i18n.js';
-import { $, esc, num, euro, toast } from '../ui.js';
+import { $, esc, num, euro, busy } from '../ui.js';
 import { quiz, profileHtml } from '../quiz.js';
 
 // Choice preferences store plain English (agents read them as text); the UI shows a translated label per code.
@@ -34,11 +34,13 @@ const DIY = { oil: 'oil and filters', plugs: 'spark plugs', service: 'yearly ser
 const DIY_DEFAULT = ['oil', 'plugs', 'service', 'brakes', 'battery', 'bulbs', 'wipers'];  // docs/cost-research-protocol.md
 const SF = ['SF 0', 'SF 1/2', ...Array.from({ length: 35 }, (_, i) => 'SF ' + (i + 1)), 'M', 'S'];
 const STEPS = ['drive', 'money', 'search', 'drivers', 'insurance', 'workshop', 'charging', 'priorities', 'done'];  // charging after workshop keeps the older ?step= links
+const OPTIONAL = ['drivers', 'insurance', 'workshop', 'charging'];  // a car ranks without them; the answers they give sharpen costs and quotes
 
-let root, step = 0, prefs = {}, drivers = [];
+let root, step = 0, prefs = {}, drivers = [], finishing = false;
 const P = k => S.saved?.[k] == null ? '' : String(S.saved[k]).replace(/\.0$/, '');
 const field = (id, label, control, hint = '') => `<div class="field"><label for="${id}">${label}</label>${control}${hint ? `<p class="hint">${hint}</p>` : ''}</div>`;
-const number = (id, value, attrs = '') => `<input id="${id}" type="number" inputmode="numeric" value="${esc(value)}" ${attrs}>`;
+// one inputmode per field: numeric for whole numbers, decimal where the value can have a fraction (prices per litre or kWh)
+const number = (id, value, attrs = '', mode = 'numeric') => `<input id="${id}" type="number" inputmode="${mode}" value="${esc(value)}" ${attrs}>`;
 const text = (id, value, attrs = '') => `<input id="${id}" type="text" value="${esc(value)}" ${attrs}>`;
 function choice(id, opts, current, labelKey) {  // segmented radio group; opts = [[code, stored value]]
   return `<div class="choice" role="radiogroup" aria-labelledby="${id}-l">${opts.map(([code, v]) => `<label><input type="radio" name="${id}" value="${esc(v)}" ${current === v ? 'checked' : ''}><span>${esc(t(labelKey(code)))}</span></label>`).join('')}</div>`;
@@ -92,8 +94,8 @@ const VIEWS = {
       ${field('budget_max_eur', t('p_budget_max'), number('budget_max_eur', P('budget_max_eur'), 'min="1" step="100"'), t('h_budget_max'))}</div>
     ${group('purchase_mode', t('p_purchase'), choice('purchase_mode', PARAM_CHOICE.purchase_mode.map(v => [v, v]), P('purchase_mode'), c => 'pm_' + c))}
     <div class="fields two">
-      ${field('fuel_price_eur_l', t('p_fuel_price'), number('fuel_price_eur_l', P('fuel_price_eur_l'), 'step=".01" min="0.01" inputmode="decimal"'))}
-      ${field('diesel_price_eur_l', t('p_diesel_price'), number('diesel_price_eur_l', P('diesel_price_eur_l'), 'step=".01" min="0.01" inputmode="decimal"'))}</div>
+      ${field('fuel_price_eur_l', t('p_fuel_price'), number('fuel_price_eur_l', P('fuel_price_eur_l'), 'step=".01" min="0.01"', 'decimal'))}
+      ${field('diesel_price_eur_l', t('p_diesel_price'), number('diesel_price_eur_l', P('diesel_price_eur_l'), 'step=".01" min="0.01"', 'decimal'))}</div>
     <p class="hint">${t('h_fuel')}</p>`,
   search: () => `<div class="fields two">
       ${field('search_center', t('p_search_center'), text('search_center', prefs.search_center ?? '', 'maxlength="100" autocomplete="address-level2"'), t('h_search_center'))}
@@ -135,8 +137,8 @@ const VIEWS = {
     <div class="fields two">
       ${field('home_charging_pct', t('p_home_pct'), `<div class="pair"><input id="home_charging_pct_range" type="range" min="0" max="100" step="5" value="${P('home_charging_pct') || 80}" aria-hidden="true" tabindex="-1">${number('home_charging_pct', P('home_charging_pct'), 'min="0" max="100" step="5"')}</div>`, t('h_home_pct'))}
       ${field('wallbox_cost_eur', t('p_wallbox_cost'), number('wallbox_cost_eur', P('wallbox_cost_eur'), 'min="0" step="50"'), t('h_wallbox_cost'))}
-      ${field('electricity_home_eur_kwh', t('p_elec_home'), number('electricity_home_eur_kwh', P('electricity_home_eur_kwh'), 'step=".01" min="0.01" inputmode="decimal"'), t('h_elec_home'))}
-      ${field('electricity_public_eur_kwh', t('p_elec_public'), number('electricity_public_eur_kwh', P('electricity_public_eur_kwh'), 'step=".01" min="0.01" inputmode="decimal"'), t('h_elec_public'))}</div>`,
+      ${field('electricity_home_eur_kwh', t('p_elec_home'), number('electricity_home_eur_kwh', P('electricity_home_eur_kwh'), 'step=".01" min="0.01"', 'decimal'), t('h_elec_home'))}
+      ${field('electricity_public_eur_kwh', t('p_elec_public'), number('electricity_public_eur_kwh', P('electricity_public_eur_kwh'), 'step=".01" min="0.01"', 'decimal'), t('h_elec_public'))}</div>`,
 };
 
 function collect(name) {
@@ -175,22 +177,26 @@ function collect(name) {
   for (const k of Object.keys(params)) if (params[k] === null && PARAM_CHOICE[k]) delete params[k];
   return { params, prefs: pr };
 }
+// a failure stays on this page as text next to the form (#stepErr), never a toast that vanishes after 3.5 s
+const fail = msg => { const el = $('stepErr'); if (el) el.textContent = msg; };
+// a request-sending control that is busy while `work` runs; an error is shown inline
+const run = (btn, work) => busy(btn, async () => { try { await work(); } catch (e) { fail(t('not_saved', { m: e.message })); } });
 async function saveStep(name) {
   const { params, prefs: pr } = collect(name);
-  root.querySelectorAll('[aria-invalid]').forEach(e => e.removeAttribute('aria-invalid'));
+  root.querySelectorAll('[aria-invalid]').forEach(e => { e.removeAttribute('aria-invalid'); e.removeAttribute('aria-describedby'); });
   try {
     if (Object.keys(params).length) S.saved = S.p = await post('/api/parameters', params);
     if (Object.keys(pr).length) prefs = Object.fromEntries((await post('/api/preferences', pr)).map(r => [r.preference_key, r.preference_value]));
     return true;
   } catch (e) {
     const k = Object.keys(params).find(k => (e.message || '').startsWith(k));
-    if (k && $(k)) { $(k).setAttribute('aria-invalid', 'true'); $(k).focus(); if (k === 'budget_ideal_eur') $('budget_max_eur')?.setAttribute('aria-invalid', 'true'); }
-    toast(t('not_saved', { m: e.message }), true); return false;
+    if (k && $(k)) { $(k).setAttribute('aria-invalid', 'true'); $(k).setAttribute('aria-describedby', 'stepErr'); $(k).focus(); if (k === 'budget_ideal_eur') $('budget_max_eur')?.setAttribute('aria-invalid', 'true'); }
+    fail(t('not_saved', { m: e.message })); return false;
   }
 }
 
 function rail() {
-  return `<ol class="rail" aria-label="${esc(t('setup_steps'))}">${STEPS.map((s, i) => `<li ${i === step ? 'aria-current="step"' : ''} class="${i < step ? 'done' : ''}"><button type="button" data-goto="${i}" ${i > step && !prefs.onboarding_done ? 'disabled' : ''}><span class="n num">${i + 1}</span><span class="l">${t('step_' + s)}</span></button></li>`).join('')}</ol>`;
+  return `<ol class="rail" aria-label="${esc(t('setup_steps'))}">${STEPS.map((s, i) => `<li ${i === step ? 'aria-current="step"' : ''} class="${i < step ? 'done' : ''}"><button type="button" data-goto="${i}" ${i > step && !prefs.onboarding_done ? 'disabled' : ''}><span class="n num">${i + 1}</span><span class="l">${t('step_' + s)}${OPTIONAL.includes(s) ? ` <small class="muted">${t('optional_step')}</small>` : ''}</span></button></li>`).join('')}</ol>`;
 }
 const shown = k => { const v = prefs[k]; if (v == null) return null;  // stored English value → label in the UI language
   const code = CHOICE[k] && Object.keys(CHOICE[k]).find(c => CHOICE[k][c] === v); return code ? t(`o_${k}_${code}`) : v; };
@@ -213,12 +219,14 @@ function draw() {
     : name === 'done' ? `<p class="lead">${t('done_lead')}</p>${summary()}<h3 style="margin-top:22px">${t('prio_title')}</h3>${S.ranking.answered ? profileHtml(S.ranking) : `<p class="empty">${t('prio_skipped')}</p>`}`
     : VIEWS[name]();
   root.innerHTML = `<div class="setup">${rail()}
-    <section class="setup-step" aria-labelledby="stepTitle"><h2 id="stepTitle" tabindex="-1">${t('st_' + name)}</h2>${name === 'done' ? '' : `<p class="lead">${t('sl_' + name)}</p>`}${name === 'priorities' ? `<p class="small"><button class="linkbtn" type="button" data-skip>${t('quiz_later')}</button></p>` : ''}
-      <form id="stepForm" novalidate>${body}
+    <section class="setup-step" aria-labelledby="stepTitle"><h2 id="stepTitle" tabindex="-1">${t('st_' + name)}</h2>${OPTIONAL.includes(name) ? `<p class="tag">${t('optional_step')}</p>` : ''}${name === 'done' ? '' : `<p class="lead">${t('sl_' + name)}</p>`}${name === 'priorities' ? `<p class="small"><button class="linkbtn" type="button" data-skip>${t('quiz_later')}</button></p>` : ''}
+      <form id="stepForm" novalidate>${body}<p class="hint err" id="stepErr" role="alert"></p>
       ${name === 'priorities' ? '' : name === 'done' ? `<div class="setup-nav"><button class="btn ghost" type="button" data-back>${t('back')}</button><span class="spacer"></span><a class="btn ghost" href="#/ranking">${t('open_ranking')}</a><a class="btn" href="#/compare">${t('open_compare')}</a></div>`
-        : `<div class="setup-nav">${step ? `<button class="btn ghost" type="button" data-back>${t('back')}</button>` : `<button class="linkbtn" type="button" data-later>${t('setup_later')}</button>`}<span class="spacer"></span><button class="btn" type="submit">${t('save_next')}</button></div>`}</form></section></div>`;
+        : `<div class="setup-nav">${step ? `<button class="btn ghost" type="button" data-back>${t('back')}</button>` : `<button class="linkbtn" type="button" data-later>${t('setup_later')}</button>`}${OPTIONAL.includes(name) ? `<button class="linkbtn" type="button" data-skip-step>${t('skip_step')}</button><span class="small muted">${t('skip_keeps')}</span>` : ''}<span class="spacer"></span><button class="btn" type="submit">${t('save_next')}</button></div>`}</form></section></div>`;
+  // the last answer finishes the page; a second press while that request runs (Enter, double click) is ignored
   if (name === 'priorities') quiz(root.querySelector('#qzHost'), { tasks: S.ranking.tasks, answers: S.ranking.answers, params: S.saved, doneLabel: t('quiz_finish_setup'),
-    onDone: async answers => { try { await post('/api/parameters', { ranking_answers: answers, ranking_weights: null }); await finish(); } catch (e) { toast(t('not_saved', { m: e.message }), true); } } });
+    onDone: answers => { if (finishing) return; finishing = true;
+      run(root.querySelector('[data-qz-next]'), async () => { await post('/api/parameters', { ranking_answers: answers, ranking_weights: null }); await finish(); }).finally(() => finishing = false); } });
   if (name === 'drive') derived();
   if (name === 'done' && !prefs.onboarding_done) post('/api/preferences', { onboarding_done: new Date().toISOString().slice(0, 10) }).then(r => { prefs.onboarding_done = 1; S.prefs = Object.fromEntries(r.map(x => [x.preference_key, x.preference_value])); });
 }
@@ -231,14 +239,17 @@ function bind() {
     if (id.endsWith('_range')) $(id.replace('_range', '')).value = e.target.value;
     else if ($(id + '_range')) $(id + '_range').value = e.target.value;
     if (/annual_km|ownership_years/.test(id) && $('derived')) derived(); });
-  root.addEventListener('submit', async e => { e.preventDefault(); if (await saveStep(STEPS[step])) move(step + 1); });
+  root.addEventListener('submit', async e => { e.preventDefault(); fail('');
+    const btn = e.submitter || root.querySelector('#stepForm [type="submit"]');
+    if (await busy(btn, () => saveStep(STEPS[step]))) move(step + 1); });
   root.addEventListener('click', async e => {
     if (e.target.closest('[data-back]')) move(step - 1);
+    else if (e.target.closest('[data-skip-step]')) move(step + 1);  // nothing is posted: answers already saved stay as they are
     else if (e.target.closest('[data-goto]')) { const to = +e.target.closest('[data-goto]').dataset.goto; if (to < step || prefs.onboarding_done) move(to); }
-    else if (e.target.closest('[data-skip]')) await finish();
+    else if (e.target.closest('[data-skip]')) await run(e.target.closest('[data-skip]'), finish);
     else if (e.target.closest('[data-add-driver]')) { drivers = [...readDrivers(), {}]; $('driverList').innerHTML = driverCards(); $('driverList').lastElementChild?.querySelector('input')?.focus(); }
     else if (e.target.closest('[data-rm-driver]')) { const i = +e.target.closest('[data-rm-driver]').dataset.rmDriver; drivers = readDrivers().filter((_, j) => j !== i); $('driverList').innerHTML = driverCards(); }
-    else if (e.target.closest('[data-later]')) { await post('/api/preferences', { onboarding_done: 'skipped' }); S.prefs = { ...S.prefs, onboarding_done: 'skipped' }; go('compare'); }
+    else if (e.target.closest('[data-later]')) await run(e.target.closest('[data-later]'), async () => { await post('/api/preferences', { onboarding_done: 'skipped' }); S.prefs = { ...S.prefs, onboarding_done: 'skipped' }; go('compare'); });
   });
 }
 export async function render(main, r = current()) {
