@@ -2,13 +2,13 @@
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
-import datetime, json, math, os, re, secrets, sqlite3, sys
+import datetime, gzip, json, math, os, re, secrets, sqlite3, sys, threading
 import markdown_export
 from . import auth, config, research, research_requests as rq, research_units, staging
 from .agent import (AGENT_TABLES, Conflict, CODE_FORMATS, FIXED_CODES, RETIRED_TABLES, RULES, SOURCE_REQUIRED, NotAllowed, NotFound, QuotaExceeded,
                     UnsupportedMediaType, agent_delete, agent_write, check_writable, linked_accounts, resolve_level, resolve_variant, row_owner, save_media,
                     storage_usage, table_columns)
-from .costs import budget, check_budget, days_since, listing_detail, tco_rows
+from .costs import Knowledge, budget, check_budget, days_since, listing_detail, tco_rows
 from .db import connect, params, rows
 from .models import model_tree, variant_detail
 from .quotes import manual_quote
@@ -38,6 +38,8 @@ STATIC_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
                 '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2'}
 
 
+GZIP_MIN = 860  # bytes; a smaller body gains nothing from gzip
+TEXT_TYPES = ('text/', 'application/json', 'application/manifest+json', 'image/svg+xml')  # what gzip applies to (never images)
 MAX_JSON_BYTES = 1_000_000  # no JSON body of this API comes near it; stops unauthenticated memory floods
 SOCKET_TIMEOUT = 30  # seconds a client may stall on a read (slowloris); the server is threaded, so a stalled socket holds one thread
 
@@ -79,11 +81,57 @@ def redact_log(line):
     return LOG_SECRET.sub(lambda m: m[1] + '...' if m[1] else '?...', line)
 
 
+# The costs of an account's listings are built once per database state: a page load asks /api/tco and /api/todo, and a
+# listing or a dossier export reads the same state again. Keyed on the database's data_version (a commit by any other
+# connection changes it, WAL included), the account's view, the day and the parameters (preview overrides too).
+_watch_lock, _watch = threading.Lock(), None  # a connection that only reads PRAGMA data_version
+_build_lock = threading.Lock()  # one build at a time: the page's two requests share one build instead of racing
+_costs = {}  # (data version, account view, day, parameters) -> (tco rows, Knowledge); never mutated: callers copy the rows
+COSTS_CACHE_SIZE = 4  # shortcut: a few entries, each a few MB on the Pi; a parameter preview with new values evicts the rest
+
+
+def data_version():
+    global _watch
+    with _watch_lock:
+        if _watch is None or _watch[0] != str(config.DB):
+            if _watch is not None:
+                _watch[1].close()
+            _watch = (str(config.DB), sqlite3.connect(config.DB, timeout=30, check_same_thread=False))
+        return (_watch[0], _watch[1].execute('PRAGMA data_version').fetchone()[0])
+
+
+def costed(c, p):
+    """(tco rows, Knowledge) of the connection's account under p, before ranking. A connection without an account view, or
+    one inside a transaction (its writes may still roll back), is built afresh."""
+    scope = getattr(c, 'scope', None)
+    if scope is None or c.in_transaction:
+        know = Knowledge(c)
+        return tco_rows(c, p, know), know
+    with _build_lock:
+        version = data_version()  # read before the build: a commit during it can only make the key older than the data
+        for k in [k for k in _costs if k[0] != version]:
+            del _costs[k]
+        key = (version, scope, datetime.date.today().isoformat(), json.dumps(p, sort_keys=True, default=str))
+        if key not in _costs:
+            if len(_costs) >= COSTS_CACHE_SIZE:
+                _costs.clear()
+            know = Knowledge(c)
+            _costs[key] = (tco_rows(c, p, know), know)
+        return _costs[key]
+
+
+def ranked_full(c, p):
+    """(rows, number of ranking candidates, Knowledge): the ranking runs on copies, the cached costs stay as they were."""
+    cached, know = costed(c, p)
+    out = [dict(r) for r in cached]
+    f = {r['preference_key']: r['preference_value'] for r in rows(c, "SELECT preference_key, preference_value FROM project_preferences WHERE preference_key LIKE 'filter_%'")}
+    return out, rank(out, weights_from(p), {**p, **f}), know
+
+
 def ranked_rows(c, p):
     """Listings with costs, metrics and ranking; returns (rows, number of ranking candidates)."""
-    out = tco_rows(c, p)
-    f = {r['preference_key']: r['preference_value'] for r in rows(c, "SELECT preference_key, preference_value FROM project_preferences WHERE preference_key LIKE 'filter_%'")}
-    return out, rank(out, weights_from(p), {**p, **f})
+    out, n, _ = ranked_full(c, p)
+    return out, n
 
 
 def graded_missing(s, listing_id):
@@ -95,15 +143,45 @@ def graded_missing(s, listing_id):
 
 
 def detail(c, listing_id, p):
-    return listing_detail(c, listing_id, p, ranked_rows(c, p)[0])
+    out, _, know = ranked_full(c, p)
+    return listing_detail(c, listing_id, p, out, know)
 
 
 def export_markdown(c, user_id):
     """Dossiers of one account in dossiers/<user id>/ (every write of that account regenerates them).
     The costs and ranking of all listings are computed once and shared by every dossier."""
     p = params(c)
-    rows = ranked_rows(c, p)[0]
-    return markdown_export.export_all(c, config.MD_DIR / str(user_id), p, lambda c, lid, p: listing_detail(c, lid, p, rows))
+    out, _, know = ranked_full(c, p)
+    return markdown_export.export_all(c, config.MD_DIR / str(user_id), p, lambda c, lid, p: listing_detail(c, lid, p, out, know))
+
+
+# Photo uploads and checklist ticks change a dossier, but a burst of ticks would export every dossier of the account once
+# per tick: their export waits DEFERRED_EXPORT_SECONDS and then runs once per account.
+DEFERRED_EXPORT_SECONDS = 60
+_deferred, _deferred_lock = {}, threading.Lock()  # account id -> curator flag of the write that asked
+
+
+def export_later(uid, curator):
+    with _deferred_lock:
+        if uid in _deferred:
+            return
+        _deferred[uid] = curator
+    t = threading.Timer(DEFERRED_EXPORT_SECONDS, export_deferred, args=(uid,))
+    t.daemon = True
+    t.start()
+
+
+def export_deferred(uid):
+    with _deferred_lock:
+        curator = _deferred.pop(uid, False)
+    s = connect()
+    try:
+        auth.scope(s, uid, curator=curator)
+        export_markdown(s, uid)
+    except Exception as e:  # no client waits on a timer thread; the next content write regenerates the dossiers
+        sys.stderr.write(f'deferred dossier export of account {uid} failed: {e!r}\n')
+    finally:
+        s.close()
 
 
 def clean_params(data):
@@ -168,19 +246,41 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------ responses
     def send_json(self, obj, status=200, cookie=None):
-        b = json.dumps(obj, ensure_ascii=False).encode()
-        self.send_response(status); self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Content-Length', str(len(b)))
-        if cookie is not None:
-            self.send_header('Set-Cookie', cookie)
-        self.end_headers(); self.wfile.write(b)
+        # level 1: the API's payloads are large and the Pi is slow; the ratio loss against level 6 is small
+        self.send_body(json.dumps(obj, ensure_ascii=False).encode(), 'application/json; charset=utf-8', status, cookie=cookie, level=1)
 
-    def send_file(self, path, ctype, cache=None):
-        b = path.read_bytes()
-        self.send_response(200); self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(b)))
+    def accepts_gzip(self):
+        return 'gzip' in (self.headers.get('Accept-Encoding') or '')
+
+    def send_body(self, b, ctype, status=200, cookie=None, cache=None, etag=None, level=1):
+        """One response. Text is gzipped for clients that accept it (Vary says so); a 304 carries headers only."""
+        text = ctype.startswith(TEXT_TYPES)
+        gz = text and status != 304 and len(b) >= GZIP_MIN and self.accepts_gzip()
+        if gz:
+            b = gzip.compress(b, level)
+        self.send_response(status); self.send_header('Content-Type', ctype)
+        if text:
+            self.send_header('Vary', 'Accept-Encoding')
+        if gz:
+            self.send_header('Content-Encoding', 'gzip')
+        if status != 304:
+            self.send_header('Content-Length', str(len(b)))
+        if etag:
+            self.send_header('ETag', etag)
         if cache:
             self.send_header('Cache-Control', cache)
-        self.end_headers(); self.wfile.write(b)
+        if cookie is not None:
+            self.send_header('Set-Cookie', cookie)
+        self.end_headers()
+        if status != 304:
+            self.wfile.write(b)
+
+    def send_file(self, path, ctype, cache=None):
+        st = path.stat()
+        etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'  # changes with every write of the file (mtime or size)
+        if etag in [t.strip() for t in (self.headers.get('If-None-Match') or '').split(',')]:
+            self.send_body(b'', ctype, 304, cache=cache, etag=etag); return
+        self.send_body(path.read_bytes(), ctype, cache=cache, etag=etag, level=6)
 
     def read_json(self):
         # Requiring JSON forces a CORS preflight in browsers: another site cannot write.
@@ -523,7 +623,7 @@ class Handler(BaseHTTPRequestHandler):
             if data:
                 with c:
                     c.execute(f'UPDATE main.project_parameters SET {",".join(f"{k}=?" for k in data)} WHERE owner_id=?', [*data.values(), uid])
-                export_markdown(c, uid)  # dossiers show the period and prices of the saved parameters
+                self.export_all(c, uid)  # dossiers show the period and prices of the saved parameters
             self.send_json(params(c))
         elif path == '/api/preferences' and method == 'POST':
             # upsert {key: value}; null removes the key. Free text for agents to read (docs/data-model.md)
@@ -566,7 +666,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'token': auth.new_token(c, uid), 'note': 'Shown once; the previous token no longer works'}, 201)
         elif ui:
             result = self.ui_write(c, method, ui[1], int(ui[2]) if ui[2] else None, uid)
-            export_markdown(c, uid)
+            if ui[1] in ('media', 'inspection_items'):  # photos and checklist ticks: the dossier follows a little later (export_later)
+                export_later(uid, self.curator)
+            else:
+                self.export_all(c, uid)
             self.send_json(result, 201 if method == 'POST' else 200)
         elif agent and agent[1] == 'export-md' and method == 'POST':
             self.send_json({'written': [str(f.name) for f in export_markdown(c, uid)]})
@@ -577,7 +680,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise UnsupportedMediaType('Content-Type must be image/jpeg, image/png or image/webp')
             row_id, created = save_media(c, int(agent[2]), self.rfile.read(self.body_length(config.MAX_IMAGE_BYTES)), query)
             if created:
-                export_markdown(c, uid)
+                export_later(uid, self.curator)  # a photo changes the dossier's archive list: exported later, once
             self.send_json({'table': 'listing_media', 'id': row_id, 'created': created}, 201 if created else 200)
         elif agent and agent[1] in AGENT_TABLES | RETIRED_TABLES and method == 'DELETE':  # a retired row may still be deleted (owner-confirmed)
             if not agent[2]:
@@ -601,7 +704,7 @@ class Handler(BaseHTTPRequestHandler):
             existing = resolve_variant(c, data, uid) if agent[1] == 'vehicles' and method == 'POST' else \
                 resolve_level(c, agent[1], data) if agent[1] in ('generations', 'engines') and method == 'POST' else None
             if existing:  # the shared catalogue already has this HSN/TSN, generation or engine: reuse it (issues #109, #293)
-                export_markdown(c, uid)
+                self.export_all(c, uid)
                 self.send_json({'table': agent[1], 'id': existing, 'existing': True}); return
             row_id = agent_write(c, agent[1], int(agent[2]) if agent[2] else None, data, uid, self.curator, user['id'])
             self.export_all(c, uid, linked_accounts(c, agent[1], row_id))
@@ -646,11 +749,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'error': 'POST /api/worker/heartbeat, /api/worker/claim or /api/worker/requests/<id>'}, 404)
 
     def export_all(self, c, uid, others=()):
-        """Dossiers of this account and of every other account that shows the changed catalogue row.
+        """Dossiers of this account and of every other account that shows the changed catalogue row, after a write that is
+        already committed: a failed export is logged, never an HTTP error (the client would retry a write that happened).
         shortcut: regenerates every dossier of each account on each write; fine for dozens of listings."""
-        export_markdown(c, uid)
-        for o in set(others) - {uid}:
-            s = connect(); auth.scope(s, o); export_markdown(s, o); s.close()
+        for o in [uid, *sorted(set(others) - {uid})]:
+            s = None
+            try:
+                s = c if o == uid else connect()
+                if o != uid:
+                    auth.scope(s, o)
+                export_markdown(s, o)
+            except Exception as e:  # the write stands; the next write regenerates the dossier
+                self.log_error('dossier export of account %s failed after a committed write: %r', o, e)
+            finally:
+                if s is not None and o != uid:
+                    s.close()
 
     def user_source(self, c, uid, today):
         """The account's 'User-provided data' source (created on first use)."""
@@ -831,4 +944,9 @@ def main(argv=()):
     if '--export-md' in argv:
         return
     print(f'Carlos running at http://{config.HOST}:{config.PORT} · data in {config.DATA_DIR}')
-    ThreadingHTTPServer((config.HOST, config.PORT), Handler).serve_forever()
+    try:
+        ThreadingHTTPServer((config.HOST, config.PORT), Handler).serve_forever()
+    finally:  # a deferred dossier export is not lost; WAL: fold the log into cars.sqlite, so the file on disk is complete
+        for uid in list(_deferred):
+            export_deferred(uid)
+        s = connect(); s.execute('PRAGMA wal_checkpoint(TRUNCATE)'); s.close()

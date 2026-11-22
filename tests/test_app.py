@@ -1786,7 +1786,8 @@ class AppTest(unittest.TestCase):
         self.req('POST', '/api/parameters', {'ownership_years': 2})
         self.assertIn('2 years, 30,000 km', md())
 
-    def test_archive_snapshot_and_photos(self):
+    @mock.patch.object(server.threading, 'Timer')  # photo exports are deferred (export_later); the test runs the export itself
+    def test_archive_snapshot_and_photos(self, timer):
         st, new = self.agent('POST', 'listings', {'vehicle_id': V_B2, 'source_id': SRC_LISTING, 'platform': 'Test', 'listing_id': 'T1', 'price_eur': 7000})
         self.assertEqual(st, 201)
         L = new['id']
@@ -1817,6 +1818,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(urllib.request.urlopen(r).read(), jpg)
         with self.assertRaises(urllib.error.HTTPError):
             urllib.request.urlopen(f"{self.base}/media/{d['media'][0]['file_path']}")   # login required
+        timer.assert_called()  # the dossier follows the photo once the deferred export runs
+        server.export_deferred(1)
         md = (config.MD_DIR / '1' / 'Beta-City-Test-T1.md').read_text()
         self.assertIn('> Line 2', md)
         self.assertIn('| Getriebe | Automatik |', md)

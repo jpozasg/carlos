@@ -67,6 +67,8 @@ def scope(c, user_id, curator=False):
     for name, sql in VIEWS.items():
         c.execute(f'DROP VIEW IF EXISTS temp.{name}')  # scope() may run twice on one connection (admin writes, issue #143)
         c.execute(f'CREATE TEMP VIEW {name} AS {sql.format(o=int(user_id), cat=int(bool(curator)))}')
+    if hasattr(c, 'scope'):  # db.Connection: the ranking cache keys on whose view this connection is
+        c.scope = (int(user_id), bool(curator))
 
 
 def hash_password(password):
