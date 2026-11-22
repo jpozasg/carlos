@@ -73,9 +73,8 @@ class CaptureListingTest(unittest.TestCase):
         self.assertIn('Nichtraucher.', d['snapshots'][0]['description'])  # verbatim, original language
         self.assertEqual((s['photos_archived'], len(s['photos_skipped'])), (1, 1))  # the >1.5 MB photo is skipped
         self.assertEqual(d['media'][0]['snapshot_id'], s['snapshot_id'])
-        actions = {r['inspection_action'] for r in d['reliability'] if r['inspection_action']}
-        self.assertTrue(actions)
-        self.assertEqual({i['item'] for i in d['inspection']}, actions | {config.VIN_RECALL_CHECK})  # the fixed VIN recall item (#357)
+        self.assertEqual(d['fault_plan'], [])  # this new variant has no faults yet: the checklist is the fixed VIN recall item (#357)
+        self.assertEqual({i['item'] for i in d['inspection']}, {config.VIN_RECALL_CHECK})
         self.assertTrue(all(i['status'] == 'PENDING' for i in d['inspection']))
         self.assertEqual([e['kind'] for e in d['events']], ['found'])
         self.assertIn('6990 EUR', d['events'][0]['text'])
@@ -166,10 +165,20 @@ class LoadTokenTest(unittest.TestCase):
             self.assertEqual(capture_listing.load_token(), 'from-env')
 
     def test_env_file_is_ignored_and_missing_variable_names_itself(self):
-        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(Path, 'cwd', return_value=Path(d)):
+        touched, real_open, real_read = [], open, Path.read_text   # every file the process opens or reads is recorded
+        def spy_open(f, *a, **kw):
+            touched.append(str(f))
+            return real_open(f, *a, **kw)
+        def spy_read(p, *a, **kw):
+            touched.append(str(p))
+            return real_read(p, *a, **kw)
+        with tempfile.TemporaryDirectory() as d:
             Path(d, '.env').write_text('AGENT_TOKEN=from-dotenv-file\n')
-            with self.assertRaises(SystemExit) as cm:
-                capture_listing.load_token()
+            with mock.patch.dict(os.environ, {}, clear=True), mock.patch('builtins.open', spy_open), \
+                    mock.patch.object(Path, 'read_text', spy_read), mock.patch.object(Path, 'cwd', return_value=Path(d)):
+                with self.assertRaises(SystemExit) as cm:
+                    capture_listing.load_token()
+        self.assertFalse([p for p in touched if p.endswith('.env')], touched)
         self.assertIn('AGENT_TOKEN', str(cm.exception))
         self.assertNotIn('from-dotenv-file', str(cm.exception))
 

@@ -9,12 +9,15 @@ const applyDataStyle = el => {
   }
 };
 new MutationObserver(records => {
-  for (const r of records) for (const n of r.addedNodes) {
-    if (n.nodeType !== 1) continue;
-    if (n.hasAttribute('data-style')) applyDataStyle(n);
-    n.querySelectorAll('[data-style]').forEach(applyDataStyle);
+  for (const r of records) {
+    if (r.type === 'attributes') { if (r.target.dataset.style) applyDataStyle(r.target); continue; }  // data-style set on a node already in the page
+    for (const n of r.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      if (n.hasAttribute('data-style')) applyDataStyle(n);
+      n.querySelectorAll('[data-style]').forEach(applyDataStyle);
+    }
   }
-}).observe(document.documentElement, { childList: true, subtree: true });
+}).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-style'] });
 export const $ = id => document.getElementById(id);
 export const esc = s => s == null ? '' : String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const safeUrl = u => /^https?:\/\//i.test(u || '') ? esc(u) : '#';
