@@ -8,4 +8,5 @@ venv/
 data/
 worker-logs/
 /cars.sqlite
-.claude/
+.claude/*
+!.claude/skills/
