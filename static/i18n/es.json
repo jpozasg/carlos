@@ -168,6 +168,10 @@
  "cost_none_selected": "Selecciona al menos un coste.",
  "legend_pending": "Pendiente (importe desconocido)",
  "chart_note": "Escala común para todos los coches. Los importes pendientes no tienen tamaño porque se desconocen; la vista Detalles es la vista de datos.",
+  "cs_summary": "{car}: {items}. Coste total {total}.",
+  "cs_missing": "Aún sin conocer: {list}.",
+  "cs_table": "Composición de costes en tabla (las barras muestran las mismas cifras)",
+  "cs_total": "Total",
  "selected_total": "Costes seleccionados ({n})",
  "incomplete_n": "Incompleto: faltan {n}",
  "pendings": {

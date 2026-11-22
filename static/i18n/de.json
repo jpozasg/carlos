@@ -168,6 +168,10 @@
  "cost_none_selected": "Wähle mindestens eine Kostenart aus.",
  "legend_pending": "Offen (Betrag unbekannt)",
  "chart_note": "Gemeinsamer Maßstab für alle Autos. Offene Beträge haben keine Größe, da sie unbekannt sind; die Detailansicht ist die Datenansicht.",
+  "cs_summary": "{car}: {items}. Gesamt {total}.",
+  "cs_missing": "Noch unbekannt: {list}.",
+  "cs_table": "Kostenzusammensetzung als Tabelle (die Balken zeigen dieselben Werte)",
+  "cs_total": "Gesamt",
  "selected_total": "Ausgewählte Kosten ({n})",
  "incomplete_n": "Unvollständig: {n} fehlen",
  "pendings": {
