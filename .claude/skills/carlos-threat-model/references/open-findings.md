@@ -24,7 +24,7 @@ Copied from the audit and re-checked against the code at 67f98cb (two commits la
 - Exploit: any future XSS (listing text is third-party) runs with the admin session and can mint tokens (`/api/account/token`) or create users; framing and sniffing open. SameSite=Strict blunts clickjacking today.
 - Fix: `Content-Security-Policy: default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security`. Re-check: `static/auth.html` has two inline `<script>` blocks, one inline `<style>` and inline `style=` attributes, and `static/index.html` has an inline `<script>` (the colour-mode bootstrap): move them to files (or use a nonce) so the CSP can drop `unsafe-inline`.
 
-### M2. No socket timeout, unbounded threads, unchecked negative Content-Length (CLOSED #392 except the thread cap)
+### M2. No socket timeout, unbounded threads, unchecked negative Content-Length (CLOSED #392; the thread cap CLOSED #418)
 - Where: `carlos/server.py` `main()` `ThreadingHTTPServer`, `Handler.timeout` unset (None); `Handler.read_json()` `int(Content-Length)` checks only the upper bound (`-1` makes `rfile.read(-1)` block); the same pattern in the two upload branches that read `Content-Length` directly.
 - Exploit: many connections with partial headers or `Content-Length: -1` on `/api/auth/login` pin threads on the Pi 2B; the port is reachable from the LAN/worker host.
 - Fix: `Handler.timeout = 30`; reject `length < 0`; cap threads (semaphore or bounded pool).
@@ -34,7 +34,7 @@ Copied from the audit and re-checked against the code at 67f98cb (two commits la
 - Exploit: an injected run puts those values into a URL it fetches and leaks the insurance profile; AGENTS.md says the profile must not leave the account except to the insurance unit.
 - Fix: for request tokens allow GET only on research endpoints (schema, todo, stage, models, vehicles, sources, listings of the request); deny `/api/parameters`, `/api/preferences`, `/api/storage`, `/api/health`; give the INSURANCE unit its own narrow profile read.
 
-### M4. Login brute-force controls are weak (CLOSED #392 except the 12-character admin password)
+### M4. Login brute-force controls are weak (CLOSED #392; the 12-character admin password CLOSED #418)
 - Where: `carlos/auth.py` `LOGIN_MAX_FAILS`, `FAILS`, `login()`, `check_new_password()`; `carlos/server.py` `auth_api()` login branch.
 - Issue: lock per client IP only (10 tries / 5 min) keyed on the first `X-Forwarded-For` element (client-controlled if the proxy appends; Caddy overwrites, nginx `$proxy_add_x_forwarded_for` does not); no per-username throttle (the `login()` docstring says "not the username"; Re-check: README says "ten wrong passwords lock a username for five minutes", which does not match the code); min length 8, no common-password check; unknown users skip scrypt (`login()` short-circuits on `u is None`: timing oracle).
 - Fix: per-username counter with exponential backoff plus a global attempts-per-minute cap; trusted-proxy last hop only; dummy scrypt for unknown users; 12+ characters for admins.
@@ -53,10 +53,10 @@ Copied from the audit and re-checked against the code at 67f98cb (two commits la
 - **L1 Raw invite tokens are logged.** CLOSED #392. `Handler.log_message` not overridden (`carlos/server.py`), so the default handler writes `/invite/<token>` and `/api/auth/invite/<token>` (and client addresses) to stderr/journal; `bootstrap()` prints full invite URLs. Fix: redact `/invite/*` and query strings; print the link only to a TTY.
 - **L2 Error text leaks internals.** CLOSED #392. `Handler.handle_request()` returns `str(e)` for `(ValueError, sqlite3.Error)` with status 400. Fix: log it, return a generic 400 for non-ValueError.
 - **L3 `/api/storage` and `/api/health` open to any account** CLOSED #392. (GET branches in `server.py`): file names of the install, repeated `PRAGMA quick_check`. Fix: admin only, cache health.
-- **L4 No Host-header validation**; `Handler.invite_url()` builds links from `X-Forwarded-Host`/`Host`. Fix: allow-list the public hostname.
-- **L5 File permissions**: `data/` 755 and `cars.sqlite` 644 (re-checked on this machine with `stat`; `.env` is 600). Fix: `chmod 700 data`, `umask 077` in the service.
+- **L4 No Host-header validation** CLOSED #418: `config.ALLOWED_HOSTS` (127.0.0.1, localhost, `CARLOS_HOSTS`); other Hosts get 400; invite links use only allowed names.
+- **L5 File permissions** CLOSED #418: `server.secure_data_dir()` sets the folder 0700, `cars.sqlite*` 0600 and umask 077 at start; worker and capture set umask 077. Files that already existed keep their mode until rewritten.
 - **L6 `carlos_view` cookie** CLOSED #392. set by JS without `Secure` (`static/js/app.js`, the view-as switcher). Fix: `Secure` on https.
-- **L7 Privacy rule is a convention**: `quote_profile` is free JSON (names or birth dates can be stored); `carlos/agent.py` (the owner-assignment branch for `_KNOW` tables) decides private insurance rows by `annual_premium_eur`/`status` heuristics; `JSON_COLUMNS` only validates that `quote_profile` is JSON. Fix: allow-list `quote_profile` keys; force `owner_id` on all insurance rows.
+- **L7 Privacy rule is a convention** (PARTLY CLOSED #418: `quote_profile` keys are allow-listed in `agent.clean_row`; still open: the owner-assignment branch of `agent_write` does not force `owner_id` on every insurance row): `quote_profile` is free JSON (names or birth dates can be stored); `carlos/agent.py` (the owner-assignment branch for `_KNOW` tables) decides private insurance rows by `annual_premium_eur`/`status` heuristics; `JSON_COLUMNS` only validates that `quote_profile` is JSON. Fix: allow-list `quote_profile` keys; force `owner_id` on all insurance rows.
 - **L8 Unsalted SHA-256 for tokens** (`carlos/auth.py` `digest()`) is fine for 256-bit random tokens; never reuse `digest` for passwords.
 - **L9 Worker-supplied text stored verbatim** (heartbeat `error` in `research_requests.heartbeat()`, and the request `result`): the UI escapes it (`admin.js`, `requests.js`); keep it that way.
 
