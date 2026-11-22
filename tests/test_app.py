@@ -1798,7 +1798,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(st, 201)
         self.assertEqual(self.agent('POST', 'listing_snapshots', {**snap, 'attributes_json': '[1]'})[0], 400)  # not an object
         self.assertEqual(self.agent('POST', 'listing_snapshots', {**snap, 'source_id': None})[0], 400)
-        jpg = b'\xff\xd8\xff\xe0' + b'x' * 100
+        jpg = fx.jpeg([(0xE0, b'x' * 100)])
         st, m = self.upload(jpg, L, q=f'?url=https://img.example/1.jpg&snapshot_id={r["id"]}')
         self.assertEqual((st, m['created']), (201, True))
         self.assertEqual(self.upload(jpg, L)[1]['created'], False)                 # deduplicated by sha256
@@ -1866,7 +1866,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(kind, 'viewing')
         self.assertEqual(self.sql('SELECT source_type FROM sources WHERE id=?', (src,))[0][0], 'user_reported')
         self.assertEqual(self.ui('POST', 'inspection_items', {'listing_id': CAR_A, 'item': 'Check the spare wheel'})[0], 201)
-        self.assertEqual(self.ui('POST', f'media/{CAR_A}', raw=b'\xff\xd8\xff\xe0' + b'v' * 50, ctype='image/jpeg')[0], 201)
+        self.assertEqual(self.ui('POST', f'media/{CAR_A}', raw=fx.jpeg([(0xE0, b'v' * 50)]), ctype='image/jpeg')[0], 201)
         self.assertEqual(self.ui('POST', 'listings', {'price_eur': 1})[0], 404)   # the PIN cannot write anything else
         self.assertEqual(self.req('PATCH', f'/api/agent/listings/{CAR_A}', {'verdict': 'x'}, token='123456')[0], 401)
         self.assertEqual(self.units()[CAR_A]['metrics']['inspection'], 0)
@@ -2110,7 +2110,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('PATCH', f'listings/{CAR_A}', {'verdict': 'mine now'}, token=None, cookie=t2)[0], 403)  # listings: the worker's
         self.assertEqual(self.agent('POST', 'listing_events', {'listing_id': CAR_A, 'event_date': '2026-11-04', 'kind': 'found', 'text': 'x'}, token=None, cookie=t2)[0], 400)
         self.assertEqual(self.agent('POST', 'sources', {'title': 's', 'owner_id': 1}, token=None, cookie=t2)[0], 400)
-        st, m = self.upload(b'\xff\xd8\xff\xe0' + b'p' * 20)
+        st, m = self.upload(fx.jpeg([(0xE0, b'p' * 20)]))
         self.assertEqual(self.req('GET', '/media/' + self.req('GET', f'/api/listings/{CAR_A}')[1]['media'][0]['file_path'], token=None, cookie=t2)[0], 404)
         # research and listings are written by the shared worker only (issue #109): her own token gets 403
         for table, row in (('generations', {'make': 'Gamma', 'model': 'Van', 'name': 'I'}), ('engines', {'code': 'GV20'}),

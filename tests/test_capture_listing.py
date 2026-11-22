@@ -7,7 +7,7 @@ from carlos import config, server
 from tests import fixture as fx
 
 TOKEN = fx.TOKEN
-JPG = b'\xff\xd8\xff\xe0' + b'photo' * 20
+JPG = fx.jpeg([(0xE0, b'photo' * 20)])
 
 
 class CaptureListingTest(unittest.TestCase):

@@ -1,7 +1,7 @@
 """Synthetic test database: built from schema.sql with invented cars, so the tests never touch real data and carry no
 personal data. Ids below are stable and used by the tests. The models are shared catalogue rows (owner_id NULL, issue
 #109); listings, listing sources, quotes and the owner's figures belong to the admin."""
-import datetime, json, sqlite3
+import datetime, json, sqlite3, struct, zlib
 import migrate
 from carlos import auth
 
@@ -15,6 +15,32 @@ E_A, E_B, E_REF = 1, 2, 3
 G1, G2 = 1, 2
 # sources
 SRC_LISTING, SRC_USER, SRC_HU, SRC_TAX_OFFICIAL, SRC_QUOTE, SRC_GUIDE = 1, 2, 3, 4, 5, 6
+
+
+def jpeg(segments=(), scan=b'pixels'):
+    """A structurally valid JPEG: SOI, the given (marker, payload) segments, a start of scan and EOI. The scan is not a picture."""
+    out = b'\xff\xd8' + b''.join(bytes([0xFF, m]) + struct.pack('>H', len(p) + 2) + p for m, p in segments)
+    return out + b'\xff\xda\x00\x02' + scan + b'\xff\xd9'
+
+
+def gps_exif():
+    """A little-endian EXIF block as a phone writes it: camera make, orientation 6 and a GPS IFD with a latitude."""
+    make = b'TestCam\0'
+    entries = (struct.pack('<HHI4s', 0x010F, 2, len(make), struct.pack('<I', 50))            # Make, at offset 50
+               + struct.pack('<HHI4s', 0x0112, 3, 1, struct.pack('<HH', 6, 0))               # Orientation 6 (rotate 90 CW)
+               + struct.pack('<HHI4s', 0x8825, 4, 1, struct.pack('<I', 58)))                # GPSInfo IFD, at offset 58
+    gps = (struct.pack('<H', 2) + struct.pack('<HHI4s', 1, 2, 2, b'N\0\0\0')               # GPSLatitudeRef 'N'
+           + struct.pack('<HHI4s', 2, 5, 3, struct.pack('<I', 88)) + struct.pack('<I', 0)  # GPSLatitude, at offset 88
+           + struct.pack('<6I', 48, 1, 7, 1, 1234, 100))
+    return b'Exif\0\0' + b'II*\0' + struct.pack('<I', 8) + struct.pack('<H', 3) + entries + struct.pack('<I', 0) + make + gps
+
+
+def png(chunks):
+    """A PNG from (type, data) chunks with correct CRCs. The pixel data is not a picture."""
+    out = b'\x89PNG\r\n\x1a\n'
+    for typ, data in chunks:
+        out += struct.pack('>I', len(data)) + typ + data + struct.pack('>I', zlib.crc32(typ + data) & 0xFFFFFFFF)
+    return out
 
 ADMIN, PASSWORD, TOKEN = 1, 'correct horse battery', 'test-token'
 

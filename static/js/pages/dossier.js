@@ -277,11 +277,13 @@ function viewingPanel() {
     <textarea class="vnote" id="vnote" placeholder="${t('log_ph')}" aria-label="${t('log_ph')}" aria-describedby="err-vnote"></textarea>${errP('vnote')}
     <button class="btn" type="button" id="addNote" data-addnote style="margin-top:6px">${t('add_note')}</button></div>`;
 }
-async function shrink(file) {  // phone photos are 3–5 MB: resize to 1280 px JPEG in the browser (also drops EXIF, including GPS)
-  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null); if (!bmp) return file;
+async function shrink(file) {  // phone photos are 3–5 MB: resize to 1280 px JPEG in the browser (the canvas copy carries no EXIF, GPS included)
+  // never fall back to the original: it may carry the location (#411), so an unreadable photo is refused with a message
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null); if (!bmp) throw new Error(t('photo_not_shrunk'));
   const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
   c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-  return await new Promise(r => c.toBlob(r, 'image/jpeg', .82));
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .82)); if (!blob) throw new Error(t('photo_not_shrunk'));
+  return blob;
 }
 const ui = (method, path, body, ctype) => send(method, '/api/ui/' + path, body, ctype);
 // a refresh of the same car keeps the page (no loading skeleton) and the scroll position, so marking a checklist

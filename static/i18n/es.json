@@ -29,6 +29,7 @@
  "saved": "Guardado",
  "saved_short": "Guardado",
  "not_saved": "No guardado: {m}",
+ "photo_not_shrunk": "El navegador no puede leer esta foto, así que no se envió: el original puede contener su ubicación. Prueba con una JPEG o PNG.",
  "discard": "Descartar",
  "today": "Hoy",
  "all": "Todos",

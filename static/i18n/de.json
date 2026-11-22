@@ -29,6 +29,7 @@
  "saved": "Gespeichert",
  "saved_short": "Gespeichert",
  "not_saved": "Nicht gespeichert: {m}",
+ "photo_not_shrunk": "Der Browser kann dieses Foto nicht lesen, daher wurde es nicht gesendet: das Original kann den Aufnahmeort enthalten. Versuche es mit einem JPEG oder PNG.",
  "discard": "Verwerfen",
  "today": "Heute",
  "all": "Alle",
