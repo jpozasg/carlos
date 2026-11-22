@@ -1857,6 +1857,81 @@ class AppTest(unittest.TestCase):
         self.assertIn(f'../../media/{L}/', md)
         self.assertEqual(len(list((config.MEDIA_DIR / str(L)).iterdir())), 1)  # no orphan files
 
+    def photo_status(self, path, cookie):
+        """The HTTP status of a file request made with a login session (images are not JSON, so req() cannot read them)."""
+        r = urllib.request.Request(self.base + path, headers={'Cookie': f'{auth.COOKIE}={cookie}'})
+        try:
+            return urllib.request.urlopen(r).status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_remove_photo_archive_then_delete_for_good(self):
+        """Owner-approved removal (plate or VIN in a photo): archive hides at once and keeps the file; the permanent
+        delete needs an archived photo, its own id and confirm: true, and only then removes the row and the file."""
+        adm = self.login()[1]
+        self.assertEqual(self.upload(fx.jpeg([(0xE0, b'a' * 60)]), CAR_A)[0], 201)
+        self.assertEqual(self.upload(fx.jpeg([(0xE0, b'b' * 60)]), CAR_A)[0], 201)
+        media = self.req('GET', f'/api/listings/{CAR_A}')[1]['media']
+        keep, gone = media[0], media[1]
+        files = {m['id']: config.MEDIA_DIR / m['file_path'] for m in media}
+        ui = lambda method, mid, body=None, **kw: self.req(method, f'/api/ui/photo/{mid}', body, **{'token': None, 'cookie': adm, **kw})
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 1}, token=TOKEN)[0], 403)   # login session only, never an agent token
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 2})[0], 400)                 # only 0 or 1
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 1, 'x': 1})[0], 400)
+        self.assertEqual(ui('PATCH', 99999, {'archived': 1})[0], 404)
+        # archive: hidden from the listing, the cover, the count and the photo URL, the file stays
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 1}), (200, {'table': 'listing_media', 'id': gone['id'], 'archived': 1}))
+        d = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertEqual([m['id'] for m in d['media']], [keep['id']])
+        self.assertEqual((d['photo_count'], d['cover']), (1, keep['file_path']))
+        self.assertEqual([m['id'] for m in d['removed_media']], [gone['id']])
+        self.assertEqual(self.photo_status('/media/' + gone['file_path'], adm), 404)
+        self.assertTrue(files[gone['id']].is_file())
+        # permanent delete: needs the archived photo, its own id and confirm: true
+        self.assertEqual(ui('DELETE', keep['id'], {'id': keep['id'], 'confirm': True})[0], 400)   # not archived: archive first
+        self.assertEqual(ui('DELETE', gone['id'], {'confirm': True})[0], 400)                      # no id in the body
+        self.assertEqual(ui('DELETE', gone['id'], {'id': gone['id'], 'confirm': 'yes'})[0], 400)   # confirm must be true
+        self.assertEqual(ui('DELETE', gone['id'], {'id': keep['id'], 'confirm': True})[0], 400)    # another photo's id
+        self.assertTrue(files[gone['id']].is_file())
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM listing_media WHERE id=?', (gone['id'],))[0][0], 1)
+        # restore: shown again, file served
+        self.assertEqual(ui('PATCH', gone['id'], {'archived': 0})[0], 200)
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['photo_count'], 2)
+        self.assertEqual(self.photo_status('/media/' + gone['file_path'], adm), 200)
+        # archived again, then deleted for good: the row and the file go, and the change is logged
+        ui('PATCH', gone['id'], {'archived': 1})
+        self.assertEqual(ui('DELETE', gone['id'], {'id': gone['id'], 'confirm': True}), (200, {'table': 'listing_media', 'id': gone['id'], 'deleted': True}))
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM listing_media WHERE id=?', (gone['id'],))[0][0], 0)
+        self.assertFalse(files[gone['id']].is_file())
+        self.assertEqual(self.sql("SELECT COUNT(*) FROM change_log WHERE table_name='listing_media' AND row_id=? AND action='delete'", (gone['id'],))[0][0], 1)
+        self.assertTrue(files[keep['id']].is_file())                                    # the other photo is untouched
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['photo_count'], 1)
+
+    def test_removed_photo_is_not_brought_back_by_a_recapture(self):
+        adm = self.login()[1]
+        jpg = fx.jpeg([(0xE0, b'c' * 60)])
+        self.assertEqual(self.upload(jpg, CAR_A)[0], 201)
+        mid = self.req('GET', f'/api/listings/{CAR_A}')[1]['media'][0]['id']
+        self.assertEqual(self.req('PATCH', f'/api/ui/photo/{mid}', {'archived': 1}, token=None, cookie=adm)[0], 200)
+        st, again = self.upload(jpg, CAR_A)                                             # the same photo captured again
+        self.assertEqual((st, again['created'], again['id']), (200, False, mid))         # answered as a duplicate: stays removed
+        self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[1]['photo_count'], 0)
+        st, why = self.ui('POST', f'media/{CAR_A}', raw=jpg, ctype='image/jpeg')                  # the owner adds it again from the phone
+        self.assertEqual(st, 409)
+        self.assertIn('restore it', why['error'])
+
+    def test_remove_photo_is_scoped_to_the_account(self):
+        adm = self.login()[1]
+        self.assertEqual(self.upload(fx.jpeg([(0xE0, b'd' * 60)]), CAR_A)[0], 201)
+        mid = self.req('GET', f'/api/listings/{CAR_A}')[1]['media'][0]['id']
+        _, maria = self.second_account()
+        for method, body in (('PATCH', {'archived': 1}), ('DELETE', {'id': mid, 'confirm': True})):
+            self.assertEqual(self.req(method, f'/api/ui/photo/{mid}', body, token=None, cookie=maria)[0], 404, method)   # not her listing
+        self.assertEqual(self.sql('SELECT archived FROM listing_media WHERE id=?', (mid,))[0][0], 0)
+        self.assertEqual(self.req('PATCH', f'/api/ui/photo/{mid}', {'archived': 1}, token=None, cookie=adm)[0], 200)
+        self.assertEqual(self.req('DELETE', f'/api/ui/photo/{mid}', {'id': mid, 'confirm': True}, token=None, cookie=maria)[0], 404)
+        self.assertEqual(self.sql('SELECT COUNT(*) FROM listing_media WHERE id=?', (mid,))[0][0], 1)
+
     def test_storage_and_health(self):
         st = self.req('GET', '/api/storage')[1]
         self.assertEqual(st['limit_bytes'], 1024 * 1024 ** 2)

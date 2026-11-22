@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=46). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=47). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -30,7 +30,7 @@ CREATE TABLE listing_media (
  file_path TEXT NOT NULL UNIQUE,
  mime TEXT NOT NULL,
  bytes INTEGER NOT NULL,
- sha256 TEXT NOT NULL,
+ sha256 TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
  UNIQUE (listing_id, sha256)
 );
 CREATE TABLE "valuations" (
