@@ -31,7 +31,7 @@ class StagingTest(unittest.TestCase):
         d = Path(self.tmp.name)
         config.DATA_DIR, config.DB, config.MD_DIR, config.MEDIA_DIR = d, d / 'cars.sqlite', d / 'dossiers', d / 'media'
         fx.build(config.DB)
-        auth.FAILS.clear()
+        auth.FAILS.clear(); auth.MINUTE.update(start=0.0, fails=0)
         self.addCleanup(self.tmp.cleanup)
         self.sql("INSERT INTO research_requests (id, owner_id, url, status, listing_id, unit) VALUES (100, ?, 'u', 'WAITING', ?, 'CAPTURE')", (ADMIN, CAR_A))
         self.tokens = {}

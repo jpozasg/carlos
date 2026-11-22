@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 from carlos import auth, config, db, pages, server
 from tests import fixture as fx
-from tests.fixture import CAR_A, TODAY
+from tests.fixture import CAR_A
 
 SRC = 'https://src.example.test/carlos'
 
@@ -29,7 +29,7 @@ class LegalTest(unittest.TestCase):
         d = Path(self.tmp.name)
         config.DATA_DIR, config.DB, config.MD_DIR, config.MEDIA_DIR = d, d / 'cars.sqlite', d / 'dossiers', d / 'media'
         fx.build(config.DB)
-        auth.FAILS.clear()
+        auth.FAILS.clear(); auth.MINUTE.update(start=0.0, fails=0)
         patch = mock.patch.object(config, 'SOURCE_URL', SRC)
         patch.start(); self.addCleanup(patch.stop)
         self.addCleanup(self.tmp.cleanup)
@@ -69,12 +69,12 @@ class LegalTest(unittest.TestCase):
         try:
             uid = auth.create_user(c, name, 'user')
             c.execute('UPDATE main.users SET password_hash=? WHERE id=?', (auth.hash_password(password), uid))
-            c.execute("INSERT INTO sources (owner_id, title, source_type, accessed_date) VALUES (?,?,?,?)", (uid, f'{name} source', 'listing', TODAY))
+            c.execute("INSERT INTO sources (owner_id, title, source_type, accessed_date) VALUES (?,?,?,?)", (uid, f'{name} source', 'listing', fx.TODAY))
             sid = c.execute('SELECT last_insert_rowid()').fetchone()[0]
             c.execute("INSERT INTO listings (owner_id, vehicle_id, source_id, platform, listing_id, url, price_eur, mileage_km, listing_status, is_reference, last_checked) "
-                      "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (uid, fx.V_A, sid, 'Test', f'{name}-1', f'https://example.test/{name}', 5000, 80000, 'UNDER REVIEW', 0, TODAY))
+                      "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (uid, fx.V_A, sid, 'Test', f'{name}-1', f'https://example.test/{name}', 5000, 80000, 'UNDER REVIEW', 0, fx.TODAY))
             lid = c.execute('SELECT last_insert_rowid()').fetchone()[0]
-            c.execute("INSERT INTO listing_events (listing_id, event_date, kind, text, source_id) VALUES (?,?,?,?,?)", (lid, TODAY, 'viewing', f'{name} note', sid))
+            c.execute("INSERT INTO listing_events (listing_id, event_date, kind, text, source_id) VALUES (?,?,?,?,?)", (lid, fx.TODAY, 'viewing', f'{name} note', sid))
             c.commit()
         finally:
             c.close()
@@ -224,7 +224,7 @@ class LegalTest(unittest.TestCase):
         uid, lid, sid = self.account('maria')
         self.sql_write("INSERT INTO change_log (table_name, row_id, action, new_json, user_id) VALUES ('listings', ?, 'update', '{}', ?)", (lid, uid))
         self.sql_write("INSERT INTO research_requests (owner_id, requested_by, url, status, requested_at) VALUES (1, ?, ?, ?, ?)",
-                       (uid, 'https://example.test/req', 'QUEUED', TODAY))
+                       (uid, 'https://example.test/req', 'QUEUED', fx.TODAY))
         admin = self.login('admin', fx.PASSWORD)
         st, out = self.req('DELETE', f'/api/admin/users/{uid}', {'username': 'maria'}, cookie=admin)
         self.assertEqual(st, 200, out)
@@ -235,7 +235,7 @@ class LegalTest(unittest.TestCase):
         uid, lid, sid = self.account('maria')
         admin_lid = self.sql('SELECT id FROM listings WHERE owner_id=1 ORDER BY id LIMIT 1')[0][0]
         self.sql_write("INSERT INTO research_requests (owner_id, requested_by, url, status, requested_at) VALUES (?, NULL, ?, ?, ?)",
-                       (uid, 'https://example.test/maria-run', 'QUEUED', TODAY))
+                       (uid, 'https://example.test/maria-run', 'QUEUED', fx.TODAY))
         rid = self.sql('SELECT id FROM research_requests WHERE url=?', ('https://example.test/maria-run',))[0][0]
         # a research run of the account wrote Maria's listing (request_id set) and, as its owner, the admin's listing
         self.sql_write("INSERT INTO change_log (table_name, row_id, action, old_json, new_json, request_id) VALUES ('listings', ?, 'update', ?, ?, ?)",

@@ -35,7 +35,7 @@ class AppTest(unittest.TestCase):
         d = Path(self.tmp.name)
         config.DATA_DIR, config.DB, config.MD_DIR, config.MEDIA_DIR = d, d / 'cars.sqlite', d / 'dossiers', d / 'media'
         fx.build(config.DB, repair_faults=True)
-        auth.FAILS.clear()
+        auth.FAILS.clear(); auth.MINUTE.update(start=0.0, fails=0)
         self.gaps = []   # the done gate's grading (#218) is stubbed: the fixture cars are not fully researched
         patcher = mock.patch.object(server.Handler, 'missing_items', lambda h, owner, lid: list(self.gaps))
         patcher.start(); self.addCleanup(patcher.stop)
@@ -1186,12 +1186,20 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request'])
         self.assertEqual(self.sql("SELECT status, result FROM research_requests WHERE unit='INSURANCE'")[0], ('SKIPPED', rq.INSURANCE_REMOVED))
 
+    def server_day(self):
+        """The server's today, frozen for one test: a midnight tick between the test's clock and the server's would move the
+        60-day quote boundary by a day. The server reads datetime.date.today() only, so the module's name is swapped for a shim."""
+        day = datetime.date.today()
+        shim = type('shim', (), {'date': type('Clock', (datetime.date,), {'today': classmethod(lambda cls: day)})})
+        patch = mock.patch.object(server, 'datetime', shim); patch.start(); self.addCleanup(patch.stop)
+        return day
+
     def test_manual_quote_399(self):
         """Any account enters an insurance quote for its own car: validated, stored as QUOTE from a user_data source (quality D),
         costed like a worker quote, logged, clears the to-do line; never another account's car or the reference car."""
         uid2, c2 = self.second_account()
         st, adm = self.login()
-        today = datetime.date.today()
+        today = self.server_day()
         post = lambda body, ck=adm: self.req('POST', '/api/ui/listing_quotes', body, token=None, cookie=ck)
         self.agent('PATCH', 'insurance_data/1', {'quote_date': '2026-01-01'})
         todo = lambda: {x['listing_id']: x['todo'] for x in self.agent('GET', 'todo')[1]['listings']}[CAR_A]
