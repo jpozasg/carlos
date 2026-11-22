@@ -42,6 +42,7 @@ GZIP_MIN = 860  # bytes; a smaller body gains nothing from gzip
 TEXT_TYPES = ('text/', 'application/json', 'application/manifest+json', 'image/svg+xml')  # what gzip applies to (never images)
 MAX_JSON_BYTES = 1_000_000  # no JSON body of this API comes near it; stops unauthenticated memory floods
 SOCKET_TIMEOUT = 30  # seconds a client may stall on a read (slowloris); the server is threaded, so a stalled socket holds one thread
+MAX_THREADS = 32  # connections served at once (issue #414, M2): the Pi 2B has little memory; the next one gets 503 'overloaded'
 
 # Sent with every response (issue #383). No inline scripts (static/js/boot.js, auth.js); style attributes are still allowed.
 SECURITY_HEADERS = (
@@ -229,6 +230,46 @@ def clean_params(data):
     return out
 
 
+class BoundedServer(ThreadingHTTPServer):
+    """One thread per connection, at most `max_threads` at once: a connection past the limit is answered 503 at once."""
+
+    def __init__(self, *args, max_threads=MAX_THREADS, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.slots = threading.BoundedSemaphore(max_threads)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            body = json.dumps({'error': 'overloaded'}).encode()
+            try:
+                request.sendall(b'HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json; charset=utf-8\r\n'
+                                b'Retry-After: 5\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s' % (len(body), body))
+            except OSError:
+                pass  # the client went away: nothing to tell it
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:  # no thread was started: give the slot back
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
+def host_allowed(host):
+    """True for a Host (or X-Forwarded-Host) header that names this server: config.ALLOWED_HOSTS, any port (issue #414, L4)."""
+    if '@' in (host or ''):  # user@name is not a host name
+        return False
+    try:
+        return urlsplit('//' + (host or '')).hostname in config.ALLOWED_HOSTS  # hostname: lower case, no port, no brackets
+    except ValueError:
+        return False
+
+
 class Handler(BaseHTTPRequestHandler):
     timeout = SOCKET_TIMEOUT
     user = request = None
@@ -394,6 +435,8 @@ class Handler(BaseHTTPRequestHandler):
         self.handle_request('DELETE')
 
     def handle_request(self, method):
+        if not host_allowed(self.headers.get('Host')):  # DNS rebinding and stray names: nothing is served
+            self.send_json({'error': 'Unknown host name: the Host header must be one of CARLOS_HOSTS'}, 400); return
         path = urlsplit(self.path).path
         if method == 'GET' and path in ('/', '/index.html'):
             self.send_file(config.STATIC / 'index.html', STATIC_TYPES['.html']); return
@@ -463,7 +506,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'username': row['username']} if row else {'error': 'Invite link invalid or expired'}, 200 if row else 404)
         elif invite and method == 'POST':
             d = self.read_json()
-            auth.check_new_password(d.get('password'))
+            row = auth.invite_user(c, invite[1])
+            auth.check_new_password(d.get('password'), admin=bool(row) and row['role'] == 'admin')
             uid = auth.accept_invite(c, invite[1], d['password'])
             if uid is None:
                 self.send_json({'error': 'Invite link invalid or expired'}, 404); return
@@ -656,7 +700,7 @@ class Handler(BaseHTTPRequestHandler):
                 auth.fail(key)
                 raise Forbidden('Wrong current password')
             auth.clear(key)
-            auth.check_new_password(d.get('new'))
+            auth.check_new_password(d.get('new'), admin=user['role'] == 'admin')
             cookie = SimpleCookie(self.headers.get('Cookie', ''))
             auth.set_password(c, user['id'], d['new'], keep_session=auth.digest(cookie[auth.COOKIE].value) if auth.COOKIE in cookie else None)
             self.send_json({'ok': True})
@@ -890,7 +934,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({'error': 'Endpoint not found'}, 404)
 
     def invite_url(self, raw):
-        host = self.headers.get('X-Forwarded-Host') or self.headers.get('Host') or f'{config.HOST}:{config.PORT}'
+        host = self.headers.get('X-Forwarded-Host') or self.headers.get('Host') or ''
+        if not host_allowed(host):
+            host = f'{config.HOST}:{config.PORT}'
         proto = self.headers.get('X-Forwarded-Proto') or 'http'
         return f'{proto}://{host}/invite/{raw}'
 
@@ -931,9 +977,18 @@ def bootstrap(c):
               f'http://{config.HOST}:{config.PORT}/invite/{auth.new_invite(c, u["id"])}')
 
 
+def secure_data_dir():
+    """Owner-only data (issue #414, L5): files this process creates are 0600, the folder and the database files 0700/0600."""
+    os.umask(0o077)
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    config.DATA_DIR.chmod(0o700)
+    for f in config.DATA_DIR.glob('cars.sqlite*'):  # the database, its WAL and shared-memory files, backups
+        f.chmod(0o600)
+
+
 def main(argv=()):
     import migrate
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    secure_data_dir()  # before migrate.run: the database file it creates is 0600
     migrate.run(config.DB)
     c = connect()
     bootstrap(c)
@@ -945,7 +1000,7 @@ def main(argv=()):
         return
     print(f'Carlos running at http://{config.HOST}:{config.PORT} · data in {config.DATA_DIR}')
     try:
-        ThreadingHTTPServer((config.HOST, config.PORT), Handler).serve_forever()
+        BoundedServer((config.HOST, config.PORT), Handler).serve_forever()
     finally:  # a deferred dossier export is not lost; WAL: fold the log into cars.sqlite, so the file on disk is complete
         for uid in list(_deferred):
             export_deferred(uid)

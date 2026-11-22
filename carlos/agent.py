@@ -45,6 +45,10 @@ RETIRED_TABLES = {'reliability_items', 'repair_risks', 'review_flags', 'flag_rev
 SOURCE_REQUIRED = {'source_keys', 'source_ratings', 'listings', 'observations', 'insurance_data', 'tax_data', 'maintenance_items',
                    'valuations', 'unit_costs', 'listing_snapshots', 'tyre_data',
                    'maintenance_resets', 'research_checks', 'faults', 'recalls', 'market_models', 'listing_quotes'}
+# What a quote_profile may hold (issue #414, L7): the policy's terms and the car, never names, birth or licence dates,
+# postcode, occupation, previous insurer or contact data. Other keys are dropped on write.
+QUOTE_PROFILE_KEYS = {'cover', 'deductible_eur', 'excess_eur', 'sf_class', 'entered_period', 'annual_km', 'usage', 'parking',
+                      'purchase_mode', 'workshop_binding', 'start_date', 'extra_drivers', 'hsn', 'tsn', 'first_registration'}
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'), ('listing_quotes', 'quote_profile'),
                 ('faults', 'curve_km'), ('faults', 'curve_age'), ('research_checks', 'named_codes'), ('market_models', 'band_counts'), ('market_models', 'sample_json'))
 RULES = ('null = unknown (never 0); archive outdated rows with PATCH archived=1 (listings: listing_status WITHDRAWN); DELETE only after the owner confirmed it; source quality A–D; free text '
@@ -207,6 +211,11 @@ def clean_row(c, table, data, insert, row_id=None):
             elif not isinstance(v, str):
                 raise ValueError(f'{k} must be text')
         out[k] = v
+    if table in ('listing_quotes', 'insurance_data') and out.get('quote_profile') is not None:
+        profile = json.loads(out['quote_profile'])  # not JSON: ValueError, 400
+        if not isinstance(profile, dict):
+            raise ValueError('quote_profile must be a JSON object')
+        out['quote_profile'] = json.dumps({k: v for k, v in profile.items() if k in QUOTE_PROFILE_KEYS}, ensure_ascii=False)
     for (tbl, col), pattern in CODE_FORMATS.items():
         if tbl == table and out.get(col) is not None and not re.fullmatch(pattern, out[col]):
             raise ValueError(f'{col} must be an English code matching {pattern} (see AGENTS.md, controlled codes)')

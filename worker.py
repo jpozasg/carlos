@@ -257,6 +257,7 @@ def beat(api, state, error=None):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    os.umask(0o077)  # the run logs and anything else the worker writes are owner-only (issue #414, L5)
     os.environ.pop('CARLOS_ACCOUNT', None)  # the worker itself never acts for an account
     refuse_shared_checkout()
     if not os.environ.get('WORKER_TOKEN') and os.environ.get('WORKER_ALLOW_ADMIN') != '1':

@@ -11,6 +11,9 @@ MD_DIR = DATA_DIR / 'dossiers'
 ENV = ROOT / '.env'
 STATIC = ROOT / 'static'
 HOST, PORT = '127.0.0.1', int(os.environ.get('CARLOS_PORT') or 8000)
+# Host header names this server answers (issue #414, L4): loopback plus CARLOS_HOSTS (comma list, e.g. the public name
+# that the reverse proxy passes through); any other Host gets 400.
+ALLOWED_HOSTS = {'127.0.0.1', 'localhost', *(h.strip().lower() for h in os.environ.get('CARLOS_HOSTS', '').split(',') if h.strip())}
 
 # Raspberry Pi with 8 GB: the whole project (database, photos, backups) must stay under 1 GB (owner, 2026-11-07).
 STORAGE_LIMIT = 1024 * 1024 ** 2

@@ -20,6 +20,7 @@ After=network.target
 User=carlos
 WorkingDirectory=/srv/carlos
 Environment=CARLOS_DATA=/srv/carlos-data
+Environment=CARLOS_HOSTS=carlos.example.net
 ExecStart=/usr/bin/python3 /srv/carlos/app.py
 Restart=on-failure
 
@@ -40,7 +41,7 @@ carlos.example.net {
     reverse_proxy 127.0.0.1:8000
 }
 ```
-Caddy sets `X-Forwarded-Proto: https`, which makes the session cookie `Secure` and the invite links use the public host. Do not expose port 8000 directly. The app itself sends `Content-Security-Policy` (scripts only from `/static/`), `X-Frame-Options: DENY`, `X-Content-Type-Options` and `Referrer-Policy` on every response and adds `Strict-Transport-Security` when `X-Forwarded-Proto` is `https`; the `header` block repeats HSTS and `nosniff` so that an error page from Caddy itself carries them too. Add `includeSubDomains` to HSTS only when every subdomain is HTTPS. The login lock uses the last `X-Forwarded-For` hop, which Caddy appends; a proxy that passes a client-supplied header on unchanged makes the per-address lock evadable (the per-username lock still holds), so put exactly one proxy in front.
+`CARLOS_HOSTS` (comma list) is the public name(s) the proxy passes through: the server answers only `127.0.0.1`, `localhost` and these names, and any other `Host` gets 400 (issue #414). Without it every request through the proxy is refused, so set it before the first restart. The data directory is created `0700` and the database files `0600`; the server sets `umask 077` for the files it writes (`UMask=0077` in the unit is a harmless second layer). Caddy sets `X-Forwarded-Proto: https`, which makes the session cookie `Secure` and the invite links use the public host. Do not expose port 8000 directly. The app itself sends `Content-Security-Policy` (scripts only from `/static/`), `X-Frame-Options: DENY`, `X-Content-Type-Options` and `Referrer-Policy` on every response and adds `Strict-Transport-Security` when `X-Forwarded-Proto` is `https`; the `header` block repeats HSTS and `nosniff` so that an error page from Caddy itself carries them too. Add `includeSubDomains` to HSTS only when every subdomain is HTTPS. The login lock uses the last `X-Forwarded-For` hop, which Caddy appends; a proxy that passes a client-supplied header on unchanged makes the per-address lock evadable (the per-username lock still holds), so put exactly one proxy in front.
 
 ## Moving the data between machines
 The data directory is a git repository of its own (private). After a session: commit and push it (`cars.sqlite`, `media/`, `dossiers/`); `backups/` stays ignored. The database runs in WAL mode (#405): the newest writes may sit in `cars.sqlite-wal` until a checkpoint. Stop the server first (it checkpoints on a clean exit), or run `PRAGMA wal_checkpoint(TRUNCATE)`, and ignore `cars.sqlite-wal` and `cars.sqlite-shm` in the data repository; a copy of `cars.sqlite` alone is not a complete backup while the server runs (use `migrate.py`'s backup, which uses the SQLite backup API). On the other machine: pull, start the app; pending migrations run automatically with a backup first. The agent token in `.env` is per machine: generate one in Settings on the new machine or copy `.env` by hand.
