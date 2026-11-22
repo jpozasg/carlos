@@ -5,7 +5,7 @@ import { t } from './i18n.js';
 import { $, esc, num, safeUrl, store, toast, yrs } from './ui.js';
 
 export const S = { accounts: [], me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
-  fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null, prefs: {} };
+  fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null, prefs: {}, loadError: null };
 const PAGES = {
   compare: () => import('./pages/compare.js'), ranking: () => import('./pages/ranking.js'), listing: () => import('./pages/dossier.js'),
   models: () => import('./pages/models.js'), sources: () => import('./pages/sources.js'), settings: () => import('./pages/settings.js'),
@@ -32,7 +32,9 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => appl
 export async function setLang(l) { await i18n.load(l); renderShell(); route(); }
 
 export async function loadAll() {
-  const [me, p, tco, st, td, ss, pr] = await Promise.all([get('/api/auth/me'), get('/api/parameters'), get('/api/tco'), get('/api/storage').catch(() => null), get('/api/todo'), get('/api/sources'), get('/api/preferences')]);
+  const me = await get('/api/auth/me');
+  // /api/storage is admin only (#392): an account never asks for it, so its console has no 403
+  const [p, tco, st, td, ss, pr] = await Promise.all([get('/api/parameters'), get('/api/tco'), me.role === 'admin' ? get('/api/storage').catch(() => null) : null, get('/api/todo'), get('/api/sources'), get('/api/preferences')]);
   Object.assign(S, { me, p, saved: p, preview: false, units: tco.listings, components: tco.components, ranking: tco.ranking, budget: tco.budget,
     fuelStale: tco.fuel_price_stale, storage: st, todo: td, sources: ss, models: null,
     prefs: Object.fromEntries(pr.map(x => [x.preference_key, x.preference_value])) });
@@ -86,6 +88,7 @@ export async function route() {
   const main = $('main');
   const token = busy = {};
   try {
+    if (S.loadError) throw S.loadError;  // boot could not load the account's data: every view shows the same card
     const mod = await PAGES[key]();
     if (busy !== token) return;
     await mod.render(main, r);
@@ -121,7 +124,7 @@ document.addEventListener('change', e => { const v = e.target.closest('[data-vie
 (async () => {
   applyTheme();
   await i18n.load(i18n.initialLang());
-  try { await loadAll(); } catch (e) { $('main').innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p></div>`; }
+  try { await loadAll(); } catch (e) { S.loadError = e; }  // route() shows the load-failed card with retry
   renderShell();
   // first run: the setup wizard until it was finished or put off (preference onboarding_done)
   if (S.me && !viewing() && !S.prefs.onboarding_done && (!location.hash || location.hash === '#/compare')) location.replace('#/start');
