@@ -120,7 +120,8 @@ document.addEventListener('change', e => { const v = e.target.closest('[data-vie
 
 (async () => {
   applyTheme();
-  await i18n.load(i18n.initialLang());
+  try { await i18n.load(i18n.initialLang()); }  // no translations to show: the card is English on purpose
+  catch (e) { $('main').innerHTML = '<div class="card err" role="alert"><b>Carlos could not load its text.</b><p class="small">Check the connection and reload the page.</p><button class="btn ghost" type="button" data-reload>Reload</button></div>'; return; }
   try { await loadAll(); } catch (e) { $('main').innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p></div>`; }
   renderShell();
   // first run: the setup wizard until it was finished or put off (preference onboarding_done)

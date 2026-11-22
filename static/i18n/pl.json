@@ -169,6 +169,10 @@
  "cost_none_selected": "Wybierz co najmniej jeden koszt.",
  "legend_pending": "Brak danych (kwota nieznana)",
  "chart_note": "Wspólna skala dla wszystkich aut. Kwoty bez danych nie mają rozmiaru, bo są nieznane; widok Szczegóły to widok danych.",
+  "cs_summary": "{car}: {items}. Razem {total}.",
+  "cs_missing": "Jeszcze nieznane: {list}.",
+  "cs_table": "Struktura kosztów w tabeli (słupki pokazują te same wartości)",
+  "cs_total": "Razem",
  "selected_total": "Wybrane koszty ({n})",
  "incomplete_n": "Niekompletne: brakuje {n}",
  "pendings": {

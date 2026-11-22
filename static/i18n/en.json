@@ -168,6 +168,10 @@
  "cost_none_selected": "Select at least one cost.",
  "legend_pending": "Pending (amount unknown)",
  "chart_note": "Common scale for every car. Pending amounts have no size because they are unknown; the Details view is the data view.",
+  "cs_summary": "{car}: {items}. Total {total}.",
+  "cs_missing": "Not known yet: {list}.",
+  "cs_table": "Cost composition as a table (the bars show the same figures)",
+  "cs_total": "Total",
  "selected_total": "Selected costs ({n})",
  "incomplete_n": "Incomplete: {n} missing",
  "pendings": {
