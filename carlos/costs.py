@@ -137,28 +137,40 @@ def owner_chances(h):
             for x in h if x['status'] == 'DONE' and x['fault_id'] and x['owner_probability'] is not None}
 
 
-def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=None, annual_km=None, by_id=None, chance=None):
+def fault_done_ages(h, today):
+    """Years since the DONE date of each fault's last DONE row (the age its restarted curve starts from, owner rule 2026-11-22);
+    None where the row has no date. Last row wins, as its km does in history_effects."""
+    last = {x['fault_id']: x for x in h if x['status'] == 'DONE' and x['fault_id']}
+    return {fid: age_years(x['event_date'], today) for fid, x in last.items()}
+
+
+def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=None, annual_km=None, by_id=None, chance=None, done_age=None):
     """Per-fault expected repair cost over the period (#174, #168): the chance it fails during the owner's km and years
     (the larger of the km and age chances, never both) given it has not failed yet, × its price. A sourced usage
     multiplier applies when the account's usage is heavy (short trips). After a documented fix (history DONE at km) the
-    car follows the fixed part's curve from there (fixed_fault_id), or none, unless the owner gave this car its own chance
-    for the period (`chance`, owner_chances, #379). Extended warranty cover reduces the cost of
+    part is new from that km (owner rule 2026-11-22): its own curve restarts there, its age curve at `done_age` (years since
+    the DONE date; unknown without it, then the km curve alone and `age_unknown`); a fixed_fault_id instead follows the
+    replacement part's curve from there. An unknown km at the fix is unknown, never 0. The owner's own chance for the period
+    (`chance`, owner_chances, #379) replaces it. Extended warranty cover reduces the cost of
     the share that falls while it applies. p or price None = unknown."""
-    done, by_id, chance = done or {}, by_id or {}, chance or {}
+    done, by_id, chance, done_age = done or {}, by_id or {}, chance or {}, done_age or {}
     out = []
     for f in faults:
         fixed, d = f['id'] in done, done.get(f['id'])  # a documented fix; its km may be unknown (None)
-        g = by_id.get(f.get('fixed_fault_id')) if fixed else f  # the curve the car follows now
-        k0 = None if km_now is None or fixed and d is None else km_now - (d or 0)  # a fix at an unknown km: the fixed part's km is unknown
-        p = 0.0 if g is None else None
+        replaced = fixed and bool(f.get('fixed_fault_id'))  # the replacement part's curve follows the fix
+        g = by_id.get(f.get('fixed_fault_id')) if replaced else f  # the curve the car follows now
+        k0 = None if km_now is None or fixed and d is None else km_now - (d or 0)  # the restart point: unknown when the fix's km is
+        age0 = age_now if not fixed else None if replaced else done_age.get(f['id'])  # the age the curve restarts from (None = unknown)
+        p, age_unknown = (0.0 if g is None else None), False
         cover = 0.0
         if g is not None:
             km_c, age_c = shape_curves(g)
+            age_unknown = fixed and not replaced and bool(age_c) and age0 is None
             ps = []
             if km_c and k0 is not None:
                 ps.append(('km', conditional(km_c, k0, k0 + km_period, config.CURVE_END_KM)))
-            if age_c and age_now is not None and not fixed:
-                ps.append(('age', conditional(age_c, age_now, age_now + months / 12, config.CURVE_END_YEARS)))
+            if age_c and age0 is not None:
+                ps.append(('age', conditional(age_c, age0, age0 + months / 12, config.CURVE_END_YEARS)))
             if ps:
                 axis, p = max(ps, key=lambda t: t[1])
                 if heavy and g.get('usage_multiplier') and 'SHORT_TRIPS' in (g.get('usage_flags') or ''):
@@ -174,12 +186,13 @@ def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=Non
                         cover = conditional(km_c, k0, min(k0 + km_period, k0 + limit - km_now), config.CURVE_END_KM) * f['warranty_share']
         oc = chance.get(f['id']) if fixed else None
         if oc:  # the owner's evidence for this car replaces the curve after its fix; no warranty cover is assumed for it (#379)
-            p, cover = oc['probability'], 0.0
+            p, cover, age_unknown = oc['probability'], 0.0, False
         price = amount(f)
         out.append({**{k: f.get(k) for k in ('id', 'component', 'part', 'issue', 'consequence', 'existence', 'probability_basis',
                                               'frequency_band', 'shape', 'inspection_action', 'applies_from', 'applies_to',
                                               'window_uncertain', 'source_id', 'notes')},
                     'level': f.get('level'), 'severity': fault_severity(f), 'price_eur': price, 'repaired_at_km': d, 'fixed': fixed,
+                    'repaired_years_ago': done_age.get(f['id']) if fixed else None, 'age_unknown': age_unknown,
                     'probability': None if p is None else round(p, 4), 'warranty_cover': round(cover, 4),
                     'owner_chance': {**oc, 'source': 'user_data'} if oc else None,
                     'expected_eur': None if p is None or (p and price is None) else round(max(0.0, p - cover) * (price or 0), 2)})
@@ -563,6 +576,7 @@ def tco_rows(c, p, know=None):
         m_rows = know.of('maintenance_items', v, win)
         f_rows, rc_rows = know.of('faults', v, win), know.of('recalls', v, win)
         h_restart, faults_done, present, recall_status = history_effects(history.get(u["id"], []), m_rows)
+        faults_done_age = fault_done_ages(history.get(u["id"], []), today)
         own_chance = owner_chances(history.get(u["id"], []))
         restarted = frozenset(resets.get(u['id'], ())) | h_restart
         for cat, eur in present.items():  # a PRESENT history item is a certain cost (#174)
@@ -590,7 +604,8 @@ def tco_rows(c, p, know=None):
             # an electric car's tax only for the months after its exemption: fully exempt = a known 0 by law, no row needed
             taxable = ev_tax_months(reg, today, months_) if electric else months_
             maint, maint_hours = maintenance_cost(m_rows, km_, months_, restarted)
-            fp = fault_plan(f_rows, u['mileage_km'], km_, age_now, months_, know.heavy, faults_done, p['annual_km'], know.faults_by_id, own_chance)
+            fp = fault_plan(f_rows, u['mileage_km'], km_, age_now, months_, know.heavy, faults_done, p['annual_km'], know.faults_by_id, own_chance,
+                            faults_done_age)
             # faults (#174): any unknown chance or price makes the repairs unknown; no fault research = unknown
             risk = None if not f_rows or any(x['expected_eur'] is None for x in fp) else sum(x['expected_eur'] for x in fp)
             wear = tyre_cost(know.tyres(v), km_)

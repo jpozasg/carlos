@@ -74,7 +74,7 @@ One record per **design fault** (not wear):
 **Fault probability method (owner, 2026-11-06, #168):**
 - **Word scale** by 200,000 km or 15 years, the central value used and the range stored: systemic 50 % (40–70, needs a manufacturer trace: extended warranty, goodwill, TPI, class action), widespread 25 % (20–40), common 12 % (8–20), occasional 5 % (3–8), rare 1.5 % (0.5–3). One place in the code (`config.FREQUENCY_BANDS`).
 - **Four shapes:** WEAR_KM, AGE, WINDOW (within a km window after an onset), RANDOM; each continues to 300,000 km / 20 years.
-- A documented fix switches the fault to the fixed part's curve (or none); an extended warranty reduces the cost while it applies.
+- A documented fix restarts the fault's curve at its km (the part is new from there; the replacement part's curve when `fixed_fault_id` is set); an unknown km stays unknown, never 0. An extended warranty reduces the cost while it applies.
 - A forum-only fault is one band milder, never above common.
 - **Two-way consistency check** against TÜV/ADAC: a generation whose statistics show clearly more trouble than its faults predict (or clearly less) gets a review flag and an automatic follow-up research request; if still inconsistent it stays visible in the Admin panel and the dossier. Nothing is scaled automatically.
 - **Review flags** live on the level of the problem with what and why; every review is recorded (worker, date, finding); a flag clears only when two independent reviews reach the same conclusion.
