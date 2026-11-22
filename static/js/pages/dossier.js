@@ -296,7 +296,7 @@ function costBlocks(d) {
   const split = (a, b) => [a, b].filter(x => x && x[1] != null).map(([l, v]) => `${l} ${euro(v)}`).join(' · ');
   const B = {};
   B.fuel = facts([[t('co_consumption'), d.consumption == null ? PEND() : `${consumptionTxt(d)}${d.consumption_metric ? ` · ${esc(d.consumption_metric)}` : ''}${consumptionSpread(d) ? ` · ${consumptionSpread(d)}` : ''} ${srcLink(d, d.consumption_source_id)}`],
-    ...(cd.fuel_price_eur_l != null ? [[t('co_fuel_price'), `${num(cd.fuel_price_eur_l, 2)} €/l`]] : []), ...(cd.electricity_eur_kwh != null ? [[t('co_elec_price'), `${num(cd.electricity_eur_kwh, 2)} €/kWh`]] : []),
+    ...(cd.fuel_price_eur_l != null ? [[t('co_fuel_price'), `${num(cd.fuel_price_eur_l, 2)}\u00a0${t('unit_eur_l')}`]] : []), ...(cd.electricity_eur_kwh != null ? [[t('co_elec_price'), `${num(cd.electricity_eur_kwh, 2)}\u00a0${t('unit_eur_kwh')}`]] : []),
     [t('co_period'), `${num(d.period_km, 0)} km · ${num(d.period_months, 0)} ${t('co_months')}`]])
     + (cons.length ? `<div class="small muted">${cons.map(o => `${esc(o.metric)}${stTag(o.status)} ${qTag(o.evidence_quality)} ${noteBox(o.notes)}`).join('<br>')}</div>` : '');
   const ins = [...(d.insurance || []), ...(d.quotes || [])];

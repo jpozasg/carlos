@@ -10,7 +10,7 @@ export const notScoredTxt = u => u.excluded === 'over_max' ? t('excluded_over_ma
   : [u.not_scored.criteria.length ? t('ns_criteria', { l: u.not_scored.criteria.map(k => t('c_' + k)).join(', ') }) : '',
      u.not_scored.research.length ? t('ns_research', { n: u.not_scored.research.length }) : ''].filter(Boolean).join(' · ') || t('not_ranked');
 // eight validated series colours (docs/frontend.md) by the criterion's position; a ninth gets a neutral colour, never an undefined --s9
-export const critColor = (k, keys) => { const i = keys.indexOf(k); return i >= 0 && i < 8 ? `var(--s${i + 1})` : 'var(--text-3)'; };
+export const critColor = (k, keys) => { const i = keys.indexOf(k); return i >= 0 && i < 9 ? `var(--s${i + 1})` : 'var(--text-3)'; };
 export const PEND = () => `<span class="pending">${t('pending')}</span>`;
 export const eP = n => n == null ? PEND() : euro(n);
 // totals reduce to {sum, missing, n}: a row without a figure is counted as missing, never added as 0 (docs/frontend.md)
