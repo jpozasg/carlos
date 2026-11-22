@@ -103,17 +103,19 @@ class UnitScopeTest(unittest.TestCase):
             st, e = self.api('CAPTURE', 'PATCH', f'agent/{table}/{rid}', {'status': 'PARTIAL'} if table != 'sources' else {'quality': 'A'})
             self.assertEqual(st, 403, (table, e)); self.assertIn('CAPTURE does not change', e['error'])
 
-    def test_legacy_runs_are_not_limited_and_an_unlisted_unit_is_closed(self):  # the legacy prompts, until they are retired
-        self.assertEqual(self.api('VARIANT', 'PATCH', f'agent/engines/{E_B}', {'notes': 'legacy unit'})[0], 200)
+    def test_retired_units_and_an_unlisted_unit_are_closed(self):  # owner decision 2026-11-22: the single-run units are refused
+        st, e = self.api('VARIANT', 'PATCH', f'agent/engines/{E_B}', {'notes': 'retired unit'})
+        self.assertEqual(st, 403, e); self.assertIn('retired', e['error'])
+        self.assertEqual(self.sql('SELECT notes FROM engines WHERE id=?', (E_B,)), [(None,)])
         st, e = self.api('MERGE', 'POST', 'agent/listing_events', {'listing_id': CAR_A, 'event_date': fx.TODAY, 'kind': 'verification', 'text': 'x'})
         self.assertEqual(st, 403, e); self.assertIn('writes nothing', e['error'])
 
-    def test_unit_less_token_cannot_patch_shared_rows(self):  # review H2 point 3: no unit means no catalogue change
+    def test_unit_less_token_is_refused_every_write(self):  # owner decision 2026-11-22: a request without a unit is refused
         st, e = self.api('NONE', 'PATCH', f'agent/engines/{E_B}', {'notes': 'no unit'})
-        self.assertEqual(st, 403, e); self.assertIn('does not change shared catalogue rows', e['error'])
+        self.assertEqual(st, 403, e); self.assertIn('without a unit', e['error'])
         self.assertEqual(self.api('NONE', 'PATCH', f'agent/sources/{SRC_HU}', {'quality': 'A'})[0], 403)
         self.assertEqual(self.sql('SELECT notes FROM engines WHERE id=?', (E_B,)), [(None,)])
-        self.assertEqual(self.api('NONE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 200)  # its own listing
+        self.assertEqual(self.api('NONE', 'PATCH', f'agent/listings/{CAR_A}', {'price_eur': 5900})[0], 403)
 
     def media(self, unit, listing_id):
         h = {'Content-Type': 'image/jpeg', 'Authorization': f'Bearer {self.tokens[unit]}'}
@@ -165,10 +167,10 @@ class UnitScopeTest(unittest.TestCase):
         staging.check_unit_write(c, req, 'tax_data', None, {**TAX, 'vehicle_id': V_A})
         with self.assertRaises(staging.NotAllowed):
             staging.check_unit_write(c, {**req, 'listing_id': None}, 'tax_data', None, {**TAX, 'vehicle_id': V_A})   # no car, no level
-        staging.check_unit_write(c, {'unit': 'VARIANT', 'listing_id': CAR_A}, 'engines', E_B, {})                       # the legacy run
-        with self.assertRaises(staging.NotAllowed):                                                                     # a request without a unit: no shared row
-            staging.check_unit_write(c, {'unit': None, 'listing_id': CAR_A}, 'engines', E_B, {})
-        staging.check_unit_write(c, {'unit': None, 'listing_id': CAR_A}, 'listing_events', None, {'listing_id': CAR_A})  # new rows stay allowed
+        with self.assertRaises(staging.NotAllowed):                                                                     # a retired unit writes nothing
+            staging.check_unit_write(c, {'unit': 'VARIANT', 'listing_id': CAR_A}, 'engines', E_B, {})
+        with self.assertRaises(staging.NotAllowed):                                                                     # a request without a unit writes nothing
+            staging.check_unit_write(c, {'unit': None, 'listing_id': CAR_A}, 'listing_events', None, {'listing_id': CAR_A})
         with self.assertRaises(staging.NotAllowed):                                                                     # a staged run never gets here
             staging.check_unit_write(c, {'unit': 'RESEARCH_A', 'listing_id': CAR_A}, 'engines', E_B, {})
         staging.check_unit_write(c, req, 'tax_data', None, 'not a dict')                                                # agent_write answers 400 for that

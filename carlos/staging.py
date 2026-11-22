@@ -164,8 +164,8 @@ def write(c, req, table, row_id, data):
     return {'table': table, 'id': -fid, 'staged': True}
 
 
-# Tables each non-staged unit may write with its request token (#386, N2). The legacy units and a request without a unit stay
-# unrestricted until that prompt is retired; any other unit is refused. The staged runs are limited by `write` (scope) above.
+# Tables each non-staged unit may write with its request token (#386, N2). A retired unit or a request without a unit writes nothing
+# (2026-11-22); MERGE writes nothing either. The staged runs are limited by `write` (scope) above.
 UNIT_TABLES = {
     'CAPTURE': {'generations', 'engines', 'vehicles', 'sources', 'listings', 'listing_snapshots', 'inspection_items', 'listing_events'},
     'TAX': {'tax_data', 'sources', 'research_checks', 'listing_events'},
@@ -215,14 +215,8 @@ def check_unit_write(c, req, table, row_id, data):
     its own tables only; a new row on a level only on a level of its listing's variant chain; a PATCH of a shared catalogue row
     only on that chain too (CAPTURE never patches one: the research run does). Raises NotAllowed (403)."""
     unit, allowed = req['unit'], UNIT_TABLES.get(req['unit'])
-    if allowed is None:
-        if unit is None:  # a request without a unit (an old single run) adds rows but never changes a shared catalogue row
-            if row_id is not None and _shared(c, table, row_id):
-                raise NotAllowed(f'a request without a unit does not change shared catalogue rows ({table} id={row_id})')
-            return
-        if unit in ru.LEGACY_UNITS:  # the legacy units: unrestricted until that prompt is retired
-            return
-        raise NotAllowed(f'{unit} writes nothing through /api/agent')  # MERGE, and a unit added later stays closed until it is listed above
+    if allowed is None:  # MERGE, a retired unit (2026-11-22) or no unit at all: nothing is written through /api/agent
+        raise NotAllowed(ru.refusal(unit) or f'{unit} writes nothing through /api/agent')
     if table not in allowed:
         raise NotAllowed(f'{unit} writes only {", ".join(sorted(allowed))}, not {table}')
     data = data if isinstance(data, dict) else {}  # agent_write answers 400 for anything else

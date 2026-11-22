@@ -570,7 +570,7 @@ Other keys (`search_center`, `search_radius`, `preferred_fuel`, `preferred_trans
 | `attempts` | INTEGER NOT NULL, default 0 | count | DONE reports so far; after 3 (`MAX_ATTEMPTS`) the request is FAILED with its missing items | 0 |
 | `missing` | TEXT | JSON list of contract item ids, `[]` = none | the items still missing (a DONE report re-queues the request for them) | not yet graded |
 | `parent_id` | INTEGER FK research_requests | | the listing request a unit belongs to | NULL = a listing request |
-| `unit` | TEXT | `CAPTURE`, `VARIANT`, `GENERATION`, `GEN_MAINTENANCE`, `ENGINE`, `GEARBOX`, `TAX`, `LISTING`, `RESEARCH_A`, `RESEARCH_B`, `ARBITER`, `MERGE`; `INSURANCE` (removed 2026-11-22; still allowed by SQL, skipped) (CHECK) | the stage this row is (the parent request is `CAPTURE`) | NULL = the request is not split into units |
+| `unit` | TEXT | `CAPTURE`, `TAX`, `LISTING`, `RESEARCH_A`, `RESEARCH_B`, `ARBITER`, `MERGE`; the retired `VARIANT`, `GENERATION`, `GEN_MAINTENANCE`, `ENGINE`, `GEARBOX` and `INSURANCE` (2026-11-22: refused or skipped at the claim; still allowed by SQL) (CHECK) | the stage this row is (the parent request is `CAPTURE`) | NULL = the request is not split into units |
 | `level_id` | INTEGER | the id of the catalogue level the unit researches | the unit's level | not a level unit |
 | `shared_id` | INTEGER FK research_requests | | a `WAITING` unit waits for this unit of another request, which researches the same shared level | not waiting |
 | `scope` | TEXT (JSON) | the levels a run researches | the scope of a two-run research | not stated |

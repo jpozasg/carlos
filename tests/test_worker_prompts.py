@@ -39,14 +39,6 @@ class PromptTests(unittest.TestCase):
     def test_unit_without_optional_fields(self):
         self.assertNotRegex(worker.prompt_for({'id': 1, 'owner_id': 2, 'unit': 'CAPTURE', 'url': None}), LEFT)
 
-    def test_legacy_rows_keep_the_single_run_prompt(self):
-        p = worker.prompt_for(req())
-        self.assertIn('shared research worker of Carlos', p)
-        self.assertNotIn('Your unit:', p)
-        self.assertNotRegex(p, LEFT)
-        self.assertNotIn('CONTINUATION (attempt', p)
-        self.assertIn('CONTINUATION (attempt 2)', worker.prompt_for(req(missing=['lst.checklist'])))
-
     def test_outcome(self):
         self.assertEqual(worker.outcome('x\nCARLOS_RESULT done: ok')['status'], 'DONE')
         self.assertEqual(worker.outcome('CARLOS_RESULT failed: nope'), {'status': 'FAILED', 'result': 'nope'})

@@ -78,7 +78,7 @@ If the session reminder gives a `Claude-Session:` line, add it after the `Co-Aut
 ## 7. Researching a car
 Do not re-learn the procedure from here. Read these and follow them step by step:
 - `docs/cost-research-protocol.md`: the steps, the data levels, the research contract (what "researched" means), the checks table, faults, electric and hybrid cars, the reliability sources.
-- `docs/prompts/research-car.md`: the prompt for one car, and its "Drivetrain and offer" table. `docs/prompts/research-request.md`: the prompt of the shared worker. `docs/prompts/units/`: the unit prompts.
+- `docs/prompts/research-car.md`: the prompt for one car, and its "Drivetrain and offer" table. `docs/prompts/research-request.md`: the shared worker's contract (which units run; the unit prompts do the work). `docs/prompts/units/`: the unit prompts.
 - `docs/browser-tasks.md`: how the browser pages are read.
 
 Normal route: the request queue (`POST /api/requests`), then the registered worker. An in-session research agent is a stop-gap that uses the same API steps. "Researched" means the contract is met (`todo(vehicle_id=…)` and `todo(listing_id=…)`), not that the steps were run. Before accepting research, run the `research-audit` skill.

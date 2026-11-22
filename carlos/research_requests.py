@@ -51,11 +51,8 @@ def _detail(c, d):
 
 
 def _stages(c, parent_id):
-    """The stages of a request: the legacy ones when it already has a legacy child, the dual ones when it has a dual child, else FLOW decides."""
-    units = {r[0] for r in c.execute('SELECT unit FROM main.research_requests WHERE parent_id=?', (parent_id,))}
-    if units & set(ru.LEGACY_UNITS):
-        return ru.LEGACY_STAGES
-    return ru.STAGES if units & {'RESEARCH_A', 'RESEARCH_B'} or ru.FLOW == 'dual' else ru.LEGACY_STAGES
+    """The stages of a request: the two-agent flow (#253). The single-run units are retired (2026-11-22)."""
+    return ru.STAGES
 
 
 def mine(c, uid):
@@ -158,6 +155,16 @@ def claim(c, worker, worker_id=None, missing=None):
         if r['parent_id'] is not None:
             _closed(c, r['id'], missing)  # lets the parent finish
         return claim(c, worker, worker_id, missing)
+    why = ru.refusal(r['unit'])
+    if why:  # a retired unit or a request without a unit is refused with its reason, never run (owner decision 2026-11-22)
+        with c:
+            c.execute("UPDATE main.research_requests SET status='FAILED', result=?, finished_at=datetime('now'), request_token_hash=NULL WHERE id=?",
+                      (why, r['id']))
+            if worker_id is not None:
+                c.execute("UPDATE main.workers SET state='idle', request_id=NULL WHERE id=?", (worker_id,))
+        if r['parent_id'] is not None:
+            _closed(c, r['id'], missing)
+        return claim(c, worker, worker_id, missing)
     r['missing'] = json.loads(r['missing']) if r['missing'] else []
     r['scope'] = json.loads(r['scope']) if r['scope'] else None
     return {**r, 'request_token': raw}
@@ -176,7 +183,7 @@ def _unit_ids(ids, unit):
 def finish(c, rid, data, missing=None, staged=None):
     """Finishes a RUNNING request. `missing(owner_id, listing_id)` -> ids of the contract items still MISSING (the server's own
     grading, #218): the agent's DONE/FAILED is only a hint. A unit-split request (unit set) is graded for its unit's items only
-    and advances the parent; a legacy one (unit NULL) is graded as a whole. Missing items re-queue it, FAILED after MAX_ATTEMPTS.
+    and advances the parent; a request without a unit is refused (DONE raises). Missing items re-queue it, FAILED after MAX_ATTEMPTS.
     The two-agent units (#253) have their own gates: a research run is graded on its staged rows (`staged(request) -> ids`) and closes
     DONE with gaps after RESEARCH_MAX_ATTEMPTS; the ARBITER on unanswered disputes (DONE after 2 attempts); the MERGE on the real rows
     (one attempt, FAILED with the items still missing)."""
@@ -201,6 +208,8 @@ def finish(c, rid, data, missing=None, staged=None):
     lid = data.get('listing_id')
     follow_up = req['kind'] == 'FOLLOW_UP'
     unit = req['unit']
+    if unit is None and status == 'DONE':  # refused (2026-11-22): a request without a unit is never graded as a whole run
+        raise ValueError(ru.refusal(None))
     capture = unit == 'CAPTURE'
     if unit and not capture:
         lid = req['listing_id']  # a unit works on the listing its parent captured, whatever the agent says
@@ -229,8 +238,6 @@ def finish(c, rid, data, missing=None, staged=None):
             ids = _unit_ids(missing(req['owner_id'], lid), 'CAPTURE') if missing else []
             if not c.execute('SELECT vehicle_id FROM main.listings WHERE id=?', (lid,)).fetchone()[0]:
                 ids = ids + ['listing.variant']  # captured but no variant attached: the units cannot start
-    elif not follow_up and status == 'DONE' and missing:
-        ids = [i for i in missing(req['owner_id'], lid) if i != 'lst.insurance']  # a legacy whole-listing run never quotes
     if ids:
         n = req['attempts'] + 1
         again = n < max_attempts
