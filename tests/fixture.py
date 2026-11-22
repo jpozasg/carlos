@@ -57,7 +57,7 @@ REPAIR_FAULTS = [
          curve_km='[[150000, 0], [250000, 0.5]]', probability_basis='ESTIMATE', parts_eur=400, labor_eur=700, source_id=SRC_GUIDE),
 ]
 
-ROWS = {
+ROWS = lambda: {   # a function: the rows carry TODAY, which build() sets
     'users': [dict(id=ADMIN, username='admin', role='admin', password_hash=auth.hash_password(PASSWORD), api_token_hash=auth.digest(TOKEN))],
     'project_parameters': [dict(id=1, owner_id=ADMIN, annual_km=15000, ownership_years=4, fuel_price_eur_l=1.80, fuel_price_date=TODAY,
                                 diesel_price_eur_l=1.70, diesel_price_date=TODAY, budget_ideal_eur=6500, budget_max_eur=8000,
@@ -169,11 +169,13 @@ ROWS = {
 
 def build(path, repair_faults=False):
     """Creates the fixture database at `path` (schema.sql baseline + the rows above, + REPAIR_FAULTS on request)."""
+    global TODAY
+    TODAY = datetime.date.today().isoformat()
     migrate.create(path)
     c = sqlite3.connect(path)
     c.execute('PRAGMA foreign_keys=ON')
     with c:
-        for table, rows in (*ROWS.items(), *((('faults', REPAIR_FAULTS),) if repair_faults else ())):
+        for table, rows in (*ROWS().items(), *((('faults', REPAIR_FAULTS),) if repair_faults else ())):
             for r in rows:
                 c.execute(f'INSERT INTO {table} ({",".join(r)}) VALUES ({",".join("?" * len(r))})', list(r.values()))
     assert not c.execute('PRAGMA foreign_key_check').fetchall()
