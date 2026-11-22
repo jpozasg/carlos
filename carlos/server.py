@@ -44,9 +44,9 @@ MAX_JSON_BYTES = 1_000_000  # no JSON body of this API comes near it; stops unau
 SOCKET_TIMEOUT = 30  # seconds a client may stall on a read (slowloris); the server is threaded, so a stalled socket holds one thread
 MAX_THREADS = 32  # connections served at once (issue #414, M2): the Pi 2B has little memory; the next one gets 503 'overloaded'
 
-# Sent with every response (issue #383). No inline scripts (static/js/boot.js, auth.js); style attributes are still allowed.
+# Sent with every response (issue #383). No inline scripts or styles (static/js/boot.js, auth.js; static/css, data-style in ui.js).
 SECURITY_HEADERS = (
-    ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
                                 "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
     ('X-Content-Type-Options', 'nosniff'), ('X-Frame-Options', 'DENY'), ('Referrer-Policy', 'no-referrer'),
     ('Cross-Origin-Opener-Policy', 'same-origin'))

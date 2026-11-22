@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="en" data-theme="cluster"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b0d10"><title>Carlos · sign in</title>
-<link rel="icon" href="/static/brand/favicon.svg?v=3" type="image/svg+xml"><link rel="stylesheet" href="/static/css/tokens.css"><link rel="stylesheet" href="/static/css/app.css">
+<link rel="icon" href="/static/brand/favicon.svg?v=3" type="image/svg+xml"><link rel="stylesheet" href="/static/css/tokens.css"><link rel="stylesheet" href="/static/css/app.css"><link rel="stylesheet" href="/static/css/auth.css">
 <script src="/static/js/boot.js"></script>
-<style>body{display:grid;place-items:center;min-height:100vh}main{width:min(380px,calc(100% - 32px))}.box{width:100%}h1{font-size:1.65rem;line-height:1.15;margin:0 0 6px;font-weight:700;text-align:center}.box .brand{margin:0 0 14px;justify-content:center}.err{color:var(--bad-ink);font-size:13px;min-height:1.2em;margin-top:8px}.field{margin-top:10px}.lang{margin-top:14px;display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px}</style></head>
+</head>
 <body><main><form id="f" class="card box"><a class="brand" href="/"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="/static/brand/mark.svg#mark"/></svg><span><b>Carlos</b><small id="tg">the real cost of a car</small></span></a>
 <h1 id="t">Sign in</h1>
 <div class="field"><label for="u" id="ul">Username</label><input id="u" autocomplete="username" required></div>
 <div class="field"><label for="p" id="pl">Password</label><input id="p" type="password" autocomplete="current-password" required minlength="1"></div>
 <div class="field" id="p2f" hidden><label for="p2" id="p2l">Repeat the new password</label><input id="p2" type="password" autocomplete="new-password"></div>
-<button type="submit" class="btn" id="b" style="margin-top:16px;width:100%;justify-content:center">Sign in</button><div class="err" id="e" role="alert"></div></form>
+<button type="submit" class="btn mt16 w100 jc-c" id="b">Sign in</button><div class="err" id="e" role="alert"></div></form>
 <div class="lang"><label for="lang" id="lg">Language</label><select id="lang" class="inline"></select></div></main>
 <script type="module" src="/static/js/auth.js"></script></body></html>

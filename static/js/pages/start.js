@@ -128,7 +128,7 @@ function summary() {
 function draw() {
   const name = STEPS[step];
   const body = name === 'priorities' ? '<div id="qzHost"></div>'
-    : name === 'done' ? `<p class="lead">${t('done_lead')}</p>${summary()}<h3 style="margin-top:22px">${t('prio_title')}</h3>${S.ranking.answered ? profileHtml(S.ranking) : `<p class="empty">${t('prio_skipped')}</p>`}`
+    : name === 'done' ? `<p class="lead">${t('done_lead')}</p>${summary()}<h3 class="mt22">${t('prio_title')}</h3>${S.ranking.answered ? profileHtml(S.ranking) : `<p class="empty">${t('prio_skipped')}</p>`}`
     : VIEWS[name]();
   root.innerHTML = `<div class="setup">${rail()}
     <section class="setup-step" aria-labelledby="stepTitle"><h2 id="stepTitle" tabindex="-1">${t('st_' + name)}</h2>${OPTIONAL.includes(name) ? `<p class="tag">${t('optional_step')}</p>` : ''}${name === 'done' ? '' : `<p class="lead">${t('sl_' + name)}</p>`}${name === 'priorities' ? `<p class="small"><button class="linkbtn" type="button" data-skip>${t('quiz_later')}</button></p>` : ''}

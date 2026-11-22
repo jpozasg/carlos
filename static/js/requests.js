@@ -53,7 +53,7 @@ export function requestsPanel() {
     ${r.listing_id ? ` <a class="btn ghost sm" href="#/listing/${r.listing_id}">${t('req_open_car')}</a>` : ''}${partsHtml(r, r.parts)}${r.status === 'FAILED' && r.result ? `<div class="small muted">${esc(r.result.split('\n')[0])}</div>` : ''}</li>`).join('');
   return `<details class="card reqs"${open ? ' open' : ''}><summary><b>${t('req_title')}</b></summary><p class="small muted">${t('req_lead')}</p>
     <form class="row" data-reqform><div class="field"><label for="req_url">${t('req_url')}</label><input id="req_url" type="url" required maxlength="500" placeholder="https://"></div>
-      <div class="field"><label for="req_note">${t('req_note')}</label><input id="req_note" maxlength="1000"></div><button class="btn" type="submit" style="align-self:end">${t('req_send')}</button></form>
+      <div class="field"><label for="req_note">${t('req_note')}</label><input id="req_note" maxlength="1000"></div><button class="btn as-end" type="submit">${t('req_send')}</button></form>
     ${list ? `<ul class="reqlist">${list}</ul>` : ''}</details>`;
 }
 

@@ -16,14 +16,14 @@ function workersHtml() {
     <td class="small">${w.last_error ? `${esc(w.last_error)}<div class="muted">${esc(w.last_error_at ?? '')}</div>` : '—'}</td>
     <td class="row"><button class="btn ghost sm" type="button" data-wtoken="${w.id}">${t('worker_regen')}</button><button class="btn ghost sm" type="button" data-wactive="${w.id}" data-to="${w.is_active ? 0 : 1}">${w.is_active ? t('deactivate') : t('activate')}</button></td></tr>`).join('');
   return `<h3>${t('workers')}</h3><p class="small muted">${t('workers_lead')}</p>
-    <form id="newWorker" class="row" style="margin-bottom:12px"><div class="field"><label for="nw_name">${t('worker_name')}</label><input id="nw_name" pattern="[\\w.-]{2,40}" required></div><button class="btn" type="submit" style="align-self:flex-end">${t('worker_create')}</button></form>
-    ${lastToken ? `<p class="small" style="margin:0 0 4px">${t('worker_token_hint', { n: esc(lastToken.name) })}</p><div class="token-box" style="margin-bottom:12px">${esc(lastToken.token)}</div>` : ''}
+    <form id="newWorker" class="row mb12"><div class="field"><label for="nw_name">${t('worker_name')}</label><input id="nw_name" pattern="[\\w.-]{2,40}" required></div><button class="btn as-e" type="submit">${t('worker_create')}</button></form>
+    ${lastToken ? `<p class="small mt0 mx0 mb4">${t('worker_token_hint', { n: esc(lastToken.name) })}</p><div class="token-box mb12">${esc(lastToken.token)}</div>` : ''}
     <div class="tablewrap"><table><thead><tr><th>${t('worker_name')}</th><th>${t('status')}</th><th>${t('worker_last_seen')}</th><th>${t('worker_job')}</th><th>${t('worker_error')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="6">${empty('')}</td></tr>`}</tbody></table></div>`;
 }
 function changesHtml() {
-  return `<h3 style="margin-top:24px">${t('changes')}</h3><p class="small muted">${t('changes_lead')}</p>
+  return `<h3 class="mt24">${t('changes')}</h3><p class="small muted">${t('changes_lead')}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('ch_when')}</th><th>${t('ch_writer')}</th><th>${t('ch_account')}</th><th>${t('ch_table')}</th><th>${t('ch_action')}</th></tr></thead><tbody>${changes.map(x => `<tr><td class="small">${esc(x.changed_at)}</td><td>${esc(x.writer ?? '—')}</td><td>${esc(x.account ?? '—')}</td><td class="small">${esc(x.table_name)} #${x.row_id}</td><td class="small">${esc(x.action)}</td></tr>`).join('') || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>
-    ${changes.length && changes.length % 50 === 0 ? `<button class="btn ghost sm" type="button" data-older style="margin-top:8px">${t('ch_older')}</button>` : ''}`;
+    ${changes.length && changes.length % 50 === 0 ? `<button class="btn ghost sm mt8" type="button" data-older>${t('ch_older')}</button>` : ''}`;
 }
 function draw() {
   const rows = users.map(u => `<tr><td><b>${esc(u.username)}</b>${u.id === S.me.id ? ` <span class="tag ref">${t('you')}</span>` : ''}</td><td>${esc(t('role_' + u.role))}</td>
@@ -31,12 +31,12 @@ function draw() {
     <td class="row"><button class="btn ghost sm" type="button" data-invite="${u.id}">${t('invite_link')}</button>
       ${u.id !== S.me.id ? `<button class="btn ghost sm" type="button" data-active="${u.id}" data-to="${u.is_active ? 0 : 1}">${u.is_active ? t('deactivate') : t('activate')}</button><button class="btn ghost sm" type="button" data-role="${u.id}" data-to="${u.role === 'admin' ? 'user' : 'admin'}">${u.role === 'admin' ? t('make_user') : t('make_admin')}</button>` : ''}</td></tr>`).join('');
   root.innerHTML = `<div class="section"><h2>${t('tab_admin')}</h2><p class="lead">${t('admin_lead')}</p>
-    <div class="card" style="margin-bottom:16px">${workersHtml()}</div>
-    <div class="card" style="margin-bottom:16px"><h3>${t('new_user')}</h3><form id="newUser" class="row"><div class="field"><label for="nu_name">${t('username')}</label><input id="nu_name" pattern="[\\w.-]{2,40}" required></div>
-      <div class="field"><label for="nu_role">${t('role')}</label><select id="nu_role" class="inline"><option value="user">${t('role_user')}</option><option value="admin">${t('role_admin')}</option></select></div><button class="btn" type="submit" style="align-self:flex-end">${t('create_invite')}</button></form>
-      ${lastInvite ? `<p class="small" style="margin:12px 0 4px">${t('invite_created', { u: esc(lastInvite.username) })}</p><div class="token-box">${esc(lastInvite.invite)}</div>` : ''}</div>
+    <div class="card mb16">${workersHtml()}</div>
+    <div class="card mb16"><h3>${t('new_user')}</h3><form id="newUser" class="row"><div class="field"><label for="nu_name">${t('username')}</label><input id="nu_name" pattern="[\\w.-]{2,40}" required></div>
+      <div class="field"><label for="nu_role">${t('role')}</label><select id="nu_role" class="inline"><option value="user">${t('role_user')}</option><option value="admin">${t('role_admin')}</option></select></div><button class="btn as-e" type="submit">${t('create_invite')}</button></form>
+      ${lastInvite ? `<p class="small mt12 mx0 mb4">${t('invite_created', { u: esc(lastInvite.username) })}</p><div class="token-box">${esc(lastInvite.invite)}</div>` : ''}</div>
     <div class="tablewrap"><table><thead><tr><th>${t('username')}</th><th>${t('role')}</th><th>${t('status')}</th><th>${t('created')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>
-    <h3 style="margin-top:24px">${t('req_queue')}</h3><p class="small muted">${t('req_queue_lead')}</p>
+    <h3 class="mt24">${t('req_queue')}</h3><p class="small muted">${t('req_queue_lead')}</p>
     <div class="tablewrap"><table><thead><tr><th>${t('req_requested')}</th><th>${t('username')}</th><th>${t('req_url')}</th><th>${t('status')}</th><th>${t('req_result')}</th></tr></thead><tbody>${reqs.map(r => `<tr><td class="small">${esc(r.requested_at)}</td><td>${esc(r.username)}</td>
       <td class="small"><a href="${safeUrl(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a>${r.note ? `<div class="muted">${esc(r.note)}</div>` : ''}</td><td>${statusTag(r.status)}${r.worker ? `<div class="small muted">${esc(r.worker)} · ${esc(r.claimed_at ?? '')}</div>` : ''}${r.requested_by ? `<div class="small muted">${t('req_by', { u: uname(r.requested_by) })}</div>` : ''}</td>
       <td class="small">${partsHtml(r, r.children, true)}${r.listing_id ? `#${r.listing_id} ` : ''}${esc((r.result || '').split('\n')[0])}</td></tr>`).join('') || `<tr><td colspan="5">${empty('')}</td></tr>`}</tbody></table></div>${changesHtml()}</div>`;
