@@ -13,7 +13,7 @@ from .db import connect, params, rows
 from .models import model_tree, variant_detail
 from .quotes import manual_quote
 from .chance import owner_chance
-from .ranking import CRITERIA, TASKS, check_answers, rank, ranking_state, weights_from, weights_from_answers
+from .ranking import CRITERIA, FILTERS, TASKS, check_answers, check_filter, rank, ranking_state, weights_from, weights_from_answers
 from .todo import todo
 
 VIEW_COOKIE = "carlos_view"  # an admin viewing as another account (issue #142); set by the header switcher
@@ -58,6 +58,16 @@ RUN_GET = re.compile(r'/api/(agent/(todo|schema|stage|disputes)|todo|models|vehi
 # and the DIY/driving choices it needs (agent_tools.diy_jobs, resale_rule_of_thumb), not the person.
 PROFILE_PARAMS = ('postal_code', 'purchase_mode', 'ranking_weights', 'ranking_answers')
 RUN_PREFERENCES = ('diy_jobs', 'diy_skills', 'driving_mix', 'search_radius', 'preferred_engine', 'current_car', 'onboarding_done')
+
+
+def coarse_distance(obj):
+    """N9: a research run sees a car's distance to the nearest 10 km only; the exact figure would narrow the requester's postcode area."""
+    if isinstance(obj, dict):
+        return {k: round(v / 10) * 10 if k in ('distance', 'distance_km') and isinstance(v, (int, float)) and not isinstance(v, bool)
+                else coarse_distance(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [coarse_distance(v) for v in obj]
+    return obj
 
 
 class Forbidden(Exception):
@@ -285,6 +295,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------ responses
     def send_json(self, obj, status=200, cookie=None):
+        if getattr(self, 'request', None) is not None:  # every answer to a request token (N9)
+            obj = coarse_distance(obj)
         # level 1: the API's payloads are large and the Pi is slow; the ratio loss against level 6 is small
         self.send_body(json.dumps(obj, ensure_ascii=False).encode(), 'application/json; charset=utf-8', status, cookie=cookie, level=1)
 
@@ -489,7 +501,7 @@ class Handler(BaseHTTPRequestHandler):
             client, username = self.client_ip(), str(d.get('username') or '')
             raw = auth.login(c, username, str(d.get('password') or ''), client)
             if raw is None:
-                self.send_json({'error': 'Wrong username or password'}, 429 if auth.locked(client) or auth.locked(auth.user_key(username)) else 401); return
+                self.send_json({'error': 'Wrong username or password'}, 429 if auth.capped() or auth.locked(client) or auth.locked(auth.user_key(username)) else 401); return
             u = auth.user_by_session(c, raw)
             self.send_json(auth.public(u), cookie=self.session_cookie(raw))
         elif path == '/api/auth/logout' and method == 'POST':
@@ -517,7 +529,7 @@ class Handler(BaseHTTPRequestHandler):
         f = config.MEDIA_DIR / m[1] / m[2] if m else None
         if not m or not f.is_file() or c.execute('SELECT 1 FROM listing_media WHERE file_path=?', (f'{m[1]}/{m[2]}',)).fetchone() is None:
             self.send_error(404); return
-        self.send_file(f, {'jpg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}[f.suffix[1:]], 'private, max-age=31536000, immutable')
+        self.send_file(f, {'jpg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}[f.suffix[1:]], 'private, no-cache')  # revalidated: a hidden photo leaves the browser at once
 
     # ------------------------------------------------------------------ the API (login required)
     def api(self, c, method, path):
@@ -673,6 +685,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Expected an object of preference_key (snake_case) → value')
             if d.get('insurance_worker_quotes') not in (None, ''):  # removed 2026-11-22 (CHECK24 bans automated applications): refused, a stored value may be cleared
                 raise ValueError(rq.INSURANCE_REMOVED)
+            for k, v in d.items():  # a filter the ranking cannot read would fail every ranking run
+                if k in FILTERS and v is not None and str(v).strip():
+                    check_filter(k, str(v).strip())
             with c:
                 for k, v in d.items():
                     if v is None or str(v).strip() == '':
@@ -842,10 +857,11 @@ class Handler(BaseHTTPRequestHandler):
                         'reject': 'Rejected by the owner' + (f': {reason}' if reason else ''), 'reset': None}
             if d not in verdicts:
                 raise ValueError('decision must be shortlist, viewing, reject or reset')
-            row = c.execute('SELECT is_reference FROM listings WHERE id=?', (row_id,)).fetchone()
+            row = c.execute('SELECT is_reference, listing_status FROM listings WHERE id=?', (row_id,)).fetchone()
             if row is None or row[0]:
                 raise ValueError('Decisions apply to cars for sale, not to your own car')
-            agent_write(c, 'listings', row_id, {'verdict': verdicts[d], 'listing_status': 'WITHDRAWN' if d == 'reject' else 'UNDER REVIEW'}, uid)
+            status = {} if row[1] == 'OWNED' else {'listing_status': 'WITHDRAWN' if d == 'reject' else 'UNDER REVIEW'}
+            agent_write(c, 'listings', row_id, {'verdict': verdicts[d], **status}, uid)
             src = self.user_source(c, uid, today)
             new_id = agent_write(c, 'listing_events', None, {'listing_id': row_id, 'event_date': today, 'kind': 'decision',
                                                              'text': verdicts[d] or 'Decision reset by the owner: back under review', 'source_id': src}, uid)
@@ -854,12 +870,9 @@ class Handler(BaseHTTPRequestHandler):
         elif kind == 'listing_history' and method == 'PATCH' and row_id is not None:  # the owner's chance a fixed fault recurs (#379)
             new_id = owner_chance(c, uid, row_id, data, lambda: self.user_source(c, uid, today), today)
         elif kind == 'listing_events' and method == 'POST':
-            src = c.execute("SELECT id FROM sources WHERE source_type='user_reported' ORDER BY id LIMIT 1").fetchone()
-            if src is None:
-                src = [agent_write(c, 'sources', None, {'title': 'User-provided data', 'source_type': 'user_reported', 'accessed_date': today,
-                                                        'supports': 'Observations by the user at viewings', 'limitations': 'User statements'}, uid)]
             new_id = agent_write(c, 'listing_events', None, {'listing_id': data.get('listing_id'), 'event_date': today,
-                                                             'kind': 'viewing', 'text': data.get('text'), 'source_id': src[0]}, uid)
+                                                             'kind': 'viewing', 'text': data.get('text'),
+                                                             'source_id': self.user_source(c, uid, today)}, uid)
         else:
             raise NotFound('Unsupported viewing-mode request')
         return {'table': kind, 'id': new_id}
@@ -877,7 +890,7 @@ class Handler(BaseHTTPRequestHandler):
             where = ' WHERE owner_id=?' if 'owner_id' in q and tbl[1] in auth.OWNED + auth._KNOW + ('research_requests',) else ''
             cols = '*' if tbl[1] not in ('users', 'workers') else ('id, username, role, is_active, created_at' if tbl[1] == 'users' else rq.WORKER_COLS)
             sql = f'SELECT {cols} FROM main.{tbl[1]}{where} ORDER BY id DESC LIMIT ?'
-            self.send_json(rows(c, sql, ([int(q['owner_id'][-1])] if where else []) + [min(int(q.get('limit', ['1000'])[-1]), 5000)]))
+            self.send_json(rows(c, sql, ([int(q['owner_id'][-1])] if where else []) + [max(1, min(int(q.get('limit', ['1000'])[-1]), 5000))]))
         elif path == '/api/admin/workers' and method == 'GET':  # registered workers (issue #141)
             self.send_json(rq.workers(c))
         elif path == '/api/admin/workers' and method == 'POST':
@@ -893,7 +906,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(next(x for x in rq.workers(c) if x['id'] == int(wk[1])))
         elif path == '/api/admin/changes' and method == 'GET':  # recent writes, newest first, paged by ?before=<id> (issue #142)
             q = parse_qs(urlsplit(self.path).query)
-            before, limit = int(q.get('before', ['0'])[-1] or 0), min(int(q.get('limit', ['50'])[-1]), 200)
+            before, limit = int(q.get('before', ['0'])[-1] or 0), max(1, min(int(q.get('limit', ['50'])[-1]), 200))
             self.send_json(rows(c, "SELECT ch.id, ch.changed_at, ch.table_name, ch.row_id, ch.action, w.username AS writer, a.username AS account "
                                    "FROM main.change_log ch LEFT JOIN main.users w ON w.id=ch.user_id "
                                    "LEFT JOIN main.users a ON a.id=COALESCE(json_extract(ch.new_json, '$.owner_id'), "

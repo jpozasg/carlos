@@ -128,7 +128,7 @@ Ranking turns your priorities into a score from 0 to 100.
 
 - The questionnaire asks eight quick questions. Each question shows four cars. You pick the best and the worst. The answers set the weight of each criterion.
 - You can change the weights by hand with the sliders. The page explains the formula and where each number comes from.
-- The eight criteria are: total cost per month, cash needed now, mileage, age, reliability, viewing findings, power, and data confidence.
+- The nine criteria are: total cost per month, price against budget, mileage, age, reliability (external ratings), viewing findings, power, safety, and distance to view.
 - **Reliability** comes from published ratings: the engine rating, the defect share of the technical inspection (TÜV) and the breakdown statistics (ADAC). If one source is missing, the page says "2 of 3 sources". A missing source is never counted as zero.
 - A score with a **?** is **provisional**. Less than half of what you weight is known for that car yet. The score firms up when the research fills in.
 

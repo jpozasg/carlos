@@ -4,12 +4,16 @@ export const LANGS = { en: 'en-GB', es: 'es-ES', de: 'de-DE', pl: 'pl-PL' };
 let lang = 'en', dict = {}, en = {};
 export const current = () => lang;
 export const locale = () => LANGS[lang];
+const getJson = async l => { const r = await fetch(`/static/i18n/${l}.json`); if (!r.ok) throw new Error(`${l}.json ${r.status}`); return r.json(); };
+// a failing English file throws (app.js shows the error card); a failing other language falls back to English, unsaved
 export async function load(l) {
-  lang = LANGS[l] ? l : 'en';
-  if (!Object.keys(en).length) en = await (await fetch('/static/i18n/en.json')).json();
-  dict = lang === 'en' ? en : await (await fetch(`/static/i18n/${lang}.json`)).json();
+  const want = LANGS[l] ? l : 'en';
+  if (!Object.keys(en).length) en = await getJson('en');
+  let ok = true;
+  dict = want === 'en' ? en : await getJson(want).catch(() => { ok = false; return en; });
+  lang = ok ? want : 'en';
   document.documentElement.lang = lang;
-  try { localStorage.setItem('carlos.lang', lang); } catch (e) {}
+  if (ok) try { localStorage.setItem('carlos.lang', lang); } catch (e) {}
 }
 export function initialLang() {
   try { const v = localStorage.getItem('carlos.lang'); if (LANGS[v]) return v; } catch (e) {}

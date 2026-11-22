@@ -174,6 +174,13 @@ class UnitScopeTest(unittest.TestCase):
         staging.check_unit_write(c, req, 'tax_data', None, 'not a dict')                                                # agent_write answers 400 for that
         c.close()
 
+    def test_check_unit_write_reads_through_the_scope(self):  # review D-08: a row the account cannot see is not read at all
+        c = sqlite3.connect(config.DB); c.row_factory = sqlite3.Row
+        auth.scope(c, 99)  # an account whose catalogue does not include V_B: its shared tax row is hidden from it
+        self.assertEqual(c.execute('SELECT count(*) FROM tax_data WHERE id=?', (self.shared_tax(V_B),)).fetchone()[0], 0)
+        staging.check_unit_write(c, {'unit': 'TAX', 'listing_id': CAR_A}, 'tax_data', self.shared_tax(V_B), {'annual_tax_eur': 1})  # no 403 from the hidden row
+        c.close()
+
     # ---------------------------------------------------------------- staged runs: rows without a level
     def test_staged_run_cannot_patch_a_row_without_a_level(self):
         self.sql("INSERT INTO maintenance_items (id, item, schedule, interval_months, reference_cost_eur, status, source_id) "

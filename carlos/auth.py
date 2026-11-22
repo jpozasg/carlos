@@ -7,6 +7,8 @@ SESSION_DAYS, INVITE_HOURS = 30, 72
 COOKIE = 'carlos_session'
 LOGIN_MAX_FAILS, LOGIN_LOCK_SECONDS = 10, 300
 USER_MAX_FAILS = 20  # per username, from any address: higher, so a stranger cannot easily lock the owner out, but a botnet cannot guess forever
+LOGIN_MAX_PER_MINUTE = 60  # N5: wrong passwords per minute for the whole process, whatever the username or address (a rotating botnet meets it too)
+MINUTE = {'start': 0.0, 'fails': 0}
 FAILS = {}  # shortcut: lock counters in memory (keys: client address, 'u:<username>', 'pw:<user id>'); reset on restart (single process)
 OWNED = ('generations', 'engines', 'vehicles', 'sources', 'listings', 'project_parameters', 'project_preferences',
          'engine_families', 'gearbox_families', 'gearboxes', 'body_styles', 'options')
@@ -119,6 +121,14 @@ def user_key(username):
     return 'u:' + username.strip().lower()[:64]
 
 
+def capped():
+    """True while this minute's wrong passwords (every account and address together) reached LOGIN_MAX_PER_MINUTE."""
+    now_ = time.time()
+    if now_ - MINUTE['start'] >= 60:
+        MINUTE.update(start=now_, fails=0)
+    return MINUTE['fails'] >= LOGIN_MAX_PER_MINUTE
+
+
 def fail(key, limit=LOGIN_MAX_FAILS):
     """Counts a wrong password under `key`; `limit` of them lock the key for LOGIN_LOCK_SECONDS."""
     now_ = time.time()
@@ -143,13 +153,13 @@ def login(c, username, password, client='local'):
     now_, ukey = time.time(), user_key(username)
     for k in [k for k, f in FAILS.items() if f['until'] < now_ and f['last'] < now_ - LOGIN_LOCK_SECONDS]:
         del FAILS[k]
-    if locked(client) or locked(ukey):
+    if capped() or locked(client) or locked(ukey):
         return None
     u = c.execute('SELECT * FROM main.users WHERE username=? AND is_active=1', (username,)).fetchone()
     known = u is not None and bool(u['password_hash'])
     ok = check_password(u['password_hash'] if known else DUMMY_HASH, password) and known  # scrypt runs either way
     if not ok:
-        fail(client); fail(ukey, USER_MAX_FAILS)
+        fail(client); fail(ukey, USER_MAX_FAILS); MINUTE['fails'] += 1
         return None
     clear(client); clear(ukey)
     return new_session(c, u['id'])

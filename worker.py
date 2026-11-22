@@ -132,6 +132,16 @@ def refuse_shared_checkout():
         print(f'worker: WARNING: this checkout holds {held}; the headless run can read them', file=sys.stderr, flush=True)
 
 
+SAFE_FLAGS = ('-p', '--print', '--model', '--output-format', '--settings', '--disable-slash-commands')  # N8: the flags the worker's own defaults use
+
+
+def check_command(cmd):
+    """N8: CLAUDE_CMD may carry only SAFE_FLAGS; a permission bypass or any other flag stops the worker before it claims a request."""
+    bad = [t for t in shlex.split(cmd)[1:] if t.startswith('-') and t.split('=', 1)[0] not in SAFE_FLAGS]
+    if bad:
+        raise SystemExit(f'worker: CLAUDE_CMD has flag(s) outside the allow-list: {" ".join(bad)} (allowed: {" ".join(SAFE_FLAGS)})')
+
+
 def command(cmd, model):
     """The headless command with --model <model> after the claude executable, unless one is given (owner: the worker runs on Haiku)."""
     parts = shlex.split(cmd)
@@ -266,6 +276,11 @@ def main(argv=None):
     api.worker = bool(os.environ.get('WORKER_TOKEN'))
     name, cmd = os.environ.get('WORKER_NAME') or socket.gethostname(), os.environ.get('CLAUDE_CMD', 'claude -p')
     model = os.environ.get('WORKER_MODEL', 'haiku')
+    check_command(cmd)
+    print(f'worker: runs start with: {" ".join(command(cmd, model))}', flush=True)  # the effective command (N8); no environment values
+    extra = sorted({x.strip() for x in os.environ.get('WORKER_PASS_ENV', '').split(',')} - NEVER_PASSED - {''})
+    if extra:
+        print(f'worker: WORKER_PASS_ENV passes to the runs: {", ".join(extra)}', flush=True)
     logs = os.environ.get('WORKER_LOGS', str(ROOT / 'worker-logs'))
     timeout_s, poll = int(os.environ.get('WORKER_TIMEOUT_MIN', '120')) * 60, int(os.environ.get('POLL_SECONDS', '60'))
     research_s = int(os.environ.get('WORKER_RESEARCH_TIMEOUT_MIN', '150')) * 60
