@@ -399,6 +399,132 @@ class AppTest(unittest.TestCase):
         self.agent('PATCH', 'maintenance_items/1', {'diy_parts_cost_eur': None})
         self.assertIsNone(self.units()[CAR_A]['components']['maintenance'])
 
+    def tco_at(self, years):
+        return {u['id']: u for u in self.req('GET', f'/api/tco?ownership_years={years}')[1]['listings']}
+
+    def test_resale_follows_the_ownership_period_388(self):
+        """C1: a stored resale_end is the value at its own horizon_years; another ownership period moves it along the rule
+        of thumb's yearly loss (expected 6 %, low 10 %, high 3 %), so a longer horizon is no longer flattered: CAR_A at 8
+        years cost 286.1 a month with the value loss frozen at 2,000."""
+        month = {}
+        for y in (4, 6, 8):
+            us = self.tco_at(y)
+            a, b, ref = us[CAR_A], us[CAR_B], us[REF]
+            exp, low, high = 4000 * 0.94 ** (y - 4), 3500 * 0.90 ** (y - 4), 4500 * 0.97 ** (y - 4)
+            self.assertAlmostEqual(a['components']['depreciation'], 6000 - exp, places=1)
+            self.assertAlmostEqual(a['tco_pessimistic'] - a['known_cost_subtotal'], exp - low, places=1)
+            self.assertAlmostEqual(a['known_cost_subtotal'] - a['tco_optimistic'], high - exp, places=1)
+            self.assertAlmostEqual(b['components']['depreciation'], 7500 - 5500 * 0.94 ** (y - 4), places=1)
+            self.assertAlmostEqual(ref['components']['depreciation'], 2500 - 1500 * 0.94 ** (y - 4), places=1)   # sale today stays
+            self.assertEqual(a['cost_detail']['resale_rescaled_from_years'], None if y == 4 else 4)
+            be = a['breakeven']                                                   # the cash view prices the same end value
+            self.assertAlmostEqual(be['resale_end'], exp, places=1)
+            self.assertAlmostEqual(be['end_advantage'], -a['delta_vs_reference'], delta=1)
+            month[y] = a['known_cost_per_month']
+        self.assertAlmostEqual(month[4], 315.17, places=2)
+        self.assertAlmostEqual(month[6], 302.4, delta=0.05)
+        self.assertAlmostEqual(month[8], 295.27, delta=0.05)                      # was 286.13
+        # a row without a horizon is taken as given; an electric car's expected value is the low case (10 %/year)
+        self.sql_write('UPDATE valuations SET horizon_years=NULL WHERE listing_id=?', (CAR_A,))
+        self.assertAlmostEqual(self.tco_at(8)[CAR_A]['components']['depreciation'], 2000, places=1)
+        e, v, l = self.ev_listing(price_eur=10000)
+        self.agent('POST', 'valuations', {'listing_id': l['id'], 'kind': 'resale_end', 'horizon_years': 4, 'expected_eur': 4000,
+                                          'status': 'ESTIMATED', 'source_id': SRC_GUIDE})
+        self.assertAlmostEqual(self.tco_at(6)[l['id']]['components']['depreciation'], 10000 - 4000 * 0.90 ** 2, places=1)
+
+    def test_certain_tyres_are_part_of_the_wear_388(self):
+        """C2: the set bought now is the first 45,000 km of the expected wear (60,000 km, 405 € a set: 540), never on top."""
+        base = self.units()[CAR_A]['components']['tyres']
+        self.assertAlmostEqual(base, 540)
+        add = lambda eur: self.agent('POST', 'unit_costs', {'listing_id': CAR_A, 'category': 'tyres', 'item': 'Tyres at purchase',
+                                                            'parts_eur': eur, 'status': 'ESTIMATED', 'source_id': SRC_GUIDE})[0]
+        self.assertEqual(add(405), 201)
+        a = self.units()[CAR_A]
+        self.assertAlmostEqual(a['components']['tyres'], 540)
+        self.assertAlmostEqual(a['cost_detail']['tyres_certain'] + a['cost_detail']['tyre_wear'], 540)   # 405 + the rest, 135
+        self.assertAlmostEqual(self.tco_at(1)[CAR_A]['components']['tyres'], 405)      # a short stay still pays the set
+        self.assertEqual(add(100), 201)                                                # more than one set's price is not capped
+        self.assertAlmostEqual(self.units()[CAR_A]['components']['tyres'], 540)        # 505 certain, wear 540: the larger
+        self.assertAlmostEqual(self.tco_at(8)[CAR_A]['components']['tyres'], 1080)     # 120,000 km: 2.67 sets
+        self.sql_write('DELETE FROM tyre_data')                                        # no tyre data: unknown, not the certain part
+        self.assertIsNone(self.units()[CAR_A]['components']['tyres'])
+
+    def test_most_specific_level_wins_for_consumption_and_tyres_388(self):
+        """C5: the exact variant's figure beats a newer engine or generation row; within one level the newest wins."""
+        obs = lambda **k: self.agent('POST', 'observations', {'category': 'consumption', 'metric': config.PRIMARY_CONSUMPTION,
+                                                              'status': 'PRIMARY', 'source_id': SRC_GUIDE, **k})[0]
+        self.assertEqual(obs(engine_id=E_A, value_num=6.0, unit='l/100 km'), 201)       # newer than the variant's 7.0
+        self.assertEqual(obs(generation_id=G2, value_num=6.5, unit='l/100 km'), 201)    # newer than CAR_B's engine row 5.8
+        us = self.units()
+        self.assertEqual((us[CAR_A]['consumption'], us[CAR_B]['consumption']), (7.0, 5.8))
+        self.assertEqual(obs(vehicle_id=V_A, value_num=7.4, unit='l/100 km'), 201)
+        self.assertEqual(self.units()[CAR_A]['consumption'], 7.4)                       # same level: the newest
+        tyre = lambda price, **k: self.agent('POST', 'tyre_data', {'tyre_type': 'ALL-SEASON', 'size': '195/55 R16', 'price_per_tyre_eur': price,
+                                                                   'tyres_per_set': 4, 'life_km': 45000, 'fitting_per_set_eur': 0,
+                                                                   'status': 'ESTIMATED', 'source_id': SRC_GUIDE, **k})[0]
+        self.assertEqual(tyre(100, vehicle_id=V_A), 201)
+        self.assertEqual(tyre(50, generation_id=G1), 201)                                # re-added later by a research re-run
+        self.assertAlmostEqual(self.units()[CAR_A]['components']['tyres'], 60000 / 45000 * 400)
+
+    def test_unknown_is_never_shown_as_zero_388(self):
+        """C6: a risk without a mileage, a free electricity price, a warranty of unknown age and a fix at an unknown km."""
+        self.sql_write('UPDATE listings SET mileage_km=NULL WHERE id=?', (CAR_A,))
+        d = self.req('GET', f'/api/listings/{CAR_A}')[1]
+        self.assertTrue(d['repair_risks'])
+        self.assertTrue(all(r['expected_eur'] is None and r['share'] is None for r in d['repair_risks']))
+        self.assertIsNone(d['components']['repairs'])
+        # a price of 0 is a known price (fuel 0), only an unset one is unknown; the table forbids 0, the live preview accepts it
+        self.req('POST', '/api/parameters', {'home_charging': 'wallbox', 'home_charging_pct': 100, 'electricity_home_eur_kwh': 0.4})
+        e, v, l = self.ev_listing()
+        self.agent('POST', 'observations', {'vehicle_id': v['id'], 'category': 'consumption', 'metric': config.PRIMARY_CONSUMPTION_EV,
+                                            'value_num': 16.0, 'unit': 'kWh/100 km', 'status': 'PRIMARY', 'source_id': SRC_GUIDE})
+        self.assertGreater(self.units()[l['id']]['components']['fuel'], 0)
+        free = self.req('GET', '/api/tco?electricity_home_eur_kwh=0')[1]['listings']
+        self.assertEqual(next(u for u in free if u['id'] == l['id'])['components']['fuel'], 0)
+        self.req('POST', '/api/parameters', {'electricity_home_eur_kwh': None})
+        self.assertIsNone(self.units()[l['id']]['components']['fuel'])
+        # a warranty counts from the first registration: without it, or without any limit, there is no cover to claim
+        f = {'id': 1, 'component': 'Chain', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE', 'parts_eur': 400, 'labor_eur': 600,
+             'curve_km': json.dumps([[100000, 0.1], [200000, 0.4]]), 'warranty_share': 0.5, 'warranty_km': 900000, 'warranty_years': 40}
+        plan = lambda f, age: costs.fault_plan([f], 90000, 60000, age, 48, annual_km=15000)[0]
+        self.assertGreater(plan(f, 5.0)['warranty_cover'], 0)
+        self.assertEqual(plan(f, None)['warranty_cover'], 0)                            # was: the car counted as brand new
+        self.assertEqual(plan({**f, 'warranty_km': None, 'warranty_years': None}, 5.0)['warranty_cover'], 0)   # was: unlimited
+        self.assertGreater(plan({**f, 'warranty_years': None}, None)['warranty_cover'], 0)   # a km limit alone needs no age
+        # a documented fix at an unknown km: no risk left when nothing follows it; unknown when a fixed part's curve follows
+        g = {**f, 'id': 2, 'curve_km': json.dumps([[200000, 0.05]]), 'warranty_share': None}
+        run = lambda fixed: costs.fault_plan([{**f, 'warranty_share': None, 'fixed_fault_id': fixed}], 90000, 60000, 5.0, 48,
+                                             done={1: None}, by_id={2: g})[0]
+        self.assertEqual(run(None)['expected_eur'], 0)
+        self.assertIsNone(run(2)['expected_eur'])                                       # was: the fix taken at km 0
+        self.assertEqual((run(2)['fixed'], run(2)['repaired_at_km']), (True, None))     # the fix is registered, its km is not
+        self.assertIsNotNone(costs.fault_plan([{**f, 'warranty_share': None, 'fixed_fault_id': 2}], 90000, 60000, 5.0, 48,
+                                              done={1: 80000}, by_id={2: g})[0]['expected_eur'])
+
+    def test_a_certain_cost_without_a_figure_is_unknown_388(self):
+        """C6 (data-truth review): a certain cost with neither parts nor labour is a pending price, so its component is
+        unknown, not 0. A PRESENT history item may have no figure; the unit_costs CHECK forbids it today, a legacy row may not."""
+        base = self.units()[CAR_A]['components']
+        st, _ = self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'job': 'BRAKES_FRONT', 'item': 'Front brake pads worn',
+                                                       'status': 'PRESENT', 'category': 'repairs', 'evidence': 'OBSERVED'})
+        self.assertEqual(st, 201)
+        a = self.units()[CAR_A]
+        self.assertIsNone(a['components']['repairs'])                              # was 500 + the expected repairs, as if the pads were free
+        self.assertIn('repairs', a['missing_components'])
+        self.assertFalse(a['tco_complete'])
+        self.assertEqual(a['components']['maintenance'], base['maintenance'])      # other categories keep their total
+        self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'job': 'BRAKES_FRONT', 'item': 'Brake discs worn', 'status': 'PRESENT',
+                                               'category': 'repairs', 'evidence': 'OBSERVED', 'parts_eur': 90})
+        self.assertIsNone(self.units()[CAR_A]['components']['repairs'])            # a priced item beside it does not hide the gap
+        c = sqlite3.connect(config.DB)
+        c.execute('PRAGMA ignore_check_constraints=ON')
+        c.execute("INSERT INTO unit_costs (listing_id, category, item, status) VALUES (?, 'purchase_sale', 'Plates', 'ESTIMATED')", (CAR_B,))
+        c.execute("INSERT INTO unit_costs (listing_id, category, item, status) VALUES (?, 'maintenance', 'Brake fluid', 'ESTIMATED')", (CAR_B,))
+        c.commit(); c.close()
+        b = self.units()[CAR_B]['components']
+        self.assertIsNone(b['purchase_sale'])
+        self.assertIsNone(b['maintenance'])
+
     def test_maintenance_resets(self):
         d = self.req('GET', f'/api/listings/{CAR_B}')[1]
         belt = next(m for m in d['maintenance'] if m['item'].startswith('Timing belt'))
@@ -415,6 +541,65 @@ class AppTest(unittest.TestCase):
         self.assertAlmostEqual(d['components']['maintenance'], before - 48 / 72 * 600)   # months governed: 0.667 occurrences
         self.assertAlmostEqual(sum(x['cost_eur'] for x in d['maintenance_plan']), d['components']['maintenance'])
         self.assertAlmostEqual(sum(x['expected_eur'] for x in d['repair_risks']) + 0, d['cost_detail']['repairs_expected'])
+
+    def test_figures_the_ui_totals_rely_on(self):
+        """The UI never recomputes: per month = subtotal / period_months, and the repairs component = certain + risks + weak points
+        (the dossier's Repairs total shows exactly these parts); an unpriced weak point makes the component unknown, never smaller."""
+        for u in self.units().values():
+            if u['known_cost_per_month'] is not None:
+                self.assertAlmostEqual(u['known_cost_per_month'] * u['period_months'], u['known_cost_subtotal'])
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        fault = {'engine_id': d['engine_id'], 'component': 'Timing chain', 'component_code': 'TIMING_CHAIN', 'part': 'ENGINE', 'consequence': 'ENGINE_DAMAGE',
+                 'existence': 'REPORTED', 'curve_km': [[100000, 0.1], [200000, 0.4]], 'probability_basis': 'ESTIMATE', 'source_id': SRC_GUIDE}
+        st, f = self.agent('POST', 'faults', {**fault, 'parts_eur': 400, 'labor_eur': 600})
+        self.assertEqual(st, 201, f)
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        cd = d['cost_detail']
+        self.assertTrue(d['fault_plan'])
+        self.assertAlmostEqual(cd['repairs_expected'], sum(x['expected_eur'] for x in d['repair_risks']) + sum(x['expected_eur'] for x in d['fault_plan']))
+        self.assertAlmostEqual(d['components']['repairs'], (cd['repairs_certain'] or 0) + cd['repairs_expected'])
+        self.agent('PATCH', f"faults/{f['id']}", {'parts_eur': None, 'labor_eur': None})
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        self.assertIsNone(d['components']['repairs'])                         # unpriced weak point: unknown, so the UI shows "+n pending"
+        self.assertIsNone(d['cost_detail']['repairs_expected'])
+
+    def test_repairs_total_cases_the_dossier_defers_to_the_server(self):
+        """The dossier's Repairs total is d.components.repairs, never a client sum: it is unknown without a mileage, with only a
+        certain repair (no researched risk), and it also counts PRESENT history items that no unit_costs row lists."""
+        self.sql_write('UPDATE reliability_items SET archived=1')
+        get = lambda: self.req('GET', f'/api/listings/{CAR_B}')[1]
+        base = get()
+        self.assertIsNotNone(base['components']['repairs'])
+        self.assertTrue(base['repair_risks'])
+        # (a) a PRESENT history cost is a certain repair although unit_costs lists nothing
+        src = self.agent('POST', 'sources', {'title': 'Workshop quote', 'source_type': 'listing'})[1]['id']
+        self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_B, 'job': 'CLUTCH', 'item': 'Worn clutch', 'status': 'PRESENT', 'category': 'repairs',
+                                                                'parts_eur': 120, 'labor_eur': 80, 'evidence': 'OBSERVED', 'source_id': src})[0], 201)
+        d = get()
+        self.assertEqual(d['cost_detail']['repairs_certain'], 200)
+        self.assertEqual([x for x in d['unit_costs'] if x['category'] == 'repairs'], [])
+        self.assertAlmostEqual(d['components']['repairs'], 200 + d['cost_detail']['repairs_expected'])
+        # (b) no mileage: expected repairs unknown, so the component is unknown although risk_plan lists rows
+        mileage = base['mileage_km']
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_B}', {'mileage_km': None})[0], 200)
+        d = get()
+        self.assertIsNone(d['cost_detail']['repairs_expected'])
+        self.assertIsNone(d['components']['repairs'])
+        self.assertEqual(self.agent('PATCH', f'listings/{CAR_B}', {'mileage_km': mileage})[0], 200)
+        # (c) only a certain repair, nothing researched: the component stays unknown
+        for r in base['repair_risks']:
+            self.assertEqual(self.agent('PATCH', f"repair_risks/{r['id']}", {'archived': 1})[0], 200)
+        d = get()
+        self.assertEqual(d['cost_detail']['repairs_certain'], 200)
+        self.assertIsNone(d['components']['repairs'])
+
+    def test_valuation_sources_are_listed_with_the_dossier(self):
+        """A valuation's source is a link in the dossier, so the source must be in d.sources even when nothing else cites it."""
+        src = self.agent('POST', 'sources', {'title': 'Resale comparison', 'source_type': 'listing', 'url': 'https://example.test/resale'})[1]['id']
+        self.assertEqual(self.agent('POST', 'valuations', {'listing_id': CAR_B, 'kind': 'resale_end', 'expected_eur': 4000, 'status': 'ESTIMATED', 'source_id': src})[0], 201)
+        d = self.req('GET', f'/api/listings/{CAR_B}')[1]
+        self.assertIn(src, {s['id'] for s in d['sources']})
 
     def test_certain_maintenance(self):
         """A scheduled job due at purchase is a certain maintenance cost: it adds to maintenance, never to repairs."""

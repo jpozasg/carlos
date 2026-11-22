@@ -15,6 +15,9 @@
  "storage_hint": "Von der Installation belegter Speicherplatz (Raspberry-Pi-Limit)",
  "fuel_stale": "Der Kraftstoffpreis ist älter als 30 Tage",
  "per_year_short": "km/Jahr",
+ "unit_eur_l": "€/l",
+ "unit_eur_kwh": "€/kWh",
+ "unit_eur_km": "€/km",
  "years": {
   "one": "Jahr",
   "other": "Jahre"
@@ -70,7 +73,6 @@
  "co_month": "Pro Monat",
  "co_subtotal": "Bekannte Zwischensumme (kein TCO)",
  "co_missing": "Unbekannte Komponenten",
- "faults_line": "{n} bekannte Schwachstellen mit erwarteten Kosten von {e} im Zeitraum (Teil der Reparaturen).",
  "rel_weak": "Schwachstellen",
  "rel_recalls": "Rückrufe",
  "rel_remedy": "Abhilfe",
@@ -624,7 +626,29 @@
   "CVT": "CVT",
   "SINGLE-SPEED": "Eingang",
   "TUEV": "TÜV",
-  "ADAC": "ADAC"
+  "ADAC": "ADAC",
+  "VERIFIED": "Verifiziert",
+  "PARTIAL": "Teilweise",
+  "PENDING": "Ausstehend",
+  "ESTIMATED": "Geschätzt",
+  "USER DATA": "Nutzerdaten",
+  "QUOTE": "Angebot",
+  "OFFICIAL FEE LEVEL": "Amtliche Gebühr",
+  "PRIMARY": "Primär",
+  "HIGH": "Hoch",
+  "HIGH IF APPLICABLE": "Hoch, falls zutreffend",
+  "MEDIUM": "Mittel",
+  "LOW-MEDIUM": "Gering bis mittel",
+  "LOW": "Gering",
+  "UNDER REVIEW": "In Prüfung",
+  "OWNED": "Im Besitz",
+  "WITHDRAWN": "Zurückgezogen",
+  "Hybrid": "Hybrid",
+  "Plug-in hybrid": "Plug-in-Hybrid",
+  "Electric": "Elektro",
+  "OK": "OK",
+  "PROBLEM": "Problem",
+  "N/A": "k. A."
  },
  "cv_ruler": "Auf einen Blick",
  "versus_title": "Behalten oder wechseln?",
@@ -639,7 +663,6 @@
  "ruler_title": "Kosten pro Monat, alle Autos auf einer Skala",
  "ruler_lead": "Dein Auto ist die gestrichelte Linie. Autos links davon kosten pro Monat weniger, rechts davon mehr. Eine gefüllte Marke ist eine vollständige Gesamtkostenrechnung; eine hohle Marke ist eine Teilsumme und steht dort, wo ihre bekannten Kosten sie hinsetzen.",
  "ruler_axis": "€ pro Monat",
- "ruler_partial": "teilweise",
  "plate_title": "Typenschild",
  "plate_cost": "Kosten pro Monat",
  "plate_cost_short": "Kosten",
@@ -1084,5 +1107,15 @@
  "rel_recall_kba": "KBA-Rückrufdatenbank",
  "rel_vin_check": "Beim Markenhändler per VIN offene Rückrufe prüfen lassen.",
  "rel_keys_title": "Zuverlässigkeitsquellen (Links)",
- "rel_ratings_title": "Zuverlässigkeitsbewertungen"
+ "rel_ratings_title": "Zuverlässigkeitsbewertungen",
+ "plate_cost_partial": "Bekannte Kosten",
+ "versus_ref_incomplete": "Die Kosten deines Autos sind noch unvollständig, ein fairer Vergleich ist daher noch nicht möglich.",
+ "order_note": "Reihenfolge: {s}, {d}.",
+ "order_note_cost": "Reihenfolge: {s}, {d}. Autos mit unvollständigen Kosten kommen nach den vollständigen.",
+ "hidden_n": {
+  "one": "{n} Auto ist durch die Schalter oben ausgeblendet.",
+  "other": "{n} Autos sind durch die Schalter oben ausgeblendet."
+ },
+ "rk_faults_total": "Schwachstellen (erwartet, {n})",
+ "rk_repairs_total": "Reparaturen: Risiken + Schwachstellen + sicher"
 }
