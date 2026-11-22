@@ -52,6 +52,12 @@ _BASE = {**{t: f'SELECT * FROM main.{t} WHERE owner_id={{o}}' + (f' OR owner_id 
          'market_models': 'SELECT * FROM main.market_models WHERE generation_id IN (SELECT id FROM generations) '
                           'AND engine_id IN (SELECT id FROM engines) AND (owner_id IS NULL OR owner_id={o})',
          **{t: f'SELECT * FROM main.{t} WHERE listing_id IN (SELECT id FROM listings)' for t in _LISTING_CHILDREN}}
+# Insurance (#420, L7): a premium, quote or profile is its account's only; a shared row may hold no such column.
+PRIVATE_INSURANCE = ('annual_premium_eur', 'premium_min_eur', 'premium_status', 'insurer', 'tariff', 'quote_date', 'quote_profile')
+_NO_PREMIUM = ' AND '.join(f'{col} IS NULL' for col in PRIVATE_INSURANCE)
+_BASE['insurance_data'] = ('SELECT * FROM main.insurance_data WHERE (' + _visible(KNOW_LEVELS['insurance_data'])
+                           + ') AND (owner_id={o} OR owner_id IS NULL AND ' + _NO_PREMIUM + ')')
+_BASE['listing_quotes'] = 'SELECT * FROM main.listing_quotes WHERE owner_id={o} AND listing_id IN (SELECT id FROM listings)'
 VIEWS = {}
 for _t, _sql in _BASE.items():
     if _t in ARCHIVABLE:

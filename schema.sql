@@ -1,4 +1,4 @@
--- Reference schema generated from the database (PRAGMA user_version=44). Changes: add migrations/NNN_*.sql.
+-- Reference schema generated from the database (PRAGMA user_version=45). Changes: add migrations/NNN_*.sql.
 CREATE TABLE listing_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  listing_id INTEGER NOT NULL REFERENCES listings(id),
@@ -307,7 +307,7 @@ CREATE TABLE listing_quotes (
  quote_date TEXT CHECK (quote_date IS NULL OR quote_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
  quote_profile TEXT CHECK (quote_profile IS NULL OR json_type(quote_profile) = 'object'),
  source_id INTEGER NOT NULL REFERENCES sources(id), notes TEXT,
- archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)));
+ archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)), owner_id INTEGER REFERENCES users(id));
 CREATE TABLE faults (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  vehicle_id INTEGER REFERENCES vehicles(id), engine_id INTEGER REFERENCES engines(id),

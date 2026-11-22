@@ -49,6 +49,9 @@ SOURCE_REQUIRED = {'source_keys', 'source_ratings', 'listings', 'observations', 
 # postcode, occupation, previous insurer or contact data. Other keys are dropped on write.
 QUOTE_PROFILE_KEYS = {'cover', 'deductible_eur', 'excess_eur', 'sf_class', 'entered_period', 'annual_km', 'usage', 'parking',
                       'purchase_mode', 'workshop_binding', 'start_date', 'extra_drivers', 'hsn', 'tsn', 'first_registration'}
+# Insurance is an account's own (#420, L7): every such row carries its account's owner_id, and the shared catalogue holds none
+# of a premium, quote or profile (auth.py filters reads on it). A shared insurance row an account edits becomes its own.
+ACCOUNT_INSURANCE = ('insurance_data', 'listing_quotes')
 JSON_COLUMNS = (('listing_snapshots', 'attributes_json'), ('insurance_data', 'quote_profile'), ('listing_quotes', 'quote_profile'),
                 ('faults', 'curve_km'), ('faults', 'curve_age'), ('research_checks', 'named_codes'), ('market_models', 'band_counts'), ('market_models', 'sample_json'))
 RULES = ('null = unknown (never 0); archive outdated rows with PATCH archived=1 (listings: listing_status WITHDRAWN); DELETE only after the owner confirmed it; source quality A–D; free text '
@@ -397,6 +400,8 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
             if table in OWNED:
                 catalogue = admin and (table in MODEL or table == 'sources' and any(data.get(k) is not None for k in config.LEVEL_COLUMNS))
                 data['owner_id'] = None if catalogue else user_id
+            elif table in ACCOUNT_INSURANCE:  # the listing's account (listing_quotes), else the account written for (insurance_data)
+                data['owner_id'] = row_owner(c, table, None, data) or user_id
             elif table in _KNOW and ('USER DATA' in (data.get('status'), data.get('premium_status')) or data.get('annual_premium_eur') is not None):
                 data['owner_id'] = user_id
             cur = c.execute(f'INSERT INTO main.{table} ({",".join(data)}) VALUES ({",".join("?" * len(data))})', list(data.values()))
@@ -406,6 +411,8 @@ def agent_write(c, table, row_id, data, user_id, admin=False, actor=None):
             old = c.execute(f'SELECT * FROM {view} WHERE id=?', (row_id,)).fetchone()  # the owner's view: others' rows are "not found"
             if old is None:
                 raise NotFound(f'{table} id={row_id} does not exist')
+            if table in ACCOUNT_INSURANCE and old['owner_id'] is None:
+                data['owner_id'] = user_id
             c.execute(f'UPDATE main.{table} SET {",".join(f"{k}=?" for k in data)} WHERE id=?', [*data.values(), row_id])
             old = json.dumps(dict(old), ensure_ascii=False)
         if table == 'listings' and data.get('vehicle_id') is not None:

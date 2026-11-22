@@ -1,5 +1,6 @@
 """capture_listing.py against a test server on the synthetic fixture database. Run: python -m unittest -v"""
-import tempfile, threading, unittest
+import os, tempfile, threading, unittest
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import capture_listing
@@ -155,6 +156,23 @@ class CaptureListingTest(unittest.TestCase):
         self.assertIsNone(body)
         self.assertIn('private or reserved', why)
         self.assertEqual(seen, ['127.0.0.1', '10.0.0.1'])                       # the redirect target was checked, and refused
+
+
+class LoadTokenTest(unittest.TestCase):
+    """The helper reads AGENT_TOKEN from the environment only, never .env (open finding L7, #420)."""
+
+    def test_environment_only(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {}):
+            Path(d, '.env').write_text('AGENT_TOKEN=from-file\n')  # present, must be ignored
+            os.environ.pop('AGENT_TOKEN', None)
+            with self.assertRaises(SystemExit) as e:
+                capture_listing.load_token()
+            self.assertIn('AGENT_TOKEN', str(e.exception))
+            os.environ['AGENT_TOKEN'] = '  '
+            with self.assertRaises(SystemExit):
+                capture_listing.load_token()
+            os.environ['AGENT_TOKEN'] = 'from-env'
+            self.assertEqual(capture_listing.load_token(), 'from-env')
 
 
 if __name__ == '__main__':

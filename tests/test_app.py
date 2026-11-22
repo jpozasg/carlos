@@ -5,7 +5,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 import migrate
-from carlos import auth, config, server, costs, ranking, research_units
+from carlos import auth, config, db, server, costs, ranking, research_units
 from tests import fixture as fx
 from tests.fixture import REF, CAR_A, CAR_B, V_A, V_B, V_REF, V_B2, E_A, E_B, G1, G2, SRC_GUIDE, SRC_LISTING, SRC_QUOTE, SRC_TAX_OFFICIAL
 
@@ -1349,6 +1349,46 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.units()[CAR_A]['annual_insurance'], 850)        # a Typklasse-only row is not a premium
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'vehicle_id': V_REF, 'annual_premium_eur': 500})[0], 201)
         self.assertEqual(self.units()[REF]['annual_insurance'], 900)          # the reference keeps what the user pays
+
+    def test_insurance_rows_are_their_account_420(self):
+        """Finding L7 (#420): a premium, quote or profile belongs to one account. Its rows carry the owner, a shared insurance row
+        shows no premium to anyone, and two accounts' rows never cross (the owner's own rows stay the owner's)."""
+        def visible(uid, table, row_id):  # the admin's agent token is a curator: it sees the whole catalogue, as the API does
+            c = db.connect()
+            try:
+                auth.scope(c, uid, curator=uid == 1)
+                return c.execute(f'SELECT count(*) FROM {table} WHERE id=?', (row_id,)).fetchone()[0]
+            finally:
+                c.close()
+        uid2, c2 = self.second_account()
+        H = {'X-Carlos-Account': str(uid2)}
+        st, src = self.agent('POST', 'sources', {'title': 'Her quote', 'source_type': 'insurance_quote', 'quality': 'B'}, headers=H)
+        st, mine = self.agent('POST', 'insurance_data', {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 640, 'insurer': 'Her Insurer',
+                                                          'quote_date': fx.TODAY, 'source_id': src['id']}, headers=H)
+        self.assertEqual(st, 201)
+        self.assertEqual(self.sql('SELECT owner_id FROM insurance_data WHERE id=?', (mine['id'],))[0][0], uid2)
+        st, l = self.agent('POST', 'listings', {'vehicle_id': V_A, 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'Q420', 'price_eur': 4000}, headers=H)
+        st, q = self.agent('POST', 'listing_quotes', {'listing_id': l['id'], 'annual_premium_eur': 555, 'premium_status': 'QUOTE', 'source_id': src['id']}, headers=H)
+        self.assertEqual(st, 201)
+        self.assertEqual(self.sql('SELECT owner_id FROM listing_quotes WHERE id=?', (q['id'],))[0][0], uid2)
+        self.assertEqual((visible(uid2, 'listing_quotes', q['id']), visible(1, 'listing_quotes', q['id'])), (1, 0))
+        self.assertEqual((visible(uid2, 'insurance_data', mine['id']), visible(1, 'insurance_data', mine['id'])), (1, 0))  # her listing links V_A
+        # a shared row (no owner) with a premium is shown to nobody; a shared Typklasse-only row is shared
+        self.sql_write('INSERT INTO insurance_data (vehicle_id, annual_premium_eur, premium_status, source_id) VALUES (?,?,?,?)', (V_B, 999, 'QUOTE', SRC_QUOTE))
+        premium_row = self.sql('SELECT max(id) FROM insurance_data')[0][0]
+        self.assertEqual((visible(uid2, 'insurance_data', premium_row), visible(1, 'insurance_data', premium_row)), (0, 0))
+        self.sql_write('INSERT INTO insurance_data (vehicle_id, liability_typklasse, source_id) VALUES (?,?,?)', (V_A, 17, SRC_QUOTE))
+        typ = self.sql('SELECT max(id) FROM insurance_data')[0][0]
+        self.assertEqual((visible(uid2, 'insurance_data', typ), visible(1, 'insurance_data', typ)), (1, 1))
+        # an account that edits the shared row takes it over: the premium it writes is its own, and the others lose sight of it
+        self.assertEqual(self.agent('PATCH', f'insurance_data/{typ}', {'annual_premium_eur': 480, 'premium_status': 'QUOTE', 'source_id': src['id']}, headers=H)[0], 200)
+        self.assertEqual(self.sql('SELECT owner_id FROM insurance_data WHERE id=?', (typ,))[0][0], uid2)
+        self.assertEqual((visible(uid2, 'insurance_data', typ), visible(1, 'insurance_data', typ)), (1, 0))
+        # the owner's own quote stays the owner's: the admin reads it, the other account does not
+        st, own = self.agent('POST', 'insurance_data', {'vehicle_id': V_A, 'annual_premium_eur': 720, 'premium_status': 'QUOTE', 'source_id': SRC_QUOTE})
+        self.assertEqual(self.sql('SELECT owner_id FROM insurance_data WHERE id=?', (own['id'],))[0][0], 1)
+        self.assertEqual((visible(1, 'insurance_data', own['id']), visible(uid2, 'insurance_data', own['id'])), (1, 0))
+        self.assertNotIn(mine['id'], [r['id'] for r in self.req('GET', f'/api/vehicles/{V_A}')[1]['insurance_data']])
 
     def test_data_bugs_107(self):
         # a source of another account cannot be cited, also where source_id has no declared foreign key
