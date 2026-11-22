@@ -41,7 +41,7 @@ Per listing, over the period (km per year × years from Settings):
 - **Repairs:** certain one-off repairs of the listing (present faults, listed by name) plus the expected cost of each known risk (probability × share of its km window driven in the period). Every risk must carry a price; an unpriced risk, no risk research or no mileage makes the component unknown.
 - **Tyres:** wear (km ÷ tread life × set price with fitting) plus listing-specific tyre costs.
 - **Purchase/sale:** registration, plates, pre-purchase check; deregistration for the reference; for an electric car, the wallbox you said you would install (Charging setup).
-- **Depreciation:** asking price − resale at the end (candidates); sale today − resale at the end (reference).
+- **Depreciation:** asking price − resale at the end (candidates); sale today − resale at the end (reference). A stored `resale_end` is the value at its own `horizon_years`; for another ownership period (Settings preview) it moves along the rule of thumb's yearly loss (6 % expected, 10 % low, 3 % high), so a longer horizon is not flattered.
 
 A total is only called a TCO when no component is missing; otherwise it is a partial subtotal and the missing parts are listed. Unknown is always NULL, never 0. The break-even view spreads running costs over the months and shows the payback month of switching. Details: `docs/data-model.md`, `docs/ranking.md`.
 

@@ -57,17 +57,17 @@ def risk_price(r):
 
 def risk_plan(risks, km_now, km_period):
     """Per-risk view of the expected repairs (what expected_repairs adds up): share of the km window driven in the
-    period and expected cost."""
+    period and expected cost; both None without a mileage (unknown, never 0)."""
     out = []
     km_end = (km_now or 0) + km_period
     for r in risks:
-        share = 0 if km_now is None else max(0, min(r['km_to'], km_end) - max(r['km_from'], km_now)) / (r['km_to'] - r['km_from'])
+        share = None if km_now is None else max(0, min(r['km_to'], km_end) - max(r['km_from'], km_now)) / (r['km_to'] - r['km_from'])
         unit = risk_price(r)
         out.append({**{k: r[k] for k in ('id', 'component', 'km_from', 'km_to', 'probability', 'parts_eur', 'labor_eur', 'diy',
                                           'diy_hours', 'status', 'evidence', 'source_id', 'notes')}, 'level': r.get('level'),
                     'applies_from': r.get('applies_from'), 'applies_to': r.get('applies_to'),
-                    'price_eur': unit, 'share': round(share, 3),
-                    'expected_eur': None if (share and unit is None) else round(share * r['probability'] * (unit or 0), 2)})
+                    'price_eur': unit, 'share': None if share is None else round(share, 3),
+                    'expected_eur': None if share is None or (share and unit is None) else round(share * r['probability'] * (unit or 0), 2)})
     return out
 
 
@@ -177,16 +177,16 @@ def shape_curves(f):
     return [[x, cap(1 - (1 - s) ** (x / R))] for x in (100_000, R, E)], None  # RANDOM
 
 
-def fault_price(f):
-    """Workshop price of a fault (parts + labour); None without a price."""
-    return None if f['parts_eur'] is None and f['labor_eur'] is None else (f['parts_eur'] or 0) + (f['labor_eur'] or 0)
+def amount(x):
+    """Parts plus labour of a cost row or a fault (its workshop price); None when it has neither figure (a pending price, never 0)."""
+    return None if x['parts_eur'] is None and x['labor_eur'] is None else (x['parts_eur'] or 0) + (x['labor_eur'] or 0)
 
 
 def fault_severity(f):
     """Derived, never chosen (owner, 2026-11-06, #168): HIGH when it can destroy the engine or gearbox or costs ≥ SEVERITY_HIGH_EUR, or
     strands the car / is a safety risk and costs ≥ SEVERITY_MEDIUM_EUR (cheaper: LOW-MEDIUM, #285); MEDIUM from SEVERITY_MEDIUM_EUR
     or when the car is unusable until fixed; LOW below that while the car still drives."""
-    price = fault_price(f) or 0
+    price = amount(f) or 0
     if f['consequence'] == 'ENGINE_DAMAGE' or price >= config.SEVERITY_HIGH_EUR:
         return 'HIGH'
     if f['consequence'] in ('STRANDS', 'SAFETY'):  # #285: a cheap stranding or safety fault (a coil, bulbs, tie-rod ends) must not empty a part
@@ -210,9 +210,9 @@ def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=Non
     done, by_id = done or {}, by_id or {}
     out = []
     for f in faults:
-        d = done.get(f['id'])
-        g = f if d is None else by_id.get(f.get('fixed_fault_id'))  # the curve the car follows now
-        k0 = None if km_now is None else km_now - (d or 0)
+        fixed, d = f['id'] in done, done.get(f['id'])  # a documented fix; its km may be unknown (None)
+        g = by_id.get(f.get('fixed_fault_id')) if fixed else f  # the curve the car follows now
+        k0 = None if km_now is None or fixed and d is None else km_now - (d or 0)  # a fix at an unknown km: the fixed part's km is unknown
         p = 0.0 if g is None else None
         cover = 0.0
         if g is not None:
@@ -220,7 +220,7 @@ def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=Non
             ps = []
             if km_c and k0 is not None:
                 ps.append(('km', conditional(km_c, k0, k0 + km_period, config.CURVE_END_KM)))
-            if age_c and age_now is not None and d is None:
+            if age_c and age_now is not None and not fixed:
                 ps.append(('age', conditional(age_c, age_now, age_now + months / 12, config.CURVE_END_YEARS)))
             if ps:
                 axis, p = max(ps, key=lambda t: t[1])
@@ -228,16 +228,18 @@ def fault_plan(faults, km_now, km_period, age_now, months, heavy=False, done=Non
                     p = min(1.0, p * g['usage_multiplier'])
                 # warranty: the share of p inside the cover (km and years from first registration, years as km at the
                 # owner's annual km) is paid by the manufacturer for warranty_share of the price
+                # (cover needs a stated limit; an unknown age gives no cover for the years limit, never "brand new")
                 if f.get('warranty_share') and km_now is not None and axis == 'km':
-                    limit = min(f['warranty_km'] or float('inf'),
-                                km_now + max(0, (f['warranty_years'] - (age_now or 0))) * (annual_km or 0) if f.get('warranty_years') else float('inf'))
-                    if limit > km_now:
+                    yrs = f.get('warranty_years')
+                    by_years = float('inf') if not yrs else None if age_now is None else km_now + max(0, yrs - age_now) * (annual_km or 0)
+                    limit = None if by_years is None else min(f['warranty_km'] or float('inf'), by_years)
+                    if limit is not None and km_now < limit < float('inf'):
                         cover = conditional(km_c, k0, min(k0 + km_period, k0 + limit - km_now), config.CURVE_END_KM) * f['warranty_share']
-        price = fault_price(f)
+        price = amount(f)
         out.append({**{k: f.get(k) for k in ('id', 'component', 'part', 'issue', 'consequence', 'existence', 'probability_basis',
                                               'frequency_band', 'shape', 'inspection_action', 'applies_from', 'applies_to',
                                               'window_uncertain', 'source_id', 'notes')},
-                    'level': f.get('level'), 'severity': fault_severity(f), 'price_eur': price, 'repaired_at_km': d,
+                    'level': f.get('level'), 'severity': fault_severity(f), 'price_eur': price, 'repaired_at_km': d, 'fixed': fixed,
                     'probability': None if p is None else round(p, 4), 'warranty_cover': round(cover, 4),
                     'expected_eur': None if p is None or (p and price is None) else round(max(0.0, p - cover) * (price or 0), 2)})
     return out
@@ -259,6 +261,20 @@ def market_model(models, u, today):
             if len(counts) == 3 and min(counts) >= config.MARKET_MIN_PER_BAND and age is not None and age <= config.MARKET_MAX_AGE_DAYS:
                 return m
     return None
+
+
+def resale_at(end, years, electric=False):
+    """A stored resale_end is the value at its own `horizon_years`. For another ownership period it moves along the rule of
+    thumb's yearly loss (config.RESALE_YEARLY_LOSS; the one-off private-sale discount inside the stored value stays), so a
+    longer horizon is not flattered (#388). An electric car's expected value follows the low case, as the rule stores it.
+    No horizon stored: taken as given."""
+    h = end.get('horizon_years')
+    if not h or h == years:
+        return end
+    loss = config.RESALE_YEARLY_LOSS
+    rate = {'expected': loss['low' if electric else 'expected'], 'low': loss['low'], 'high': loss['high']}
+    return {**end, **{f'{k}_eur': None if end[f'{k}_eur'] is None else round(end[f'{k}_eur'] * (1 - r) ** (years - h), 2) for k, r in rate.items()},
+            'horizon_years': years, 'rescaled_from_years': h}
 
 
 def depreciation(u, vals):
@@ -373,15 +389,17 @@ def listing_facts(c):
 
 def history_effects(h, m_rows):
     """What a listing's history changes (#174): scheduled jobs DONE restart (by item or job code), faults DONE restart their
-    km curve at that mileage, PRESENT items are certain costs by category, recalls get their per-car status."""
+    km curve at that mileage (None when the history does not say where), PRESENT items are certain costs by category (None
+    when one has no figure yet), recalls get their per-car status."""
     done_jobs = {x['job'] for x in h if x['status'] == 'DONE' and x['job']}
     restarted = {x['maintenance_item_id'] for x in h if x['status'] == 'DONE' and x['maintenance_item_id']} | \
         {m['id'] for m in m_rows if m.get('job') in done_jobs}
-    faults_done = {x['fault_id']: x['km'] or 0 for x in h if x['status'] == 'DONE' and x['fault_id']}
+    faults_done = {x['fault_id']: x['km'] for x in h if x['status'] == 'DONE' and x['fault_id']}
     present = {}
     for x in h:
         if x['status'] == 'PRESENT':
-            present[x['category']] = present.get(x['category'], 0) + (x['parts_eur'] or 0) + (x['labor_eur'] or 0)
+            a, cat = amount(x), x['category']
+            present[cat] = None if a is None or cat in present and present[cat] is None else present.get(cat, 0) + a
     recalls = {x['recall_id']: x['status'] for x in h if x['recall_id']}
     return restarted, faults_done, present, recalls
 
@@ -409,6 +427,12 @@ def in_window(r, reg):
     lo, hi = r.get('applies_from'), r.get('applies_to')
     n = lambda w: min(len(w), len(reg))
     return (not lo or lo[:n(lo)] <= reg[:n(lo)]) and (not hi or reg[:n(hi)] <= hi[:n(hi)])
+
+
+def most_specific(rows_):
+    """The newest row of the most specific level: the exact variant's figure before the engine's, that before any wider level
+    (AGENTS.md: the HSN/TSN variant is primary), so a later generation row from a re-run never replaces it."""
+    return min(rows_, key=lambda r: ({'variant': 0, 'engine': 1}.get(r['level'], 2), -r['id']), default=None)
 
 
 class Knowledge:
@@ -443,7 +467,7 @@ class Knowledge:
         """The primary consumption row: one real-world source per drivetrain (l/100 km, or kWh/100 km for an electric car)."""
         metric = config.PRIMARY_CONSUMPTION_EV if fuel_type == 'Electric' else config.PRIMARY_CONSUMPTION
         prim = [o for o in self.of('observations', v) if o['metric'] == metric and o['value_num'] is not None]
-        return max(prim, key=lambda o: o['id']) if prim else None
+        return most_specific(prim)
 
     def insurance(self, v, is_reference):
         """The premium row behind the cost (and its evidence, #107): the reference car's own premium, else the newest."""
@@ -467,8 +491,7 @@ class Knowledge:
         return max(rows_, key=lambda r: (STATUS_POINTS.get(r['status'], 0) == 1, r['id']), default=None)
 
     def tyres(self, v):
-        rows_ = self.of('tyre_data', v)
-        return max(rows_, key=lambda r: r['id']) if rows_ else None  # the latest tyre row wins
+        return most_specific(self.of('tyre_data', v))
 
 
 
@@ -640,14 +663,19 @@ def tco_rows(c, p):
                  consumption_min=cons['min_value'] if cons else None, consumption_max=cons['max_value'] if cons else None,
                  consumption_metric=cons['metric'] if cons else None, consumption_source_id=cons['source_id'] if cons else None)
         costs = by_listing.get(u['id'], [])
-        unit_cost = {cat: sum((x['parts_eur'] or 0) + (x['labor_eur'] or 0) for x in costs if x['category'] == cat)
+        unit_cost = {cat: sum(amount(x) or 0 for x in costs if x['category'] == cat)
                      if any(x['category'] == cat for x in costs) else None for cat in config.UNIT_COST_CATEGORIES}
+        no_figure = {x['category'] for x in costs if amount(x) is None}  # a certain cost still without a price: its component is unknown
         m_rows, r_rows = know.of('maintenance_items', v, win), know.of('repair_risks', v, win)
         f_rows, rc_rows = know.of('faults', v, win), know.of('recalls', v, win)
         h_restart, faults_done, present, recall_status = history_effects(history.get(u["id"], []), m_rows)
         restarted = frozenset(resets.get(u['id'], ())) | h_restart
-        for cat, amount in present.items():  # a PRESENT history item is a certain cost (#174)
-            unit_cost[cat] = (unit_cost[cat] or 0) + amount
+        for cat, eur in present.items():  # a PRESENT history item is a certain cost (#174)
+            if eur is None:
+                no_figure.add(cat)
+            else:
+                unit_cost[cat] = (unit_cost[cat] or 0) + eur
+        certain_eur = lambda cat: None if cat in no_figure else unit_cost[cat]
         age_now = 0.0 if new else age_years(u['first_registration'], today)
         # energy price: diesel, petrol (full hybrids too), electricity for an electric car; a plug-in hybrid's mix of both
         # is not supported yet, so its fuel stays unknown (owner decision 2026-11-05)
@@ -659,7 +687,7 @@ def tco_rows(c, p):
         wallbox = (p.get('wallbox_cost_eur') if p.get('home_charging') == 'wallbox_planned' else 0) if electric and not u['is_reference'] else 0
         # certain one-off costs of the listing plus the model's expected costs; the expected part unknown (no risk or
         # tyre research, an unpriced risk, no mileage) makes the whole component unknown, never a smaller number
-        add = lambda certain, expected: None if expected is None else (certain or 0) + expected
+        add = lambda cat, expected: None if expected is None or cat in no_figure else (unit_cost[cat] or 0) + expected
         need = lambda x: f"{x.get('item') or x['component']} ({'DIY parts' if x['diy'] else 'workshop'} price)"
 
         def running(km_, months_):
@@ -673,19 +701,22 @@ def tco_rows(c, p):
                 fcost = None if any(x['expected_eur'] is None for x in fp) else sum(x['expected_eur'] for x in fp)
                 risk = None if fcost is None or (r_rows and risk is None) else (risk or 0) + fcost
             wear = tyre_cost(know.tyres(v), km_)
+            if wear is not None and unit_cost['tyres']:  # a set bought now is the first of the expected wear, never on top of it (#388)
+                wear = max(0.0, wear - unit_cost['tyres'])
             # the jobs whose price for this account's DIY choice is missing, named for the to-do
             unpriced = ([need(x) for x in maintenance_plan(m_rows, km_, months_, restarted, new) if x['cost_eur'] is None] if maint is None else []) + \
                 ([need(x) for x in risk_plan(r_rows, u['mileage_km'], km_) if x['expected_eur'] is None] if risk is None and u['mileage_km'] is not None else []) + \
                 ([f"{x['component']} (fault: chance or price)" for x in fp if x['expected_eur'] is None] if risk is None else [])
-            return {'fuel': u['consumption'] * km_ / 100 * energy if u['consumption'] is not None and energy else None,
+            return {'fuel': u['consumption'] * km_ / 100 * energy if u['consumption'] is not None and energy is not None else None,
                     'tax': None if taxable is None else 0.0 if taxable == 0 else annual_tax * taxable / 12 if annual_tax is not None else None,
-                    'maintenance': add(unit_cost['maintenance'], maint), 'repairs': add(unit_cost['repairs'], risk),
-                    'tyres': add(unit_cost['tyres'], wear)}, \
+                    'maintenance': add('maintenance', maint), 'repairs': add('repairs', risk), 'tyres': add('tyres', wear)}, \
                 {'taxable': taxable, 'maint': maint, 'maint_hours': maint_hours, 'risk': risk, 'risk_hours': risk_hours,
                  'wear': wear, 'unpriced': unpriced, 'km': km_, 'months': years * 12 if months_ is None else months_, 'faults': fp}
 
         run, det = running(km, years * 12)
         u['fault_plan'], u['restarted_items'] = det['faults'], sorted(restarted)
+        if 'resale_end' in vals.get(u['id'], {}):  # the stored end value belongs to its own horizon (#388)
+            vals[u['id']]['resale_end'] = resale_at(vals[u['id']]['resale_end'], years, electric)
         # resale from the model's market sample (#166): end value at the owner's end age and km, less the private-sale
         # discount; it replaces the listing's own valuation when the sample is usable
         mm = market_model(markets, u, today) if age_now is not None and u['mileage_km'] is not None else None
@@ -701,7 +732,8 @@ def tco_rows(c, p):
         dep, dep_pess, dep_opt = depreciation(u, vals.get(u['id'], {}))
         parts = {'fuel': run['fuel'], 'insurance': annual_ins * years if annual_ins is not None else None, 'tax': run['tax'],
                  'maintenance': run['maintenance'], 'repairs': run['repairs'], 'tyres': run['tyres'],
-                 'purchase_sale': None if unit_cost['purchase_sale'] is None or wallbox is None else unit_cost['purchase_sale'] + wallbox,
+                 'purchase_sale': None if unit_cost['purchase_sale'] is None or 'purchase_sale' in no_figure or wallbox is None
+                 else unit_cost['purchase_sale'] + wallbox,
                  'depreciation': dep}
         taxable = det['taxable']
         offers = {'purchase': offer_summary(parts, years * 12) if u['price_eur'] is not None or u['is_reference'] else None, 'lease': None}
@@ -735,9 +767,10 @@ def tco_rows(c, p):
                  tco_optimistic=rest + dep_opt if complete and dep_opt is not None else None,
                  diy_hours=(sum(x['diy_hours'] or 0 for x in costs) + (det['maint_hours'] or 0) + (det['risk_hours'] or 0)
                             if any(x['diy_hours'] is not None for x in costs) or det['maint_hours'] or det['risk_hours'] else None),
-                 cost_detail={'repairs_certain': unit_cost['repairs'], 'repairs_expected': det['risk'], 'tyre_wear': det['wear'],
-                              'maintenance_certain': unit_cost['maintenance'], 'maintenance_scheduled': det['maint'],
-                              'tyres_certain': unit_cost['tyres'], 'fuel_price_eur_l': price_l, 'electricity_eur_kwh': price_kwh,
+                 cost_detail={'repairs_certain': certain_eur('repairs'), 'repairs_expected': det['risk'], 'tyre_wear': det['wear'],
+                              'maintenance_certain': certain_eur('maintenance'), 'maintenance_scheduled': det['maint'],
+                              'tyres_certain': certain_eur('tyres'), 'fuel_price_eur_l': price_l, 'electricity_eur_kwh': price_kwh,
+                              'resale_rescaled_from_years': (vals.get(u['id'], {}).get('resale_end') or {}).get('rescaled_from_years'),
                               'wallbox_eur': wallbox or None,
                               'maintenance_diy_hours': det['maint_hours'], 'repairs_diy_hours': det['risk_hours'],
                               **({'lease': det['lease']} if u['offer'] == 'lease' else {})},
