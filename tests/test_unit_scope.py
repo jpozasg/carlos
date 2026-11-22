@@ -110,6 +110,23 @@ class UnitScopeTest(unittest.TestCase):
         self.assertEqual(self.api('LISTING', 'PATCH', f'agent/sources/{SRC_LISTING}', {'engine_id': E_B})[0], 403)  # the own source moved to another car's engine
         self.assertEqual(self.sql('SELECT engine_id FROM sources WHERE id=?', (SRC_LISTING,)), [(None,)])
 
+    def test_capture_reattaches_its_listing_to_its_own_variant_only(self):  # #194: a re-run attaches the variant it found or created
+        self.tokens['ADMIN'] = TOKEN
+        found = self.api('ADMIN', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Found 1.4', 'transmission': 'Manual',
+                                                             'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                             'hsn': '7777', 'tsn': 'CCC', 'technical_status': 'VERIFIED'})[1]['id']
+        st, e = self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': V_B})
+        self.assertEqual(st, 403, e); self.assertIn('outside the variant', e['error'])                           # a foreign variant (another generation)
+        self.assertEqual(self.api('LISTING', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': found})[0], 403)  # LISTING does not re-attach
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': found})[0], 200)  # the variant of its own generation
+        self.assertEqual(self.sql('SELECT vehicle_id FROM listings WHERE id=?', (CAR_A,)), [(found,)])
+        made = self.api('CAPTURE', 'POST', 'agent/vehicles', {'generation_id': G1, 'engine_id': E_A, 'trim': 'Made 1.4', 'transmission': 'Manual',
+                                                              'body_style': 'Hatchback, 5 doors', 'emissions_standard': 'Euro 5', 'co2_g_km': 140,
+                                                              'hsn': '8888', 'tsn': 'DDD', 'technical_status': 'VERIFIED'})
+        self.assertEqual(made[0], 201, made)
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': made[1]['id']})[0], 200)  # a variant this run created
+        self.assertEqual(self.api('CAPTURE', 'PATCH', f'agent/listings/{CAR_A}', {'vehicle_id': V_B})[0], 403)           # and back to a foreign one: refused
+
     def test_retired_units_and_an_unlisted_unit_are_closed(self):  # owner decision 2026-11-22: the single-run units are refused
         st, e = self.api('VARIANT', 'PATCH', f'agent/engines/{E_B}', {'notes': 'retired unit'})
         self.assertEqual(st, 403, e); self.assertIn('retired', e['error'])

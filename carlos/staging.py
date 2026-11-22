@@ -210,6 +210,16 @@ def check_media(c, req, listing_id):
         raise NotAllowed(f"request {req['id']} uploads photos only for its own listing (listing {listing_id} is not one of them)")
 
 
+def _capture_variant(c, req, listing_id, vid):
+    """A CAPTURE re-attaches its own listing (`listing_id`) to the variant it found or created (#194): one this run created, or one
+    of the listing's own generation. Any other variant is foreign to the car."""
+    if c.execute("SELECT 1 FROM main.change_log WHERE request_id=? AND table_name='vehicles' AND row_id=? AND action='insert'",
+                 (req['id'], vid)).fetchone():
+        return True
+    gen = next((i for k, i in variant_chain(c, listing_id) if k == 'generation_id'), None)
+    return gen is not None and c.execute('SELECT 1 FROM main.vehicles WHERE id=? AND generation_id=?', (vid, gen)).fetchone() is not None
+
+
 def check_unit_write(c, req, table, row_id, data):
     """The generic /api/agent write of a non-staged unit (CAPTURE, TAX, LISTING; `req` is its research_requests row):
     its own tables only; a new row on a level only on a level of its listing's variant chain; a PATCH of a shared catalogue row
@@ -234,9 +244,9 @@ def check_unit_write(c, req, table, row_id, data):
                 raise NotAllowed(f'{table} id={row_id} has no level (a global default or a shared source): {unit} does not change it')
         elif base is not None:  # an account's own row: a level it is moved to (a listing's variant, a source of its car) stays on the car's chain
             levels = [(k, data[k]) for k in config.LEVEL_COLUMNS if data.get(k) is not None]
-    chain =variant_chain(c, req['listing_id']) if levels and req['listing_id'] else []
+    chain = variant_chain(c, req['listing_id']) if levels and req['listing_id'] else []
     for col, lid in levels:
-        if col is not None and [col, lid] not in chain:
+        if col is not None and [col, lid] not in chain and not (unit == 'CAPTURE' and table == 'listings' and col == 'vehicle_id' and _capture_variant(c, req, row_id, lid)):
             raise NotAllowed(f"{col}={lid} is outside the variant of listing {req['listing_id']}: {unit} writes only on that car's levels")
 
 
