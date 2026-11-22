@@ -517,7 +517,7 @@ class Handler(BaseHTTPRequestHandler):
         f = config.MEDIA_DIR / m[1] / m[2] if m else None
         if not m or not f.is_file() or c.execute('SELECT 1 FROM listing_media WHERE file_path=?', (f'{m[1]}/{m[2]}',)).fetchone() is None:
             self.send_error(404); return
-        self.send_file(f, {'jpg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}[f.suffix[1:]], 'private, max-age=31536000, immutable')
+        self.send_file(f, {'jpg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}[f.suffix[1:]], 'private, no-cache')  # revalidated: a hidden photo leaves the browser at once
 
     # ------------------------------------------------------------------ the API (login required)
     def api(self, c, method, path):

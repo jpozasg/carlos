@@ -1782,11 +1782,24 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.agent('DELETE', 'listings')[0], 405)
         self.assertEqual(self.agent('DELETE', 'listings/99999')[0], 404)
         n_children = self.sql('SELECT count(*) FROM inspection_items WHERE listing_id=?', (CAR_A,))[0][0]
-        st, r = self.agent('DELETE', f'listings/{CAR_A}')
+        self.assertEqual(self.agent('POST', 'listing_history', {'listing_id': CAR_A, 'job': 'BRAKES_FRONT', 'item': 'Front brake pads worn', 'status': 'PRESENT', 'category': 'repairs', 'evidence': 'OBSERVED'})[0], 201)
+        self.assertEqual(self.agent('POST', 'listing_quotes', {'listing_id': CAR_A, 'annual_premium_eur': 777, 'premium_status': 'QUOTE',
+                                                               'quote_date': fx.TODAY, 'source_id': SRC_QUOTE})[0], 201)
+        st, r = self.agent('DELETE', f'listings/{CAR_A}')  # its history and quotes go with it (review D-06)
         self.assertEqual((st, r['deleted'], r['removed_children']['inspection_items']), (200, True, n_children))
+        self.assertEqual((r['removed_children']['listing_history'], r['removed_children']['listing_quotes']), (1, 1))
         self.assertEqual(self.sql('SELECT count(*) FROM listings WHERE id=?', (CAR_A,))[0][0], 0)
         self.assertEqual(self.sql("SELECT action FROM change_log WHERE table_name='listings' AND row_id=? ORDER BY id DESC LIMIT 1", (CAR_A,))[0][0], 'delete')
         self.assertEqual(self.req('GET', f'/api/listings/{CAR_A}')[0], 404)
+
+    def test_listing_delete_never_unlinks_a_file_outside_the_media_folder(self):  # review D-07
+        outside = config.DATA_DIR / 'keep.txt'; outside.write_bytes(b'not a photo')
+        c = sqlite3.connect(config.DB)
+        c.execute("INSERT INTO listing_media (listing_id, captured_at, file_path, mime, bytes, sha256) VALUES (?, ?, '../keep.txt', 'image/jpeg', 3, 'x')",
+                  (CAR_A, fx.TODAY)); c.commit(); c.close()
+        st, r = self.agent('DELETE', f'listings/{CAR_A}')
+        self.assertEqual((st, r['deleted']), (200, True), r)
+        self.assertEqual(outside.read_bytes(), b'not a photo')  # refused: the row is gone, the file outside the media folder stays
 
     def test_owner_decision(self):
         ls = self.req('GET', '/api/tco')[1]['listings']
@@ -1948,7 +1961,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(len(d['media']), 1)
         self.assertEqual((d['cover'], d['photo_count']), (d['media'][0]['file_path'], 1))
         r = urllib.request.Request(f"{self.base}/media/{d['media'][0]['file_path']}", headers={'Authorization': f'Bearer {TOKEN}'})
-        self.assertEqual(urllib.request.urlopen(r).read(), jpg)
+        resp = urllib.request.urlopen(r)
+        self.assertEqual((resp.read(), resp.headers['Cache-Control']), (jpg, 'private, no-cache'))  # review D-09: no year-long cache of a photo
         with self.assertRaises(urllib.error.HTTPError):
             urllib.request.urlopen(f"{self.base}/media/{d['media'][0]['file_path']}")   # login required
         timer.assert_called()  # the dossier follows the photo once the deferred export runs
@@ -2541,6 +2555,7 @@ class AppTest(unittest.TestCase):
         self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(), [])
         c.close()
         self.assertFalse((config.MEDIA_DIR / 'x' / 'b.jpg').exists())
+        self.assertEqual(len(list((config.DB.parent / 'trash').rglob('x/b.jpg'))), 1)  # moved to the trash, not unlinked
         st, d = self.req('GET', f'/api/listings/{CAR_A}')   # a listing awaiting research stays readable
         self.assertEqual((st, d['vehicle_id'], d['research_levels']['variant']['state']), (200, None, 'incomplete'))
         self.assertEqual(self.req('GET', '/api/tco')[0], 200)

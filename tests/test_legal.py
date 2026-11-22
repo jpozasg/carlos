@@ -231,6 +231,26 @@ class LegalTest(unittest.TestCase):
         self.assertEqual(self.sql("SELECT count(*) FROM change_log WHERE user_id=?", (uid,))[0][0], 0)
         self.assertEqual(self.sql("SELECT requested_by FROM research_requests WHERE url=?", ('https://example.test/req',)), [(None,)])
 
+    def test_erasure_after_a_research_run_scrubs_the_change_log_4(self):  # review D-02, D-03
+        uid, lid, sid = self.account('maria')
+        admin_lid = self.sql('SELECT id FROM listings WHERE owner_id=1 ORDER BY id LIMIT 1')[0][0]
+        self.sql_write("INSERT INTO research_requests (owner_id, requested_by, url, status, requested_at) VALUES (?, NULL, ?, ?, ?)",
+                       (uid, 'https://example.test/maria-run', 'QUEUED', TODAY))
+        rid = self.sql('SELECT id FROM research_requests WHERE url=?', ('https://example.test/maria-run',))[0][0]
+        # a research run of the account wrote Maria's listing (request_id set) and, as its owner, the admin's listing
+        self.sql_write("INSERT INTO change_log (table_name, row_id, action, old_json, new_json, request_id) VALUES ('listings', ?, 'update', ?, ?, ?)",
+                       (lid, '{"price_eur": 1}', '{"notes": "maria private"}', rid))
+        self.sql_write("INSERT INTO change_log (table_name, row_id, action, old_json, new_json) VALUES ('listings', ?, 'update', 'admin old', 'admin new')", (admin_lid,))
+        admin = self.login('admin', fx.PASSWORD)
+        st, out = self.req('DELETE', f'/api/admin/users/{uid}', {'username': 'maria'}, cookie=admin)
+        self.assertEqual(st, 200, out)  # erased, not refused: the run's audit row keeps its link cleared
+        self.assertEqual(self.sql('SELECT count(*) FROM research_requests WHERE id=?', (rid,))[0][0], 0)
+        self.assertEqual(self.sql('SELECT old_json, new_json, request_id FROM change_log WHERE row_id=? AND table_name=?', (lid, 'listings')),
+                         [(None, '{"erased": true}', None)])
+        self.assertEqual(self.sql('SELECT count(*) FROM change_log WHERE old_json LIKE ? OR new_json LIKE ?', ('%maria%', '%maria%')), [(0,)])
+        self.assertEqual(self.sql('SELECT old_json, new_json FROM change_log WHERE row_id=? AND table_name=?', (admin_lid, 'listings')),
+                         [('admin old', 'admin new')])  # another account's values stay
+
     def sql_write(self, q, args=()):
         c = sqlite3.connect(config.DB)
         try:

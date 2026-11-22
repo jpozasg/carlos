@@ -185,9 +185,14 @@ def variant_chain(c, listing_id):
                                 ('gearbox_family_id', v['gearbox_family']), ('body_style_id', v['body_style_id'])) if i]
 
 
+def _view(table):
+    """The account's scoped view of a table, archived rows included (the read agent_write makes): another account's row is absent."""
+    return f'{table}_all' if table in ARCHIVABLE else table
+
+
 def _shared(c, table, row_id):
     """True for a shared catalogue row (owner_id NULL) of a table that has owners."""
-    base = c.execute(f'SELECT * FROM main.{table} WHERE id=?', (row_id,)).fetchone()  # table is a fixed name from the callers
+    base = c.execute(f'SELECT * FROM {_view(table)} WHERE id=?', (row_id,)).fetchone()  # table is a fixed name from the callers
     return base is not None and 'owner_id' in base.keys() and base['owner_id'] is None
 
 
@@ -224,7 +229,7 @@ def check_unit_write(c, req, table, row_id, data):
         if unit != 'CAPTURE' and table != 'listings':  # the capture's listing and variant do not exist yet; a listing's vehicle_id is a pointer
             levels = [_level(data)]
     else:
-        base = c.execute(f'SELECT * FROM main.{table} WHERE id=?', (row_id,)).fetchone()  # table is one of the fixed names above
+        base = c.execute(f'SELECT * FROM {_view(table)} WHERE id=?', (row_id,)).fetchone()  # table is one of the fixed names above
         if base is not None and 'owner_id' in base.keys() and base['owner_id'] is None:  # a shared catalogue row (another account's row is hidden by the scope: 404)
             if unit == 'CAPTURE':
                 raise NotAllowed(f'CAPTURE does not change shared catalogue rows ({table} id={row_id}); the research run does')

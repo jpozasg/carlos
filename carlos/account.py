@@ -7,7 +7,9 @@ from .agent import NotFound
 # Tables that are not the account's data: sign-in secrets, the operator's own records and the worker registrations
 EXCLUDED = ('users', 'sessions', 'invites', 'change_log', 'workers')
 # A row that is not the account's but points at one of its rows keeps the row and loses the link (who queued it, who wrote it)
-NULLABLE_LINKS = {('change_log', 'user_id'), ('invites', 'created_by'), ('research_requests', 'requested_by'), ('workers', 'request_id')}
+NULLABLE_LINKS = {('change_log', 'user_id'), ('change_log', 'request_id'), ('invites', 'created_by'), ('research_requests', 'requested_by'),
+                  ('workers', 'request_id')}
+ERASED = '{"erased": true}'  # new_json is NOT NULL: the change log keeps the row and its shape, not the values
 VIA = {'listing_id': 'listings', 'request_id': 'research_requests', 'parent_id': 'research_requests'}  # owned through a parent row
 
 
@@ -69,6 +71,10 @@ def erase(c, uid, typed, admin_id, data_dir, media_dir, md_dir):
     with c:  # one transaction; deferred foreign keys: the order of the deletes does not matter, the check at the end does
         c.execute('PRAGMA defer_foreign_keys=ON')
         c.execute('BEGIN')  # explicit: an implicit BEGIN after the pragma would switch the deferral off again
+        for t, where in account_tables(c):  # the change log keeps its rows; the values of the account's rows go
+            c.execute(f'UPDATE main.change_log SET old_json=NULL, new_json=? WHERE table_name=? AND row_id IN (SELECT id FROM main.{t} WHERE {where})', (ERASED, t, uid))
+        c.execute('UPDATE main.change_log SET old_json=NULL, new_json=? WHERE user_id=? OR request_id IN '
+                  '(SELECT id FROM main.research_requests WHERE owner_id=?)', (ERASED, uid, uid))
         for t, where in account_tables(c):
             deleted[t] = c.execute(f'DELETE FROM main.{t} WHERE {where}', (uid,)).rowcount
         deleted['sessions'] = c.execute('DELETE FROM main.sessions WHERE user_id=?', (uid,)).rowcount
