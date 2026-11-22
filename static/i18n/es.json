@@ -83,6 +83,8 @@
  "rel_where": "Su coste esperado cuenta en reparaciones, en la pestaña Costes.",
  "co_certain_items": "Partidas seguras de este coche",
  "rank_n": "n.º {n}",
+  "rank_why": "Mayor peso: {top}; datos de {n} de {m} criterios.",
+  "rank_cov": "Datos de {n} de {m} criterios.",
  "not_ranked": "Sin clasificar",
  "compare": "Comparar",
  "open_dossier": "Ver expediente",

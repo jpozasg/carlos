@@ -83,6 +83,8 @@
  "rel_where": "Ihre erwarteten Kosten zählen unter Reparaturen im Reiter Kosten.",
  "co_certain_items": "Sichere Posten für dieses Auto",
  "rank_n": "#{n}",
+  "rank_why": "Größte Gewichtung: {top}; Daten zu {n} von {m} Kriterien.",
+  "rank_cov": "Daten zu {n} von {m} Kriterien.",
  "not_ranked": "Nicht im Ranking",
  "compare": "Vergleichen",
  "open_dossier": "Dossier öffnen",

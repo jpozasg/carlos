@@ -176,6 +176,11 @@ function exportCsv() {
 const selNote = us => `<p class="small muted" style="margin:0 0 12px">${t('sel_showing', { n: us.filter(u => !u.is_reference).length })} <button type="button" class="linkbtn" data-view="overview">${t('sel_change')}</button></p>`;
 
 let root;
+// a redraw replaces every control: the one that had focus gets it back (same data-* attributes; the n-th if several)
+const dataSig = el => [...el.attributes].filter(a => a.name.startsWith('data-')).map(a => a.name + '=' + a.value).join(' ');
+const sameCtrl = sig => [...root.querySelectorAll('*')].filter(el => dataSig(el) === sig);
+function focusedCtrl() { const f = document.activeElement, sig = f && root.contains(f) ? dataSig(f) : ''; return sig ? { sig, n: sameCtrl(sig).indexOf(f) } : null; }
+function restoreFocus(k) { if (k && k.n >= 0) sameCtrl(k.sig)[k.n]?.focus({ preventScroll: true }); }
 function draw() {
   if (!S.p) return;
   const ids = new Set(S.units.map(u => u.id));
@@ -202,8 +207,10 @@ function draw() {
     photos: () => `<div class="section"><div class="grid">${all.map(unitCard).join('') || `<p class="empty">${t('no_units')}</p>`}</div></div>` }[view]();
   // the one authored motion: markers leave your car's line and settle where they belong (not under reduced motion)
   if (view === 'ruler') requestAnimationFrame(() => root.querySelectorAll('.rmark[data-x]').forEach(m => { m.style.left = m.dataset.x + '%'; }));
+  const focus = focusedCtrl();
   root.innerHTML = `${S.preview ? `<div class="banner">⚠ ${t('preview_banner')} <a class="btn sm" href="#/settings">${t('save_params')}</a></div>` : ''}${requestsPanel()}${versus()}
     <div class="cbar">${selBar(all)}${toolbar()}<nav class="views" aria-label="${t('cv_nav')}">${VIEWS.map(k => `<button type="button" data-view="${k}" aria-pressed="${k === view}">${t('cv_' + k)}</button>`).join('')}</nav></div>${listView || hidden ? orderNote : ''}${body}`;
+  restoreFocus(focus);
 }
 function bind() {
   root.addEventListener('change', e => {
