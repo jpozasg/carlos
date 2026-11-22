@@ -53,7 +53,9 @@ def make_data(tmp, sql=()):
         c.execute('UPDATE users SET password_hash=? WHERE id=?', (auth.hash_password(fx.PASSWORD), empty))
         for uid in (fx.ADMIN, empty):  # skip the first-run wizard
             c.execute("INSERT INTO project_preferences (owner_id, preference_key, preference_value) VALUES (?, 'onboarding_done', '2026-01-01')", (uid,))
-    for q in sql:  # forced states (withdrawn, partial totals...): runs on the throwaway copy only
+    # forced states (withdrawn, partial totals...): runs on the throwaway copy only; ATTACH would reach the real database
+    c.set_authorizer(lambda action, *a: sqlite3.SQLITE_DENY if action in (sqlite3.SQLITE_ATTACH, sqlite3.SQLITE_DETACH) else sqlite3.SQLITE_OK)
+    for q in sql:
         with c: c.execute(q)
     c.close()
     return fx

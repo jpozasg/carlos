@@ -41,3 +41,5 @@ Fix them in one i18n PR; then delete this list and make `tests/test_i18n_check.p
 - **`€` in code (6):** `app.js:52` (`€/l`), `pages/compare.js:95` (`€/km`), `pages/dossier.js:295`, `pages/settings.js:33`, `pages/start.js:115`, `pages/start.js:207`. Replace by `num()` plus a `t()` unit suffix (see above).
 - **Warnings worth a look:** DE 51 and PL 57 strings over 1.6x (worst PL `flt_hu_months` 3.3x, `diy_hours` 3.1x; DE `codes.QUEUED` 3.3x, `p_deductible` 2.8x); `toFixed` in `ui.js:36` (`carShort`, locale-blind: use `num(cc/1000, 1)`), `dossier.js:45,61,67`, `charts.js:46`; literals `app.js:55` ("Carlos", brand: fine), `requests.js:55` (`https://` placeholder: fine), `ranking.js:19` (false positive).
 - Not covered by the script (audit findings): `static/auth.html` is English only; `t()` returns the key silently when a dynamic key is missing; `scoreTxt` "?" drift in `docs/frontend.md`; 44 unused keys.
+
+**Trust:** `--root` imports `carlos/agent.py` from that tree (its module code runs). Point it only at a checkout you trust (this repository or its worktrees); for any other tree pass `--fixed-codes <json>` instead. Run it as `python3 -I`.
