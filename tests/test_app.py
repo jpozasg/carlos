@@ -1294,14 +1294,14 @@ class AppTest(unittest.TestCase):
         self.assertEqual(worker.pause_seconds("resets 11:30pm", now), 30 * 60 + 60)
 
     def test_insurance_quotes(self):
-        quote = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 850, 'premium_min_eur': 700,
+        quote = {'vehicle_id': V_A, 'premium_status': 'QUOTE', 'annual_premium_eur': 850,
                  'insurer': 'Test Insurer', 'tariff': 'Basic', 'quote_date': fx.TODAY, 'source_id': SRC_QUOTE,
                  'quote_profile': {'cover': 'Teilkasko', 'deductible_eur': 150}}
         self.assertEqual(self.agent('POST', 'insurance_data', quote)[0], 201)
         self.assertEqual(self.units()[CAR_A]['annual_insurance'], 850)        # the latest quote wins
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'quote_profile': 'x'})[0], 400)
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'quote_date': '03.11.2026'})[0], 400)
-        self.assertEqual(self.agent('POST', 'insurance_data', {'vehicle_id': V_A, 'liability_typklasse': 17, 'source_id': SRC_QUOTE})[0], 201)
+        self.assertEqual(self.agent('POST', 'insurance_data', {'vehicle_id': V_A, 'insurer': 'Test AG', 'source_id': SRC_QUOTE})[0], 201)
         self.assertEqual(self.units()[CAR_A]['annual_insurance'], 850)        # a Typklasse-only row is not a premium
         self.assertEqual(self.agent('POST', 'insurance_data', {**quote, 'vehicle_id': V_REF, 'annual_premium_eur': 500})[0], 201)
         self.assertEqual(self.units()[REF]['annual_insurance'], 900)          # the reference keeps what the user pays
