@@ -2,7 +2,7 @@
 import { get, post } from './api.js';
 import * as i18n from './i18n.js';
 import { t } from './i18n.js';
-import { $, esc, num, safeUrl, store, toast, yrs } from './ui.js';
+import { $, esc, num, safeUrl, store, toast, yrs, glyph } from './ui.js';
 
 export const S = { accounts: [], me: null, p: null, saved: null, preview: false, units: [], components: [], ranking: null, budget: null,
   fuelStale: null, storage: null, todo: { listings: [], models: [] }, sources: [], models: null, prefs: {} };
@@ -50,7 +50,7 @@ export function renderShell() {
   document.querySelector('[data-i18n-skip]').textContent = t('skip_content');
   document.querySelectorAll('[data-aria]').forEach(b => b.setAttribute('aria-label', t(b.dataset.aria)));
   const p = S.p, st = S.storage;
-  const chips = p ? `<a class="chip${S.fuelStale || S.preview ? ' warn' : ''}" href="#/settings" title="${esc(S.fuelStale ? t('fuel_stale') : t('edit_params'))}">${S.preview ? '✎ ' : S.fuelStale ? '⚠ ' : ''}${num(p.annual_km, 0)} ${t('per_year_short')} · ${yrs(p.ownership_years)} · ${num(p.fuel_price_eur_l, 2)}\u00a0${t('unit_eur_l')}</a>
+  const chips = p ? `<a class="chip${S.fuelStale || S.preview ? ' warn' : ''}" href="#/settings" title="${esc(S.fuelStale ? t('fuel_stale') : t('edit_params'))}">${S.preview ? glyph('✎') + ' ' : S.fuelStale ? glyph('⚠') + ' ' : ''}${num(p.annual_km, 0)} ${t('per_year_short')} · ${yrs(p.ownership_years)} · ${num(p.fuel_price_eur_l, 2)}\u00a0${t('unit_eur_l')}</a>
     ${st ? `<span class="chip chip-store${st.total_bytes / st.limit_bytes >= .9 ? ' bad' : st.total_bytes / st.limit_bytes >= .8 ? ' warn' : ''}" title="${esc(t('storage_hint'))}">${num(st.total_bytes / 1048576, 1)} / ${num(st.limit_bytes / 1048576, 0)} MB</span>` : ''}` : '';  // storage is admin only (403 for an account)
   const langs = `<div class="seg" role="group" aria-label="${esc(t('language'))}">${Object.keys(i18n.LANGS).map(l => `<button type="button" data-lang="${l}" lang="${l}" aria-pressed="${l === i18n.current()}">${l.toUpperCase()}</button>`).join('')}</div>`;
   $('hdr').innerHTML = `<div class="bar"><a class="brand" href="#/compare" aria-label="${esc(t('app_title'))}"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="/static/brand/mark.svg#mark"/></svg><span><b>Carlos</b><small>${esc(t('tagline'))}</small></span></a>${chips}${langs}
@@ -85,13 +85,14 @@ export async function route() {
   document.querySelectorAll('[data-nav]').forEach(a => a.setAttribute('aria-current', a.dataset.nav === (key === 'listing' ? 'compare' : key) ? 'page' : 'false'));
   const main = $('main');
   const token = busy = {};
+  main.setAttribute('aria-busy', 'true');  // the page is loading until its render returns (screen readers wait)
   try {
     const mod = await PAGES[key]();
     if (busy !== token) return;
     await mod.render(main, r);
   } catch (e) {
-    main.innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p><button class="btn ghost" type="button" data-reload>${t('retry')}</button></div>`;
-  }
+    main.innerHTML = `<div class="card err" role="alert"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p><button class="btn ghost" type="button" data-reload>${t('retry')}</button></div>`;
+  } finally { if (busy === token) main.removeAttribute('aria-busy'); }
   // one h1 per route (#424): a page without its own visible title gets a visually hidden one; the dossier names the car itself
   if (!main.querySelector('h1')) main.insertAdjacentHTML('afterbegin', `<h1 class="sr-only">${esc(t(TITLE[key]))}</h1>`);
   if (!r.q.keep) { scrollTo({ top: 0 }); main.focus({ preventScroll: true }); }  // screen readers and keyboard start at the new page
@@ -121,7 +122,8 @@ document.addEventListener('change', e => { const v = e.target.closest('[data-vie
 (async () => {
   applyTheme();
   await i18n.load(i18n.initialLang());
-  try { await loadAll(); } catch (e) { $('main').innerHTML = `<div class="card err"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p></div>`; }
+  try { await loadAll(); } catch (e) { $('main').innerHTML = `<div class="card err" role="alert"><b>${t('load_failed')}</b><p class="small">${esc(e.message)}</p></div>`; }
+  $('main').removeAttribute('aria-busy');
   renderShell();
   // first run: the setup wizard until it was finished or put off (preference onboarding_done)
   if (S.me && !viewing() && !S.prefs.onboarding_done && (!location.hash || location.hash === '#/compare')) location.replace('#/start');

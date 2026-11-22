@@ -3,7 +3,7 @@
 // last. Numbers are concrete and follow the account's budget and period. Used by the Ranking page and the setup
 // wizard; the scoring lives in carlos/ranking.py (TASKS, tally, weights_from_answers).
 import { t } from './i18n.js';
-import { esc, euro, num } from './ui.js';
+import { esc, euro, unit } from './ui.js';
 
 const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -12,9 +12,9 @@ export function attributes(p = {}) {
   const y = new Date().getFullYear(), price = Math.max(2000, Math.round((p.budget_ideal_eur || 8000) / 100) * 100);
   return {
     cost_month: [t('bw_cost_ord'), t('bw_cost_less', { p: 12 })], budget: [euro(price), euro(price - 1500)],
-    mileage: [num(150000, 0) + ' km', num(100000, 0) + ' km'], age: [String(y - 13), String(y - 9)], power: ['75 PS', '115 PS'],
+    mileage: [unit(150000, 'km'), unit(100000, 'km')], age: [String(y - 13), String(y - 9)], power: [unit(75, 'ps'), unit(115, 'ps')],
     reliability: [t('bw_rel_base'), t('bw_rel_adv')], inspection: [t('bw_insp_base'), t('bw_insp_adv')],
-    safety: ['3 ★ Euro NCAP', '5 ★ Euro NCAP'], distance: ['150 km', '20 km'],
+    safety: [`${unit(3, 'star')} Euro NCAP`, `${unit(5, 'star')} Euro NCAP`], distance: [unit(150, 'km'), unit(20, 'km')],
   };
 }
 
