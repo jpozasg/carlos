@@ -1021,6 +1021,23 @@ class AppTest(unittest.TestCase):
         self.assertIn('without a unit', self.sql("SELECT result FROM research_requests")[0][0])
 
 
+    def test_failed_run_names_only_the_requesters_listing(self):  # round 2 finding A: a listing_id is checked on FAILED too
+        self.second_account()
+        H = {'X-Carlos-Account': str(self.sql("SELECT id FROM users WHERE username='maria'")[0][0])}
+        st, src = self.agent('POST', 'sources', {'title': 'Her listing', 'source_type': 'listing'}, headers=H)
+        st, foreign = self.agent('POST', 'listings', {'vehicle_id': V_B, 'source_id': src['id'], 'platform': 'Test', 'listing_id': 'F1', 'price_eur': 4000}, headers=H)
+        rid = self.req('POST', '/api/requests', {'url': 'https://www.example.com/car/fail'})[1]['id']
+        self.sql_write("UPDATE research_requests SET unit='CAPTURE' WHERE id=?", (rid,))
+        got = self.req('POST', '/api/worker/claim', {'worker': 'w'})[1]['request']
+        self.assertEqual(got['id'], rid)
+        st, r = self.req('POST', f'/api/worker/requests/{rid}', {'status': 'FAILED', 'listing_id': foreign['id'], 'result': 'blocked'})
+        self.assertEqual(st, 400, r)                                                # another account's listing: refused, the run stays RUNNING
+        self.assertEqual(self.sql('SELECT status, listing_id FROM research_requests WHERE id=?', (rid,))[0], ('RUNNING', None))
+        st, r = self.req('POST', f'/api/worker/requests/{rid}', {'status': 'FAILED', 'listing_id': 999999, 'result': 'blocked'})
+        self.assertEqual(st, 400, r)                                                # a listing that does not exist
+        st, r = self.req('POST', f'/api/worker/requests/{rid}', {'status': 'FAILED', 'listing_id': CAR_A, 'result': 'blocked'})
+        self.assertEqual((st, r['status'], r['listing_id']), (200, 'FAILED', CAR_A), r)   # the requester's own listing is stored
+
     def test_duplicate_fault_guard_221(self):
         """The same fault filed twice is refused (409) when one catalogue variant would carry both; distinct_of overrides it with a reason."""
         from carlos import consistency

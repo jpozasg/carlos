@@ -213,10 +213,10 @@ def finish(c, rid, data, missing=None, staged=None):
     capture = unit == 'CAPTURE'
     if unit and not capture:
         lid = req['listing_id']  # a unit works on the listing its parent captured, whatever the agent says
-    elif status == 'DONE' and not follow_up:  # the listing must exist and belong to the account that asked
+    elif (status == 'DONE' and not follow_up) or isinstance(lid, int):  # any listing stored must exist and belong to the account that asked
         own = c.execute('SELECT owner_id FROM main.listings WHERE id=?', (lid if isinstance(lid, int) else -1,)).fetchone()
         if own is None or own[0] != req['owner_id']:
-            raise ValueError("listing_id: DONE needs the id of the listing written into the requester's account")
+            raise ValueError("listing_id: the listing must be the one written into the requester's account")
     ids = None  # contract items still missing (None: nothing to grade)
     max_attempts, last_status = MAX_ATTEMPTS, 'FAILED'
     if unit in ('RESEARCH_A', 'RESEARCH_B'):  # graded on the run's staged rows, its own items only
