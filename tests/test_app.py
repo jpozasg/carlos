@@ -444,29 +444,28 @@ class AppTest(unittest.TestCase):
 
     def test_resale_follows_the_ownership_period_388(self):
         """C1: a stored resale_end is the value at its own horizon_years; another ownership period moves it along the linear
-        resale rule (owner decision 2026-11-23: 495 € a year of age and 0.051 € a km driven; at the fixture's 15,000 km a
-        year that is 1,260 € a year of ownership; low 1.5×, high 0.5× the rule; floored at 0), so a longer horizon is not
-        flattered: CAR_A at 8 years cost 330.14 a month (was 297.61 with the 6 %/year rule)."""
-        per_year = 495 + 0.051 * 15000
+        resale rule (owner decision 2026-11-23: loss = 621.66 € × years − 9.579 € × years² + 0.0504 € × km driven, fitted
+        quadratic age and linear km; at the fixture's 15,000 km a year the km part is 756 € a year of ownership; low 1.5×,
+        high 0.5× the loss; floored at 0), so a longer horizon is not flattered."""
         floor = lambda v: max(0, v)
+        extra = lambda y: 621.66 * (y - 4) - 9.579 * (y * y - 16) + 0.0504 * 15000 * (y - 4)   # loss added from 4 to y years
         month = {}
         for y in (4, 6, 8):
             us = self.tco_at(y)
             a, b, ref = us[CAR_A], us[CAR_B], us[REF]
-            d = y - 4
-            exp, low, high = floor(4000 - per_year * d * 0.90), floor(3500 - 1.5 * per_year * d * 0.80), floor(4500 - 0.5 * per_year * d * 0.95)
+            exp, low, high = floor(4000 - extra(y) * 0.90), floor(3500 - 1.5 * extra(y) * 0.80), floor(4500 - 0.5 * extra(y) * 0.95)
             self.assertAlmostEqual(a['components']['depreciation'], 6000 - exp, places=1)
             self.assertAlmostEqual(a['tco_pessimistic'] - a['known_cost_subtotal'], exp - low, places=1)
             self.assertAlmostEqual(a['known_cost_subtotal'] - a['tco_optimistic'], high - exp, places=1)
-            self.assertAlmostEqual(b['components']['depreciation'], 7500 - floor(5500 - per_year * d * 0.90), places=1)
-            self.assertAlmostEqual(ref['components']['depreciation'], 2500 - floor(1500 - per_year * d * 0.90), places=1)   # sale today stays
+            self.assertAlmostEqual(b['components']['depreciation'], 7500 - floor(5500 - extra(y) * 0.90), places=1)
+            self.assertAlmostEqual(ref['components']['depreciation'], 2500 - floor(1500 - extra(y) * 0.90), places=1)   # sale today stays
             self.assertEqual(a['cost_detail']['resale_rescaled_from_years'], None if y == 4 else 4)
             be = a['breakeven']                                                   # the cash view prices the same end value
             self.assertAlmostEqual(be['resale_end'], exp, places=1)
             self.assertAlmostEqual(be['end_advantage'], -a['delta_vs_reference'], delta=1)
             month[y] = a['known_cost_per_month']
         self.assertAlmostEqual(month[4], 316.33, places=2)
-        self.assertAlmostEqual(month[6], 329.25, delta=0.05)
+        self.assertAlmostEqual(month[6], 329.80, delta=0.05)
         self.assertAlmostEqual(month[8], 330.14, delta=0.05)
         # a row without a horizon is taken as given; an electric car's expected value is the low case (1.5× the rule, 20 %)
         self.sql_write('UPDATE valuations SET horizon_years=NULL WHERE listing_id=?', (CAR_A,))
@@ -474,7 +473,7 @@ class AppTest(unittest.TestCase):
         e, v, l = self.ev_listing(price_eur=10000)
         self.agent('POST', 'valuations', {'listing_id': l['id'], 'kind': 'resale_end', 'horizon_years': 4, 'expected_eur': 4000,
                                           'status': 'ESTIMATED', 'source_id': SRC_GUIDE})
-        self.assertAlmostEqual(self.tco_at(6)[l['id']]['components']['depreciation'], 10000 - (4000 - 1.5 * per_year * 2 * 0.80), places=1)
+        self.assertAlmostEqual(self.tco_at(6)[l['id']]['components']['depreciation'], 10000 - (4000 - 1.5 * extra(6) * 0.80), places=1)
 
     def test_certain_tyres_are_part_of_the_wear_388(self):
         """C2: the set bought now is the first 45,000 km of the expected wear (60,000 km, 405 € a set: 540), never on top."""

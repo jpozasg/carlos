@@ -226,18 +226,20 @@ def market_model(models, u, today):
 
 def resale_at(end, years, annual_km, electric=False):
     """A stored resale_end is the value at its own `horizon_years`. For another ownership period it moves along the linear
-    resale rule (config.RESALE_AGE_EUR_PER_YEAR, RESALE_KM_EUR_PER_KM): the extra years add their age and km terms at the
-    account's annual km, scaled per case and net of that case's private-sale discount (#388). An electric car's expected
-    value follows the low case, as the rule stores it. No horizon stored: taken as given."""
+    resale rule (config.RESALE_AGE_EUR_PER_YEAR, RESALE_AGE_SQ_EUR_PER_YEAR2, RESALE_KM_EUR_PER_KM): the extra years add the
+    difference of their age terms (a1 × t + a2 × t²) and their km at the account's annual km, scaled per case and net of
+    that case's private-sale discount (#388). An electric car's expected value follows the low case, as the rule stores it.
+    No horizon stored: taken as given."""
     h = end.get('horizon_years')
     if not h or h == years:
         return end
-    per_year = config.RESALE_AGE_EUR_PER_YEAR + config.RESALE_KM_EUR_PER_KM * annual_km
+    a1, a2, b = config.RESALE_AGE_EUR_PER_YEAR, config.RESALE_AGE_SQ_EUR_PER_YEAR2, config.RESALE_KM_EUR_PER_KM
+    extra = a1 * (years - h) + a2 * (years ** 2 - h ** 2) + b * annual_km * (years - h)
     cases = {'expected': 'low' if electric else 'expected', 'low': 'low', 'high': 'high'}
     out = {}
     for k, c in cases.items():
         scale, disc = config.RESALE_CASES[c]
-        v = None if end[f'{k}_eur'] is None else end[f'{k}_eur'] - scale * per_year * (years - h) * (1 - disc)
+        v = None if end[f'{k}_eur'] is None else end[f'{k}_eur'] - scale * extra * (1 - disc)
         out[f'{k}_eur'] = round(max(0, v), 2) if v is not None and math.isfinite(v) else None  # NaN/inf: unknown, never 0 (S5)
     return {**end, **out, 'horizon_years': years, 'rescaled_from_years': h}
 
