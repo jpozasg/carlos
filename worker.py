@@ -139,16 +139,30 @@ def copy_code(dst, root=ROOT):
     shutil.copytree(root / 'docs' / 'prompts', dst / 'docs' / 'prompts')
 
 
-def sandbox_argv(root, workdir, rw=()):
+def token_files(home=None):
+    """The worker's token files on disk: the systemd EnvironmentFile of docs/deployment.md. worker.py reads none itself (WORKER_TOKEN
+    comes from the environment), so a sandboxed run must not be able to read them either."""
+    return [Path(home or Path.home()) / '.config' / 'carlos-worker.env']
+
+
+def token_masks(home=None):
+    """The token files that exist (a bind of /dev/null needs an existing mount point): masked inside a sandboxed run."""
+    return [p for p in token_files(home) if p.exists()]
+
+
+def sandbox_argv(root, workdir, rw=(), masks=()):
     """The bwrap prefix of a sandboxed run (pure, so it is tested without bwrap): the real checkout `root` hidden under a tmpfs,
     the code-only copy `workdir` bound at the same path (the prompts' {REPO} still works), the paths in `rw` (claude's state) bound
-    read-write, a fresh /proc in a new pid namespace (the worker's process and environment are not visible), and dies with the
-    worker. The run's environment is already the allow-list of run_env. Ends with `--`; the claude argv follows."""
+    read-write, the paths in `masks` (the worker's token files) replaced by an empty file, a fresh /proc in a new pid namespace (the
+    worker's process and environment are not visible), and dies with the worker. The run's environment is already the allow-list
+    of run_env. Ends with `--`; the claude argv follows."""
     args = ['bwrap', '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc',
             '--tmpfs', str(root), '--bind', str(workdir), str(root),
             '--unshare-pid', '--die-with-parent', '--chdir', str(root)]
     for p in rw:
         args += ['--bind', str(p), str(p)]
+    for p in masks:  # after rw, so a mask always wins over a bind of its parent
+        args += ['--ro-bind', '/dev/null', str(p)]
     return args + ['--']
 
 
@@ -241,7 +255,7 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=
     try:
         if workdir:  # the run sees only this copy of the code, inside the sandbox (#386 follow-up)
             copy_code(workdir)
-            argv = sandbox_argv(ROOT, workdir, claude_state()) + argv
+            argv = sandbox_argv(ROOT, workdir, claude_state(), token_masks()) + argv
         p = subprocess.Popen(argv + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True)
         deadline = time.time() + timeout_s
