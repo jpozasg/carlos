@@ -15,6 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from capture_listing import Api, ApiError, checklist_items, load_token  # noqa: E402
+from carlos import config  # noqa: E402
 
 API_BASE = os.environ.get('CAR_API', 'http://127.0.0.1:8000')
 api = Api(API_BASE, load_token())
@@ -73,6 +74,7 @@ SHARED_SOURCES = [  # public reference sources every account needs once (fees, H
     {"title": "Number plates (uamr.de) — Was kostet ein Autokennzeichen", "url": "https://www.uamr.de/was-kostet-ein-autokennzeichen/", "quality": "C", "source_type": "fees_secondary", "supports": "Plate makers next to the registration office: up to 35–40 € per pair; online much cheaper.", "limitations": "Undated guide.", "accessed_date": "2026-11-03"},
     {"title": "Pre-purchase check (fahrzeugschein.de) — Gebrauchtwagencheck Kosten", "url": "https://www.fahrzeugschein.de/blog/artikel/gebrauchtwagencheck-kosten", "quality": "C", "source_type": "fees_secondary", "supports": "ADAC Nordbayern Premium check 159 € members / 189 € non-members; TÜV SÜD about 79 €; DEKRA 90–150 €.", "limitations": "Seller of its own checks; May 2026. Confirm at the ADAC Nordbayern test centre.", "accessed_date": "2026-11-03"},
     {"title": "Allianz — Wertverlust Auto; AUTO BILD — Händler oder privat", "url": "https://www.allianz.de/auto/kfz-versicherung/wertverlust-auto/", "quality": "C", "source_type": "depreciation_reference", "supports": "Old cars lose about 5–6% of their value per year (Allianz, 07/2026). For cars around 3,000 € dealers often offer about 50% of market value (AUTO BILD 2016, https://www.autobild.de/artikel/gebrauchtwagenverkauf-haendler-oder-privat--8504551.html).", "limitations": "General rules of thumb, no model data; Allianz cites no study. Used only for estimates.", "accessed_date": "2026-11-03"},
+    {"title": "Resale rule (own fit of 72 asking prices, mobile.de search results, 2026-11-23)", "url": "https://suchen.mobile.de/", "quality": "C", "source_type": "depreciation_reference", "supports": "Constants of the linear resale rule (config.RESALE_AGE_EUR_PER_YEAR 495 EUR per year of age, RESALE_KM_EUR_PER_KM 0.051 EUR per km), fitted with model fixed effects on 72 used petrol and diesel cars (2015 to 2024 registrations, under 200,000 km).", "limitations": "Asking prices from search snippets, not transaction prices and not opened listing pages; 16 models, several with 1 to 4 cars; flagged outlier kept. ESTIMATED until comparable listings replace it.", "accessed_date": "2026-11-23"},
     {"title": "DAT residual values of 3-year-old cars (autohaus.de, August 2026)", "url": "https://www.autohaus.de/nachrichten/gw-trends/dat-spritpreise-machen-gebrauchte-e-autos-teurer-3909599", "quality": "B", "source_type": "depreciation_reference", "supports": "DAT market data, August 2026: 3-year-old cars keep on average 59.4 % (petrol), 58.0 % (diesel) and 51.5 % (electric) of their list price; November 2025: 62.6 / 61.2 / 48.4 %. Basis of the electric-car low case in the resale rule (owner decision 2026-11-05).", "limitations": "Averages over all models and the list price, not the transaction price; trade press reporting DAT figures. Model-specific residuals (DAT/Schwacke) or comparables replace it.", "accessed_date": "2026-11-06"},
     {"title": "HU/AU price TÜV SÜD Bavaria 2026 (AutoScout24 guide; ADAC average)", "url": "https://www.autoscout24.de/informieren/ratgeber/autorecht/hauptuntersuchung-fristen-informatives/", "quality": "C", "source_type": "fees_secondary", "supports": "HU incl. AU 163.00 € at TÜV SÜD in Bavaria (01–12/2026), same for petrol and diesel; ADAC: national average 163 € (2026). Every 24 months for cars older than 3 years.", "limitations": "Official TÜV SÜD fee page not reachable (403); prices at partner stations may differ.", "accessed_date": "2026-11-03"},
     {"title": "ADAC all-season tyre test 2025 (tread life) via motor1; fitting prices (repareo)", "url": "https://www.motor1.com/", "quality": "B", "source_type": "tyres_reference", "supports": "ADAC 2025 all-season test predicted tread life 34,700–68,000 km, average ~48,000 km; fitting and balancing about 55–60 € per set (repareo city tables, up to 17\").", "limitations": "Test size 225/45 R17, not the sizes of these cars; motor1 article URL not recorded precisely; fitting price from search snippets.", "accessed_date": "2026-11-03"},
@@ -288,21 +290,35 @@ def purchase_sale_defaults(listing_id):
                                 'labor_eur': None, 'status': 'ESTIMATED', 'source_id': shared_source(prefix), 'notes': note})
 
 
+def resale_values(price, km_now, years, annual_km, electric=False):
+    """Resale at the end of the ownership period (owner decision 2026-11-23, ESTIMATED): asking price − a × years −
+    b × km driven, km driven = current km + annual km × years, then the private-sale discount. Low and high scale a and b
+    (config.RESALE_CASES). An electric car without comparables takes the low case as expected (owner decision 2026-11-05)."""
+    km = km_now + annual_km * years
+    def case(name):
+        scale, disc = config.RESALE_CASES[name]
+        return max(0, round((price - scale * (config.RESALE_AGE_EUR_PER_YEAR * years + config.RESALE_KM_EUR_PER_KM * km)) * (1 - disc), -1))  # a car is not worth less than 0
+    return {'low_eur': case('low'), 'expected_eur': case('low' if electric else 'expected'), 'high_eur': case('high')}
+
+
 def resale_rule_of_thumb(listing_id, years=None, electric=False):
-    """resale_end from the asking price: expected 6 %/year + 10 % private-sale discount; low 10 %/year + 20 %;
-    high 3 %/year + 5 %. Replace with a comparable-listings valuation when one exists. An electric car without
-    comparables takes the low case as expected (owner decision 2026-11-05; DAT: 3-year-old BEVs keep 51.5 % vs 62.7 %)."""
+    """resale_end from the asking price with resale_values(); replace with a comparable-listings valuation when one exists."""
     u = listing(listing_id)
-    price = u['price_eur']
-    years = years or get('/api/listings')['parameters']['ownership_years']
-    r = lambda rate, disc: round(price * (1 - rate) ** years * (1 - disc), -1)
-    return post('valuations', {'listing_id': listing_id, 'kind': 'resale_end', 'horizon_years': years,
-                               'low_eur': r(0.10, 0.20), 'expected_eur': r(0.10, 0.20) if electric else r(0.06, 0.10), 'high_eur': r(0.03, 0.05),
-                               'status': 'ESTIMATED', 'valued_date': DAY, 'source_id': shared_source('Allianz'),
-                               'notes': f'Rule-of-thumb estimate from the asking price {price:.0f} €: expected 6%/year and 10% '
-                                        'private-sale discount; low 10%/year and 20%; high 3%/year and 5%. Not model-specific; '
-                                        'refine with comparable listings.' + (' Electric car: the low case is the expected value '
-                                        '(owner decision 2026-11-05).' if electric else '')})
+    price, km_now = u['price_eur'], u['mileage_km']
+    if price is None or km_now is None:
+        raise ValueError('the resale rule needs the asking price and the mileage')
+    params = get('/api/listings')['parameters']
+    years = years or params['ownership_years']
+    v = resale_values(price, km_now, years, params['annual_km'], electric)
+    return post('valuations', {'listing_id': listing_id, 'kind': 'resale_end', 'horizon_years': years, **v,
+                               'status': 'ESTIMATED', 'valued_date': DAY, 'source_id': shared_source('Resale rule'),
+                               'notes': f'Rule-of-thumb estimate from the asking price {price:.0f} € at {km_now} km: value at the end = '
+                                        f'price − {config.RESALE_AGE_EUR_PER_YEAR} €×{years} years − {config.RESALE_KM_EUR_PER_KM} €×km driven '
+                                        f'(km driven = {km_now} + {params["annual_km"]} km/year × {years} years), then the private-sale '
+                                        'discount: 10 % expected, 20 % low, 5 % high. Low and high scale the age and km terms by 1.5 '
+                                        'and 0.5. Constants: carlos/config.py (RESALE_*), fitted from 72 asking prices (source: '
+                                        'resale fit of 2026-11-23). Not model-specific; refine with comparable listings.' +
+                                        (' Electric car: the low case is the expected value (owner decision 2026-11-05).' if electric else '')})
 
 
 def todo(listing_id=None, vehicle_id=None):

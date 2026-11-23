@@ -827,7 +827,7 @@ All columns are **DEPRECATED** (no reader in the cost code; no writer through th
 | `id` | INTEGER PK | row id | Primary key. | never | `tco`, `dossier` | `server` | |
 | `listing_id` | INTEGER NN FK listings | id | The car. | never | `tco` | `agent` | |
 | `kind` | TEXT NN | `sale_today` (reference only), `resale_end` (used by depreciation) (CHECK) | What the value is. | never | `tco` (depreciation, the reference car's sale value), `dossier` | `agent` | |
-| `horizon_years` | INTEGER | years | Ownership period the value is for. The cost moves a `resale_end` along the resale rule when the account's period differs (`RESALE_YEARLY_LOSS`). | unknown | `tco`, `dossier` | `agent` | |
+| `horizon_years` | INTEGER | years | Ownership period the value is for. The cost moves a `resale_end` along the linear resale rule when the account's period differs (`RESALE_AGE_EUR_PER_YEAR`, `RESALE_KM_EUR_PER_KM`, `RESALE_CASES` in `carlos/config.py`). | unknown | `tco`, `dossier` | `agent` | |
 | `low_eur` | REAL | EUR | Lower bound of the value. | unknown | `dossier` | `agent` | |
 | `expected_eur` | REAL NN | EUR | The expected value. | never | `tco` (depreciation), `dossier` | `agent` | |
 | `high_eur` | REAL | EUR | Upper bound. | unknown | `dossier` | `agent` | |

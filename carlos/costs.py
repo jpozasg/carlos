@@ -224,18 +224,21 @@ def market_model(models, u, today):
     return None
 
 
-def resale_at(end, years, electric=False):
-    """A stored resale_end is the value at its own `horizon_years`. For another ownership period it moves along the rule of
-    thumb's yearly loss (config.RESALE_YEARLY_LOSS; the one-off private-sale discount inside the stored value stays), so a
-    longer horizon is not flattered (#388). An electric car's expected value follows the low case, as the rule stores it.
-    No horizon stored: taken as given."""
+def resale_at(end, years, annual_km, electric=False):
+    """A stored resale_end is the value at its own `horizon_years`. For another ownership period it moves along the linear
+    resale rule (config.RESALE_AGE_EUR_PER_YEAR, RESALE_KM_EUR_PER_KM): the extra years add their age and km terms at the
+    account's annual km, scaled per case and net of that case's private-sale discount (#388). An electric car's expected
+    value follows the low case, as the rule stores it. No horizon stored: taken as given."""
     h = end.get('horizon_years')
     if not h or h == years:
         return end
-    loss = config.RESALE_YEARLY_LOSS
-    rate = {'expected': loss['low' if electric else 'expected'], 'low': loss['low'], 'high': loss['high']}
-    return {**end, **{f'{k}_eur': None if end[f'{k}_eur'] is None else round(end[f'{k}_eur'] * (1 - r) ** (years - h), 2) for k, r in rate.items()},
-            'horizon_years': years, 'rescaled_from_years': h}
+    per_year = config.RESALE_AGE_EUR_PER_YEAR + config.RESALE_KM_EUR_PER_KM * annual_km
+    cases = {'expected': 'low' if electric else 'expected', 'low': 'low', 'high': 'high'}
+    out = {}
+    for k, c in cases.items():
+        scale, disc = config.RESALE_CASES[c]
+        out[f'{k}_eur'] = None if end[f'{k}_eur'] is None else max(0, round(end[f'{k}_eur'] - scale * per_year * (years - h) * (1 - disc), 2))
+    return {**end, **out, 'horizon_years': years, 'rescaled_from_years': h}
 
 
 def depreciation(u, vals):
@@ -635,7 +638,7 @@ def tco_rows(c, p, know=None):
         run, det = running(km, years * 12)
         u['fault_plan'], u['restarted_items'] = det['faults'], sorted(restarted)
         if 'resale_end' in vals.get(u['id'], {}):  # the stored end value belongs to its own horizon (#388)
-            vals[u['id']]['resale_end'] = resale_at(vals[u['id']]['resale_end'], years, electric)
+            vals[u['id']]['resale_end'] = resale_at(vals[u['id']]['resale_end'], years, p['annual_km'], electric)
         # resale from the model's market sample (#166): end value at the owner's end age and km, less the private-sale
         # discount; it replaces the listing's own valuation when the sample is usable
         mm = market_model(markets, u, today) if age_now is not None and u['mileage_km'] is not None else None
