@@ -1,5 +1,6 @@
 """SQLite access. Connections are opened per request; the path is read from config at call time (tests swap it)."""
 import sqlite3
+import time
 from . import config
 
 
@@ -11,9 +12,23 @@ def connect():
     # WAL: readers never wait for the writer; the 30 s busy timeout covers the few writes that overlap (worker + browser)
     c = sqlite3.connect(config.DB, timeout=30, factory=Connection)
     c.row_factory = sqlite3.Row
-    c.execute('PRAGMA journal_mode=WAL')
+    _set_wal(c)
     c.execute('PRAGMA foreign_keys=ON')
     return c
+
+
+def _set_wal(c):
+    """Switches the file to WAL once. The switch takes an exclusive lock and the busy timeout does not wait for it, so
+    while another connection holds a lock it fails at once: retry briefly, then go on, since that connection sets WAL."""
+    for attempt in range(6):
+        try:
+            if c.execute('PRAGMA journal_mode').fetchone()[0] != 'wal':
+                c.execute('PRAGMA journal_mode=WAL')
+            return
+        except sqlite3.OperationalError as e:
+            if 'database is locked' not in str(e):
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def params(c):

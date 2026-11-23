@@ -1,7 +1,7 @@
 """Speed without behaviour change (issue #405): the cost cache per account and database state, gzip and ETag, the deferred
 dossier export of photos and checklist ticks, WAL with a busy timeout, and the export failure path. Synthetic fixture only.
 Run: python -m unittest tests.test_speed -v"""
-import gzip, json, sqlite3, tempfile, threading, unittest, urllib.error, urllib.request
+import gzip, json, sqlite3, tempfile, threading, time, unittest, urllib.error, urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -170,6 +170,32 @@ class SpeedTest(unittest.TestCase):
         c = db.connect()
         self.assertEqual(c.execute('PRAGMA journal_mode').fetchone()[0], 'wal')
         self.assertEqual(c.execute('PRAGMA busy_timeout').fetchone()[0], 30000)
+        c.close()
+
+    def test_connect_does_not_fail_while_another_connection_holds_a_write_lock(self):
+        # a rollback-journal file whose WAL switch is blocked by an open write transaction (the export thread vs a request)
+        raw = sqlite3.connect(config.DB); raw.execute('PRAGMA journal_mode=DELETE'); raw.commit(); raw.close()
+        writer = sqlite3.connect(config.DB, isolation_level=None)
+        writer.execute('BEGIN IMMEDIATE')
+        results, errors = [], []
+
+        def open_one():
+            try:
+                c = db.connect()
+                results.append(c.execute('PRAGMA journal_mode').fetchone()[0])
+                c.close()
+            except Exception as e:  # recorded, asserted below
+                errors.append(e)
+
+        threads = [threading.Thread(target=open_one) for _ in range(4)]
+        for t in threads: t.start()
+        time.sleep(0.2)  # the threads retry the switch while the writer still holds its lock
+        writer.execute('COMMIT'); writer.close()
+        for t in threads: t.join(10)
+        self.assertEqual(errors, [])
+        self.assertEqual(results, ['wal'] * 4)
+        c = db.connect()  # and the file is WAL for every later connection
+        self.assertEqual(c.execute('PRAGMA journal_mode').fetchone()[0], 'wal')
         c.close()
 
 
