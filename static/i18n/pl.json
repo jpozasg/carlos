@@ -377,6 +377,8 @@
  "no_archive": "Brak jeszcze zapisów. Po zarchiwizowaniu ogłoszenia jego opis, wyposażenie i zdjęcia zostają tutaj, nawet gdy ogłoszenie zniknie.",
  "last_capture": "Ostatni zapis {d} · łącznie {n}",
  "photo_remove_btn": "Usuń",
+ "photos_edit": "Edytuj zdjęcia",
+ "photos_done": "Gotowe",
  "photo_remove": "Usuń zdjęcie {n}",
  "photo_remove_ask": "Usunąć zdjęcie {n}? Znika z karty od razu i zostaje w usuniętych zdjęciach, dopóki nie skasujesz go na stałe.",
  "photo_cancel": "Anuluj",

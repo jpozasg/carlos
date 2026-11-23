@@ -375,6 +375,8 @@
  "no_archive": "No captures yet. Once the listing is archived, its description, features and photos stay here even after it disappears.",
  "last_capture": "Last capture {d} · {n} in total",
  "photo_remove_btn": "Remove",
+ "photos_edit": "Edit photos",
+ "photos_done": "Done",
  "photo_remove": "Remove photo {n}",
  "photo_remove_ask": "Remove photo {n}? It leaves the dossier at once and stays in the removed photos until you delete it for good.",
  "photo_cancel": "Cancel",

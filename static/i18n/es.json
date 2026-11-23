@@ -375,6 +375,8 @@
  "no_archive": "Aún no hay capturas. Una vez archivado el anuncio, su descripción, características y fotos se quedan aquí aunque desaparezca.",
  "last_capture": "Última captura {d} · {n} en total",
  "photo_remove_btn": "Quitar",
+ "photos_edit": "Editar fotos",
+ "photos_done": "Listo",
  "photo_remove": "Quitar la foto {n}",
  "photo_remove_ask": "¿Quitar la foto {n}? Sale del expediente al momento y queda entre las fotos quitadas hasta que la borre definitivamente.",
  "photo_cancel": "Cancelar",
