@@ -5,7 +5,7 @@ import { t, tv, comp } from '../i18n.js';
 import { $, esc, euro, num, PEND, eP, sumKnown, totalP, perMonth, pct, consumptionTxt, consumptionSpread, yrs, empty, facts, media, modelsHref, unitName, unitSub, sevTag, lvlTag, qTag, safeUrl, statusTags, gaps, intervalTxt, toast, CAR_SVG, scoreTxt, notScoredTxt, critColor, researchLevels, flagsCard, faultProb, busy, fmtDate, unit, glyph, certainEur, partsLaborP } from '../ui.js';
 
 const ICON = { OK: ['ok', '✓'], PROBLEM: ['bad', '!'], PENDING: ['pend', '·'], 'N/A': ['na', '–'] };
-let PHOTOS = [], PHOTO_IDS = [], cur = 0, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
+let PHOTOS = [], PHOTO_IDS = [], cur = 0, EDITING = false, VIEWING = false, root, D = null, SWEEP = true, TAB = 'overview';  // SWEEP: the score needle animates on open, not on quiet refreshes
 const lb = $('lightbox');
 const FMT = { cost_month: v => euro(v) + t('per_month'), cash_now: euro, budget: euro, safety: v => unit(v, 'star'), distance: v => unit(v, 'km'), mileage: v => unit(v, 'km'), age: yrs, reliability: v => num(v, 1), inspection: v => num(v, 0),
   power: v => unit(v, 'ps'), confidence: v => unit(v, 'pct') };
@@ -36,10 +36,10 @@ function viewer(d) {
   PHOTOS = d.media.map(m => m.file_path); PHOTO_IDS = d.media.map(m => m.id); cur = 0;
   const removed = removedPhotos(d.removed_media || []);
   if (!PHOTOS.length) return `<div class="card"><div class="hero cur-d ar-16-10"><span class="nophoto"><span>${CAR_SVG}${t('no_photos_unit')}</span></span></div>${removed}</div>`;
-  return `<div class="card viewer p12">
+  return `<div class="card viewer p12${EDITING ? ' editing' : ''}">
     <div class="rel"><button class="main" type="button" data-zoom aria-label="${t('zoom')}"><img id="vMain" src="${media(PHOTOS[0])}" alt="${t('photo_n', { n: 1 })} · ${unitName(d)}"><span class="count" id="vCount">1 / ${PHOTOS.length}</span></button>
       ${PHOTOS.length > 1 ? `<button class="navbtn prev" type="button" data-step="-1" aria-label="${t('prev_photo')}">‹</button><button class="navbtn next" type="button" data-step="1" aria-label="${t('next_photo')}">›</button>` : ''}</div>
-    <div class="strip" role="group" aria-label="${t('thumbnails')}">${PHOTOS.map((p, i) => `<span class="thumb"><button type="button" data-photo="${i}" aria-current="${i === 0}" aria-label="${t('photo_n', { n: i + 1 })}"><img src="${media(p)}" alt="" loading="lazy"></button><button type="button" class="photo-rm" data-remove="${PHOTO_IDS[i]}" data-n="${i + 1}" aria-label="${t('photo_remove', { n: i + 1 })}">${t('photo_remove_btn')}</button></span>`).join('')}</div>
+    <div class="strip" role="group" aria-label="${t('thumbnails')}">${PHOTOS.map((p, i) => `<span class="thumb"><button type="button" data-photo="${i}" aria-current="${i === 0}" aria-label="${t('photo_n', { n: i + 1 })}"><img src="${media(p)}" alt="" loading="lazy"></button><button type="button" class="photo-rm" data-remove="${PHOTO_IDS[i]}" data-n="${i + 1}" aria-label="${t('photo_remove', { n: i + 1 })}">×</button></span>`).join('')}<button type="button" class="photo-edit" data-photo-edit aria-pressed="${EDITING}">${t(EDITING ? 'photos_done' : 'photos_edit')}</button></div>
     ${askBox('remove', '', t('photo_remove_btn'))}${errP('photo')}${removed}</div>`;
 }
 const photoAlt = () => `${t('photo_n', { n: cur + 1 })} · ${D ? D.make + ' ' + D.model : ''}`;  // alt text is set as a property: not escaped
@@ -54,6 +54,12 @@ function showPhoto(i) {
   if (lb.open) { const li = lb.querySelector('img'); li.src = media(PHOTOS[cur]); li.alt = photoAlt(); lb.querySelector('.count').textContent = `${cur + 1} / ${PHOTOS.length}`; }
 }
 lb.querySelector('.prev').onclick = () => showPhoto(cur - 1); lb.querySelector('.next').onclick = () => showPhoto(cur + 1); lb.querySelector('.close').onclick = () => lb.close();
+// swipe between photos on a phone: a sideways drag of 40 px or more (the picture and the lightbox)
+let swipe = null;
+const swipeStart = e => { swipe = e.touches.length === 1 ? [e.touches[0].clientX, e.touches[0].clientY] : null; };
+const swipeEnd = e => { if (!swipe || !e.changedTouches.length) return; const dx = e.changedTouches[0].clientX - swipe[0], dy = e.changedTouches[0].clientY - swipe[1]; swipe = null;
+  if (Math.abs(dx) >= 40 && Math.abs(dx) > 1.5 * Math.abs(dy)) showPhoto(cur + (dx < 0 ? 1 : -1)); };
+lb.addEventListener('touchstart', swipeStart, { passive: true }); lb.addEventListener('touchend', swipeEnd, { passive: true });
 lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.contains('lb')) lb.close(); });
 document.addEventListener('keydown', e => { if (!PHOTOS.length || !root || !document.contains(root)) return; if (e.target.closest('input,textarea,select')) return;
   if (e.key === 'ArrowRight') { showPhoto(cur + 1); e.preventDefault(); } else if (e.key === 'ArrowLeft') { showPhoto(cur - 1); e.preventDefault(); } });
@@ -472,6 +478,8 @@ function paintItem(id, st) {
   const c = $('insp-count'); if (c) c.textContent = t('ok_count', { ok: D.inspection.filter(x => x.status === 'OK').length, n: D.inspection.length });
 }
 function bind() {
+  root.addEventListener('touchstart', e => { if (e.target.closest('.viewer .main')) swipeStart(e); }, { passive: true });
+  root.addEventListener('touchend', e => { if (e.target.closest('.viewer .main')) swipeEnd(e); }, { passive: true });
   root.addEventListener('change', async e => {
     if (e.target.matches('[data-unitsel]')) { go('listing/' + e.target.value); return; }
     const n = e.target.closest('[data-inote]');
@@ -505,6 +513,8 @@ function bind() {
         else { await ui('DELETE', 'photo/' + id, { id: +id, confirm: true }); toast(t('photo_deleted')); }
         setErr('photo'); await refresh(); }); } catch (err) { setErr('photo', t('not_saved', { m: err.message })); toast(err.message, true); } return; }
     const rs = e.target.closest('[data-restore]'); if (rs) { try { await busy(rs, async () => { await ui('PATCH', 'photo/' + rs.dataset.restore, { archived: 0 }); toast(t('photo_restored')); setErr('photo'); await refresh(); }); } catch (err) { setErr('photo', t('not_saved', { m: err.message })); toast(err.message, true); } return; }
+    if (e.target.closest('[data-photo-edit]')) { EDITING = !EDITING; const tile = e.target.closest('[data-photo-edit]'); root.querySelector('.viewer').classList.toggle('editing', EDITING);
+      tile.setAttribute('aria-pressed', EDITING); tile.textContent = t(EDITING ? 'photos_done' : 'photos_edit'); return; }
     const ph = e.target.closest('[data-photo]'); if (ph) { showPhoto(+ph.dataset.photo); return; }
     const st = e.target.closest('[data-step]'); if (st) { showPhoto(cur + +st.dataset.step); return; }
     if (e.target.closest('[data-zoom]')) { lb.showModal(); showPhoto(cur); return; }

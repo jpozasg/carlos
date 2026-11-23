@@ -375,6 +375,8 @@
  "no_archive": "Noch keine Erfassungen. Sobald das Inserat archiviert ist, bleiben Beschreibung, Ausstattung und Fotos hier erhalten, auch wenn es verschwindet.",
  "last_capture": "Letzte Erfassung {d} · insgesamt {n}",
  "photo_remove_btn": "Entfernen",
+ "photos_edit": "Fotos bearbeiten",
+ "photos_done": "Fertig",
  "photo_remove": "Foto {n} entfernen",
  "photo_remove_ask": "Foto {n} entfernen? Es verschwindet sofort aus dem Dossier und bleibt unter den entfernten Fotos, bis Sie es endgültig löschen.",
  "photo_cancel": "Abbrechen",
