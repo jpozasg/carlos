@@ -224,20 +224,26 @@ def market_model(models, u, today):
     return None
 
 
-def resale_at(end, years, annual_km, electric=False):
-    """A stored resale_end is the value at its own `horizon_years`. For another ownership period it moves along the linear
-    resale rule (config.RESALE_AGE_EUR_PER_YEAR, RESALE_KM_EUR_PER_KM): the extra years add their age and km terms at the
-    account's annual km, scaled per case and net of that case's private-sale discount (#388). An electric car's expected
-    value follows the low case, as the rule stores it. No horizon stored: taken as given."""
+def resale_loss(years, km_end):
+    """Loss of value over the ownership period in EUR (quadratic resale rule, owner decision 2026-11-23): the age terms
+    in years held plus the km term at the odometer at the end (config.RESALE_QUAD_AGE_EUR, RESALE_QUAD_AGE2_EUR, RESALE_KM_EUR_PER_10K)."""
+    return config.RESALE_QUAD_AGE_EUR * years + config.RESALE_QUAD_AGE2_EUR * years * years + config.RESALE_KM_EUR_PER_10K * km_end / 10000
+
+
+def resale_at(end, years, annual_km, electric=False, km_now=None):
+    """A stored resale_end is the value at its own `horizon_years`. For another ownership period it moves along the
+    quadratic resale rule (resale_loss): the loss of the new period minus the loss of the stored one, at the account's
+    annual km from the current odometer, scaled per case and net of that case's private-sale discount (#388). An electric
+    car's expected value follows the low case, as the rule stores it. No horizon stored: taken as given. Unknown km: unknown."""
     h = end.get('horizon_years')
     if not h or h == years:
         return end
-    per_year = config.RESALE_AGE_EUR_PER_YEAR + config.RESALE_KM_EUR_PER_KM * annual_km
     cases = {'expected': 'low' if electric else 'expected', 'low': 'low', 'high': 'high'}
     out = {}
     for k, c in cases.items():
         scale, disc = config.RESALE_CASES[c]
-        v = None if end[f'{k}_eur'] is None else end[f'{k}_eur'] - scale * per_year * (years - h) * (1 - disc)
+        v = None if end[f'{k}_eur'] is None or km_now is None else end[f'{k}_eur'] - scale * (
+            resale_loss(years, km_now + annual_km * years) - resale_loss(h, km_now + annual_km * h)) * (1 - disc)
         out[f'{k}_eur'] = round(max(0, v), 2) if v is not None and math.isfinite(v) else None  # NaN/inf: unknown, never 0 (S5)
     return {**end, **out, 'horizon_years': years, 'rescaled_from_years': h}
 
@@ -639,7 +645,7 @@ def tco_rows(c, p, know=None):
         run, det = running(km, years * 12)
         u['fault_plan'], u['restarted_items'] = det['faults'], sorted(restarted)
         if 'resale_end' in vals.get(u['id'], {}):  # the stored end value belongs to its own horizon (#388)
-            vals[u['id']]['resale_end'] = resale_at(vals[u['id']]['resale_end'], years, p['annual_km'], electric)
+            vals[u['id']]['resale_end'] = resale_at(vals[u['id']]['resale_end'], years, p['annual_km'], electric, u['mileage_km'])
         # resale from the model's market sample (#166): end value at the owner's end age and km, less the private-sale
         # discount; it replaces the listing's own valuation when the sample is usable
         mm = market_model(markets, u, today) if age_now is not None and u['mileage_km'] is not None else None
