@@ -1,5 +1,5 @@
 """Cost calculation per listing over the ownership period (README, "Calculation"). NULL means unknown, never 0."""
-import datetime, json, re
+import datetime, json, math, re
 from . import config
 from . import geo, research
 from .db import for_variant, rows, scoped
@@ -237,7 +237,8 @@ def resale_at(end, years, annual_km, electric=False):
     out = {}
     for k, c in cases.items():
         scale, disc = config.RESALE_CASES[c]
-        out[f'{k}_eur'] = None if end[f'{k}_eur'] is None else max(0, round(end[f'{k}_eur'] - scale * per_year * (years - h) * (1 - disc), 2))
+        v = None if end[f'{k}_eur'] is None else end[f'{k}_eur'] - scale * per_year * (years - h) * (1 - disc)
+        out[f'{k}_eur'] = round(max(0, v), 2) if v is not None and math.isfinite(v) else None  # NaN/inf: unknown, never 0 (S5)
     return {**end, **out, 'horizon_years': years, 'rescaled_from_years': h}
 
 

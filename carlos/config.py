@@ -1,7 +1,7 @@
 """Paths and constants. The code lives in ROOT; the data (database, photos, backups, dossiers) lives in DATA_DIR,
 which is its own private repository: env CARLOS_DATA, default ROOT/data."""
 from pathlib import Path
-import os
+import ipaddress, os
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get('CARLOS_DATA') or ROOT / 'data').resolve()
@@ -13,7 +13,19 @@ STATIC = ROOT / 'static'
 # AGPL-3.0 section 13: every page links to the source of the running version (env CARLOS_SOURCE_URL for a fork or a mirror)
 SOURCE_URL = os.environ.get('CARLOS_SOURCE_URL') or 'https://github.com/jpozasg/carlos'
 # CARLOS_HOST: bind address; default loopback only (behind a proxy). Set to a Tailscale address to serve the tailnet directly.
+def host_ok(h):
+    """Loopback or a Tailscale address (100.64.0.0/10) only (S3): a public or wildcard bind would expose the app beyond the tailnet."""
+    if h.lower() in ('127.0.0.1', 'localhost'):
+        return True
+    try:
+        return ipaddress.ip_address(h) in ipaddress.ip_network('100.64.0.0/10')
+    except ValueError:
+        return False
+
+
 HOST, PORT = (os.environ.get('CARLOS_HOST') or '127.0.0.1'), int(os.environ.get('CARLOS_PORT') or 8000)
+if not host_ok(HOST):
+    raise SystemExit(f'carlos: CARLOS_HOST={HOST!r} refused: use 127.0.0.1, localhost or a Tailscale address (100.64.0.0/10)')
 # Host header names this server answers (issue #414, L4): loopback plus CARLOS_HOSTS (comma list, e.g. the public name
 # that the reverse proxy passes through); any other Host gets 400.
 ALLOWED_HOSTS = {'127.0.0.1', 'localhost', *(h.strip().lower() for h in os.environ.get('CARLOS_HOSTS', '').split(',') if h.strip())}

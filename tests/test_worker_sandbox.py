@@ -71,6 +71,43 @@ class ArgvTest(unittest.TestCase):
         self.assertIn('/home/w/.claude.json', a)
 
 
+class BusAndSymlinkTest(unittest.TestCase):
+    def test_the_user_runtime_dir_is_hidden_under_a_tmpfs(self):  # S1: the user bus socket and systemd --user are unreachable
+        a = worker.sandbox_argv(Path(ROOT_FAKE), Path('/tmp/carlos-run-x'), hidden=[Path('/run/user/1000')])
+        self.assertEqual(a[a.index('/run/user/1000') - 1:a.index('/run/user/1000') + 1], ['--tmpfs', '/run/user/1000'])
+        self.assertEqual(a[-1], '--')
+
+    def test_bus_dir_is_listed_only_when_it_exists(self):
+        self.assertEqual(worker.bus_dirs(uid=os.getuid() + 100000), [])
+        with mock.patch.object(worker.Path, 'is_dir', return_value=True):
+            self.assertEqual(worker.bus_dirs(uid=1000), [Path('/run/user/1000')])
+
+    def test_the_run_environment_has_no_bus_variables(self):  # S1
+        env = {'PATH': '/usr/bin', 'HOME': '/home/w', 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/1000/bus',
+               'XDG_RUNTIME_DIR': '/run/user/1000', 'XDG_CONFIG_HOME': '/home/w/.config',
+               'WORKER_PASS_ENV': 'DBUS_SESSION_BUS_ADDRESS,XDG_RUNTIME_DIR'}
+        with mock.patch.dict(os.environ, env, clear=True):
+            e = worker.run_env(FakeApi(), req())
+        self.assertNotIn('DBUS_SESSION_BUS_ADDRESS', e)
+        self.assertNotIn('XDG_RUNTIME_DIR', e)
+        self.assertEqual(e['XDG_CONFIG_HOME'], '/home/w/.config')  # other XDG variables still pass
+
+    def test_a_symlinked_token_file_is_masked_at_its_link_and_its_real_path(self):  # S2
+        home = Path(tempfile.mkdtemp()).resolve()
+        (home / '.config').mkdir()
+        real = home / 'vault' / 'tok.env'
+        real.parent.mkdir()
+        real.write_text('WORKER_TOKEN=x')
+        link = home / '.config' / 'carlos-worker.env'
+        link.symlink_to(real)
+        masks = worker.token_masks(home)
+        self.assertEqual(masks, [link, real])
+        a = worker.sandbox_argv(Path(ROOT_FAKE), Path('/tmp/carlos-run-x'), masks=masks)
+        for p in (link, real):
+            i = a.index(str(p))
+            self.assertEqual(a[i - 2:i + 1], ['--ro-bind', '/dev/null', str(p)])
+
+
 class CopyTest(unittest.TestCase):
     def fake_checkout(self):
         root = Path(tempfile.mkdtemp())
@@ -121,6 +158,12 @@ class RunTest(unittest.TestCase):
         argv, _ = self.run_once({'CARLOS_SANDBOX': 'bwrap', 'PATH': '/usr/bin', 'HOME': str(home)})
         i = argv.index(str(tok))
         self.assertEqual(argv[i - 2:i + 1], ['--ro-bind', '/dev/null', str(tok)])
+
+    def test_the_sandboxed_run_hides_the_user_runtime_dir(self):  # S1
+        with mock.patch.object(worker, 'bus_dirs', return_value=[Path('/run/user/1000')]):
+            argv, _ = self.run_once({'CARLOS_SANDBOX': 'bwrap', 'PATH': '/usr/bin', 'HOME': '/home/w'})
+        i = argv.index('/run/user/1000')
+        self.assertEqual(argv[i - 1:i + 1], ['--tmpfs', '/run/user/1000'])
 
     def test_without_it_nothing_changes(self):
         argv, copy = self.run_once({'PATH': '/usr/bin', 'HOME': '/home/w'})

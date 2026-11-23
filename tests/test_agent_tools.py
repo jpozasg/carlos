@@ -37,6 +37,22 @@ class ResaleRule(unittest.TestCase):
         self.assertEqual((body['low_eur'], body['expected_eur'], body['high_eur']), (6280, 10710, 15150))
         self.assertIn('0.051', body['notes'])
 
+    def test_nan_or_inf_is_unknown_never_zero(self):  # S5
+        nan, inf = float('nan'), float('inf')
+        self.assertEqual(agent_tools.resale_values(nan, 60000, 4, 15000), {'low_eur': None, 'expected_eur': None, 'high_eur': None})
+        self.assertEqual(agent_tools.resale_values(20000, 60000, nan, 15000)['expected_eur'], None)
+        self.assertEqual(agent_tools.resale_values(inf, 60000, 4, 15000)['high_eur'], None)
+
+    def test_stored_resale_moved_to_another_period_stays_unknown_for_nan(self):  # S5, costs.resale_at
+        from carlos import costs
+        end = {'horizon_years': 4, 'low_eur': float('nan'), 'expected_eur': 10000, 'high_eur': 12000}
+        out = costs.resale_at(end, 6, 15000)
+        self.assertIsNone(out['low_eur'])
+        self.assertIsInstance(out['expected_eur'], float)
+        out = costs.resale_at({'horizon_years': 4, 'low_eur': 6000, 'expected_eur': float('nan'), 'high_eur': 8000}, 6, 15000)
+        self.assertIsNone(out['expected_eur'])
+        self.assertEqual(out['low_eur'] > 0, True)
+
 
 if __name__ == '__main__':
     unittest.main()
