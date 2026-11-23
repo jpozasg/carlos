@@ -107,9 +107,13 @@ FAULT_SHAPES = ['WEAR_KM', 'AGE', 'WINDOW', 'RANDOM']
 HEAVY_USE_MIX = ('Mostly town',)  # setup driving_mix values that mean heavy use (short trips)
 NCAP_REGIME_YEAR = 2009  # Euro NCAP's stricter overall rating; earlier ratings count one star less (#169)
 PRIVATE_SALE_DISCOUNT = 0.05  # asking → private sale price (#166): ESTIMATED, range 3–10 %, no primary source found
-# yearly loss of the resale rule of thumb (agent_tools.resale_rule_of_thumb: expected 6 %, low 10 %, high 3 %); a stored
-# resale_end is moved along it when the ownership period differs from its horizon_years (#388)
-RESALE_YEARLY_LOSS = {'expected': 0.06, 'low': 0.10, 'high': 0.03}
+# resale rule of thumb (owner decision 2026-11-23, ESTIMATED): value at the end = asking price − a × years − b × km driven,
+# a and b fitted from 72 asking prices of 16 models (fixed effects). Source: resale fit of 2026-11-23 (general-fit.md in the
+# owner's job folder, not in the repository); the shared source 'Resale rule' cites the same listings.
+RESALE_AGE_EUR_PER_YEAR = 495    # a
+RESALE_KM_EUR_PER_KM = 0.051     # b
+# spread cases of the rule: (scale of a and b, private-sale discount) for expected, low and high (agent_tools, costs.resale_at)
+RESALE_CASES = {'expected': (1.0, 0.10), 'low': (1.5, 0.20), 'high': (0.5, 0.05)}
 MARKET_MIN_PER_BAND, MARKET_MAX_AGE_DAYS = 5, 183  # resale sample (#166): ≥ 5 cars in each of the three bands, 6 months
 
 # knowledge rows that may carry a first-registration window (applies_from/applies_to, issue #153)
