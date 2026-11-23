@@ -12,7 +12,8 @@ ENV = ROOT / '.env'
 STATIC = ROOT / 'static'
 # AGPL-3.0 section 13: every page links to the source of the running version (env CARLOS_SOURCE_URL for a fork or a mirror)
 SOURCE_URL = os.environ.get('CARLOS_SOURCE_URL') or 'https://github.com/jpozasg/carlos'
-HOST, PORT = '127.0.0.1', int(os.environ.get('CARLOS_PORT') or 8000)
+# CARLOS_HOST: bind address; default loopback only (behind a proxy). Set to a Tailscale address to serve the tailnet directly.
+HOST, PORT = (os.environ.get('CARLOS_HOST') or '127.0.0.1'), int(os.environ.get('CARLOS_PORT') or 8000)
 # Host header names this server answers (issue #414, L4): loopback plus CARLOS_HOSTS (comma list, e.g. the public name
 # that the reverse proxy passes through); any other Host gets 400.
 ALLOWED_HOSTS = {'127.0.0.1', 'localhost', *(h.strip().lower() for h in os.environ.get('CARLOS_HOSTS', '').split(',') if h.strip())}

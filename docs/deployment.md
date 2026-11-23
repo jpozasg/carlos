@@ -98,3 +98,6 @@ The worker **refuses to start** when `CARLOS_SANDBOX` is set to anything but `bw
 
 ## Research reset (issues #167, #194)
 The pilot tools (`pilot.py`, `pilot_compare.py`) were removed after the pilot (#384). To reset research with the owner's go: stop the server and the workers, `python research_reset.py data/cars.sqlite` (dry run), then `--apply`, start the server and queue every listing (`carlos://listing/<id>` for the reference car or an ad gone offline). `python -m carlos.consistency --duplicates [database]` lists duplicate faults across levels, which count twice in the cost.
+
+## Tailscale (optional, owner request 2026-11-23)
+Set `CARLOS_HOST` to this machine's Tailscale address and add the same address to `CARLOS_HOSTS`, then start the server: other tailnet devices reach it at `http://<tailscale-ip>:8000`. Without `CARLOS_HOST` the server stays on loopback only. Tailnet traffic is encrypted by Tailscale; the app itself still serves plain HTTP, so keep the tailnet private to your own devices.
