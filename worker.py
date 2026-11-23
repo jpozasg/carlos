@@ -13,8 +13,10 @@ Only the current units run: a request without a unit or with a retired unit is r
 start from a checkout that holds .env or data/ (the server's secrets and database) unless WORKER_ALLOW_SHARED_CHECKOUT=1;
 run it as another OS user from a code-only checkout (docs/deployment.md). A `claude` run gets docs/worker-settings.json
 (deny rules for .env, data/, sqlite3: speed bumps, the OS user is the control) and no skills (--disable-slash-commands).
+CARLOS_SANDBOX=bwrap runs each headless claude inside bubblewrap (docs/deployment.md, "Sandbox"): the checkout hidden, a code-only
+copy as the working directory, a private process list; the worker refuses to start if bwrap is missing or cannot run here.
 Run: python worker.py [--once]   (--once: handle at most one request, then exit)"""
-import datetime, json, os, re, shlex, socket, subprocess, sys, time
+import datetime, json, os, re, shlex, shutil, socket, subprocess, sys, tempfile, time
 from pathlib import Path
 from capture_listing import Api, ApiError
 from carlos import research_units as ru, urlcheck
@@ -122,6 +124,55 @@ def check_command(cmd):
         raise SystemExit(f'worker: CLAUDE_CMD has flag(s) outside the allow-list: {" ".join(bad)} (allowed: {" ".join(SAFE_FLAGS)})')
 
 
+CODE_FILES = ('AGENTS.md', 'agent_tools.py', 'capture_listing.py')  # the research run's code (plus docs/ and carlos/ below)
+
+
+def copy_code(dst, root=ROOT):
+    """A code-only copy of the checkout for a sandboxed run: the research code, prompts and docs, never .env, data/ or the
+    postcode table (only what the run reads is copied; a missing file is an error, not a silent gap)."""
+    for name in CODE_FILES:
+        shutil.copy2(root / name, dst / name)
+    shutil.copytree(root / 'carlos', dst / 'carlos', ignore=shutil.ignore_patterns('__pycache__', '*.csv', '*.sqlite'))
+    (dst / 'docs').mkdir()
+    for f in [*(root / 'docs').glob('*.md'), root / 'docs' / 'worker-settings.json']:
+        shutil.copy2(f, dst / 'docs' / f.name)
+    shutil.copytree(root / 'docs' / 'prompts', dst / 'docs' / 'prompts')
+
+
+def sandbox_argv(root, workdir, rw=()):
+    """The bwrap prefix of a sandboxed run (pure, so it is tested without bwrap): the real checkout `root` hidden under a tmpfs,
+    the code-only copy `workdir` bound at the same path (the prompts' {REPO} still works), the paths in `rw` (claude's state) bound
+    read-write, a fresh /proc in a new pid namespace (the worker's process and environment are not visible), and dies with the
+    worker. The run's environment is already the allow-list of run_env. Ends with `--`; the claude argv follows."""
+    args = ['bwrap', '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc',
+            '--tmpfs', str(root), '--bind', str(workdir), str(root),
+            '--unshare-pid', '--die-with-parent', '--chdir', str(root)]
+    for p in rw:
+        args += ['--bind', str(p), str(p)]
+    return args + ['--']
+
+
+def claude_state(home=None):
+    """Claude Code's own state, which a sandboxed run writes (sessions, login, settings): bound read-write, only what exists."""
+    home = Path(home or Path.home())
+    cands = [home / '.claude', home / '.claude.json']
+    if os.environ.get('CLAUDE_CONFIG_DIR'):
+        cands.append(Path(os.environ['CLAUDE_CONFIG_DIR']))
+    return [p for p in cands if p.exists()]
+
+
+def check_sandbox():
+    """CARLOS_SANDBOX=bwrap: refuses to start unless bwrap is installed and can make a sandbox here (unprivileged user namespaces).
+    Never falls back to an unsandboxed run."""
+    if shutil.which('bwrap') is None:
+        raise SystemExit('worker: CARLOS_SANDBOX=bwrap but bwrap is not installed (package bubblewrap); the worker will not run unsandboxed')
+    probe = subprocess.run(['bwrap', '--ro-bind', '/', '/', '--unshare-pid', '--die-with-parent', '--', 'true'],
+                           capture_output=True, text=True)
+    if probe.returncode:
+        raise SystemExit('worker: bwrap cannot start a sandbox here (needs unprivileged user namespaces, docs/deployment.md): '
+                         + probe.stderr.strip()[:300])
+
+
 def command(cmd, model):
     """The headless command with --model <model> after the claude executable, unless one is given (owner: the worker runs on Haiku)."""
     parts = shlex.split(cmd)
@@ -186,22 +237,30 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=
         argv[1:1] = [*(['--output-format', 'json'] if '--output-format' not in argv else []),  # the JSON result carries the usage (#291)
                      *(['--settings', str(SETTINGS)] if '--settings' not in argv else []),  # deny rules for .env and data/ (#386)
                      *(['--disable-slash-commands'] if '--disable-slash-commands' not in argv else [])]  # a run needs no skills
-    p = subprocess.Popen(argv + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
-                         stderr=subprocess.STDOUT, text=True)
-    deadline = time.time() + timeout_s
-    while True:  # wait for the run, with a heartbeat every minute so the admin panel shows the worker as working
-        try:
-            out, usage = parse_usage(p.communicate(timeout=max(1, min(60, deadline - time.time())))[0])
-            result = outcome(out) if p.returncode == 0 else {
-                'status': 'FAILED', 'result': f'Exit code {p.returncode}. Log tail:\n' + '\n'.join(out.splitlines()[-30:])}
-            break
-        except subprocess.TimeoutExpired:
-            if time.time() < deadline:
-                beat(api, 'working'); continue
-            p.kill()
-            out, usage = parse_usage(p.communicate()[0])
-            result = {'status': 'FAILED', 'result': f'Timed out after {timeout_s // 60} minutes'}
-            break
+    workdir = Path(tempfile.mkdtemp(prefix='carlos-run-')) if os.environ.get('CARLOS_SANDBOX') == 'bwrap' else None
+    try:
+        if workdir:  # the run sees only this copy of the code, inside the sandbox (#386 follow-up)
+            copy_code(workdir)
+            argv = sandbox_argv(ROOT, workdir, claude_state()) + argv
+        p = subprocess.Popen(argv + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True)
+        deadline = time.time() + timeout_s
+        while True:  # wait for the run, with a heartbeat every minute so the admin panel shows the worker as working
+            try:
+                out, usage = parse_usage(p.communicate(timeout=max(1, min(60, deadline - time.time())))[0])
+                result = outcome(out) if p.returncode == 0 else {
+                    'status': 'FAILED', 'result': f'Exit code {p.returncode}. Log tail:\n' + '\n'.join(out.splitlines()[-30:])}
+                break
+            except subprocess.TimeoutExpired:
+                if time.time() < deadline:
+                    beat(api, 'working'); continue
+                p.kill()
+                out, usage = parse_usage(p.communicate()[0])
+                result = {'status': 'FAILED', 'result': f'Timed out after {timeout_s // 60} minutes'}
+                break
+    finally:
+        if workdir:
+            shutil.rmtree(workdir, ignore_errors=True)
     log.write_text(out + (f'\n\nUSAGE {json.dumps(usage)}\n' if usage else ''), encoding='utf-8')
     if usage:
         result['usage'] = usage
@@ -261,6 +320,12 @@ def main(argv=None):
     name, cmd = os.environ.get('WORKER_NAME') or socket.gethostname(), os.environ.get('CLAUDE_CMD', 'claude -p')
     model = os.environ.get('WORKER_MODEL', 'haiku')
     check_command(cmd)
+    sandbox = os.environ.get('CARLOS_SANDBOX', '')
+    if sandbox not in ('', 'bwrap'):  # a typo must not run unsandboxed
+        raise SystemExit(f'worker: CARLOS_SANDBOX={sandbox!r} is not a sandbox (use bwrap, or leave it unset)')
+    if sandbox:
+        check_sandbox()
+        print('worker: sandbox: bwrap (each run is isolated from the checkout and the worker process)', flush=True)
     print(f'worker: runs start with: {" ".join(command(cmd, model))}', flush=True)  # the effective command (N8); no environment values
     extra = sorted({x.strip() for x in os.environ.get('WORKER_PASS_ENV', '').split(',')} - NEVER_PASSED - {''})
     if extra:
