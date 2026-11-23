@@ -122,9 +122,10 @@ PRIVATE_SALE_DISCOUNT = 0.05  # asking → private sale price (#166): ESTIMATED,
 # resale rule of thumb (owner decision 2026-11-23, ESTIMATED): value at the end = list price − loss, floored at 0, with
 # loss = RESALE_QUAD_AGE_EUR × t + RESALE_QUAD_AGE2_EUR × t² + RESALE_KM_EUR_PER_10K × km/10,000, t = years held and
 # km = odometer at the end (current km + annual km × years) (costs.resale_loss). Fitted (quadratic age, linear km, one
-# intercept per model) on all 301 cleaned asking prices of the resale fit of 2026-11-23 (job folder tmp/resale/; cleaning:
-# price 1,000–25,000 €, dropped when above 2.5× or below 0.4× the median of its model within two years). Asking prices, not
-# transaction prices. The shared source 'Resale rule' cites the same fit.
+# intercept per model) on all 301 cleaned asking prices of the resale fit of 2026-11-23 (cleaning: price 1,000–25,000 €,
+# dropped when above 2.5× or below 0.4× the median of its model within two years). ESTIMATED; the fit data is kept privately,
+# not in the repository. Limitation: asking prices from search summaries, not transaction prices. The shared source
+# 'Resale rule' (no URL) carries the same note.
 RESALE_QUAD_AGE_EUR = 1367.4        # loss per year held (linear term)
 RESALE_QUAD_AGE2_EUR = -25.28       # coefficient of t² in the loss (negative: the loss slows down with age)
 RESALE_KM_EUR_PER_10K = 159.6       # loss per 10,000 km driven
