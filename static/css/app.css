@@ -153,7 +153,7 @@ tr.off td{filter:saturate(.2)}/* a deselected car is greyed, never faded: opacit
 .rrow .car{display:flex;align-items:center;gap:10px;min-width:0}
 .rrow .car .nm{font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rrow .car small{display:block;color:var(--text-3);font-weight:400;font-size:12px}
-.rrow .rk{width:24px;height:24px;border-radius:var(--radius-s);display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--surface-2);color:var(--text-2);flex:none}
+.rrow .rk{min-width:24px;padding:0 4px;box-sizing:border-box;height:24px;border-radius:var(--radius-s);display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--surface-2);color:var(--text-2);flex:none}
 .rrow.top .rk{background:var(--accent);color:var(--accent-contrast)}
 .rtrack{position:relative;height:28px}
 .rtrack::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--border)}
@@ -228,6 +228,7 @@ tr.off td{filter:saturate(.2)}/* a deselected car is greyed, never faded: opacit
 .selbar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:13px;margin-bottom:6px}
 .ov td,.ov th{vertical-align:middle}
 .ov .car{display:flex;align-items:center;gap:8px;min-width:180px;text-align:left}.ov .car small{display:block;color:var(--text-3);font-weight:400}
+.ov .tags .tag{white-space:nowrap}/* a wrapped tag makes its whole row tall on a phone: the table scrolls sideways instead */
 .ov .sc{display:flex;align-items:center;gap:6px;min-width:90px}.ov .sc .scorebar{flex:1}
 .chipbtn{display:inline-flex;align-items:center;gap:6px;border:var(--border-w) solid var(--border);background:var(--surface);border-radius:var(--radius-pill);padding:4px 10px;font-size:12px;cursor:pointer;color:var(--text-2)}
 .chipbtn[aria-pressed=true]{border-color:var(--border-strong);background:var(--surface-2);color:var(--text);font-weight:600}
@@ -364,7 +365,7 @@ details.formula{padding:14px 16px}
 .strip button{flex:none;border:2px solid transparent;border-radius:8px;padding:0;background:none;cursor:pointer;opacity:.75}
 .strip button[aria-current=true]{border-color:var(--accent);opacity:1}
 .strip img{width:84px;height:63px;object-fit:cover;border-radius:6px;display:block}
-.strip .thumb{flex:none;display:grid;gap:4px;justify-items:start}
+.strip .thumb{flex:none;display:grid;gap:4px;justify-items:start;width:auto;height:auto}/* the 36 px .thumb size would squeeze the photo and its Remove button into each other */
 .strip .photo-rm{padding:2px 8px;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--surface-2);color:var(--text-2);font:inherit;font-size:12px;cursor:pointer;opacity:1}
 .strip .photo-rm:focus-visible{outline-offset:-2px}/* the strip scrolls: an outside ring would be cut */
 .photo-ask{margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--surface-2)}
@@ -474,7 +475,7 @@ abbr.prov{text-decoration:none;color:var(--text-3);font-size:.75em;margin-left:1
 .skip{position:absolute;left:8px;top:-60px;z-index:100;background:var(--accent);color:var(--accent-contrast);padding:8px 14px;border-radius:6px;font-weight:600}.skip:focus{top:8px}
 main:focus{outline:none}
 .rank-tbl .sc-cell{min-width:150px}.rank-tbl .sc-cell .small{white-space:nowrap}
-@media (max-width:640px){.rank-tbl{min-width:600px}}
+@media (max-width:640px){.formula-tbl td:last-child,.formula-tbl th:last-child{min-width:230px}.rank-tbl{min-width:640px}.rank-tbl td:first-child,.rank-tbl th:first-child{min-width:260px}.rank-tbl .n{white-space:nowrap}}
 /* phones: compact header, visible nav overflow, readable break-even chart, full-width select bar title, wrapping legend */
 @media (max-width:640px){
   .bar{gap:8px;padding:8px 0}

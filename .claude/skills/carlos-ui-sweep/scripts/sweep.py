@@ -31,7 +31,12 @@ PROBE = """() => {
   const text = document.getElementById('main').innerText;
   const raw = (text.match(/\\bundefined\\b|\\bNaN\\b|\\[object|\\bnull\\b/g) || []).slice(0, 3);
   const keys = [...document.getElementById('main').querySelectorAll('*')].filter(e => !e.children.length && /^[a-z]{2,}(_[a-z0-9]+)+$/.test(e.textContent.trim())).map(e => e.textContent.trim()).slice(0, 5);
-  return { overflow, offenders: bad, clipped: clip, raw, keys, h1: document.querySelectorAll('h1').length, busy: document.getElementById('main').getAttribute('aria-busy'), loading: !!document.querySelector('#main .skel'), failed: !!document.querySelector('#main .card.err') };
+  // phone geometry (#493): siblings that overlap inside a gallery item or a ruler row, and table rows that grow past 400 px (long prose in a 390 px table reaches ~330 px in German; the bug that made rows 270-490 px was one narrow chip)
+  const overlap = [], tall = [];
+  const boxes = c => [...c.children].filter(e => e.getBoundingClientRect().width > 0).map(e => [sel(e), e.getBoundingClientRect()]);
+  for (const c of document.querySelectorAll('main .strip .thumb, main .rrow, main .rrow .car')) { const b = boxes(c); for (let i = 0; i < b.length; i++) for (let j = i + 1; j < b.length; j++) { const [x, p] = b[i], [y, q] = b[j]; if (p.left < q.right - 1 && q.left < p.right - 1 && p.top < q.bottom - 1 && q.top < p.bottom - 1 && overlap.length < 4) overlap.push(x + ' / ' + y); } }
+  if (vw <= 640) for (const r of document.querySelectorAll('main table tbody tr')) { const h = r.getBoundingClientRect().height; if (h > 400 && tall.length < 4) tall.push(Math.round(h) + 'px ' + r.innerText.replace(/\\s+/g, ' ').slice(0, 30)); }
+  return { overflow, overlap, tall, offenders: bad, clipped: clip, raw, keys, h1: document.querySelectorAll('h1').length, busy: document.getElementById('main').getAttribute('aria-busy'), loading: !!document.querySelector('#main .skel'), failed: !!document.querySelector('#main .card.err') };
 }"""
 
 
@@ -136,6 +141,8 @@ def main():
                             notes = [f'clipped {c}' for c in res['clipped']]
                             if a.state == 'loading' and res['busy'] != 'true': notes.append('loading state without aria-busy="true"')
                             problems = errs + (['horizontal overflow: ' + '; '.join(res['offenders'])] if res['overflow'] else []) \
+                                + (['overlapping boxes: ' + '; '.join(res['overlap'])] if res['overlap'] else []) \
+                                + (['tall table rows: ' + '; '.join(res['tall'])] if res['tall'] else []) \
                                 + (['raw text: ' + ', '.join(res['raw'])] if res['raw'] and a.state != 'error' else []) \
                                 + (['bare i18n key: ' + ', '.join(res['keys'])] if res['keys'] else []) \
                                 + (['%d h1 elements' % res['h1']] if res['h1'] > 1 else []) \

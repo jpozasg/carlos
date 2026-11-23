@@ -53,7 +53,7 @@ function draw() {
         <details class="tune"><summary>${t('tune_title')}</summary><p class="small muted">${t('weights_lead')}</p><div class="weights">${sliders}</div><p class="small wmsg" role="status"></p></details></div>
     </div>
     <details class="card formula"><summary><b>${t('formula_title')}</b></summary><p class="small">${esc(t('formula_text'))}</p>
-      <div class="tablewrap"><table><thead><tr><th>${t('criterion')}</th><th>${t('better')}</th><th>${t('basis')}</th></tr></thead><tbody>${CRIT().map(k => `<tr><td><b>${t('c_' + k)}</b></td><td>${t('better_' + R.criteria[k].better)}</td><td class="small">${esc(t('cb_' + k))}</td></tr>`).join('')}</tbody></table></div>
+      <div class="tablewrap"><table class="formula-tbl"><thead><tr><th>${t('criterion')}</th><th>${t('better')}</th><th>${t('basis')}</th></tr></thead><tbody>${CRIT().map(k => `<tr><td><b>${t('c_' + k)}</b></td><td>${t('better_' + R.criteria[k].better)}</td><td class="small">${esc(t('cb_' + k))}</td></tr>`).join('')}</tbody></table></div>
       <p class="small">${t('rel_ranking_note')}</p><p class="small muted">${t('quiz_method')}</p></details></div>`;
 }
 // after a saved weight change: the list and the priority head change, the sliders stay mounted (no lost focus or drag)
