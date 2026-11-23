@@ -80,5 +80,15 @@ class GenerationName(unittest.TestCase):
         self.assertIsNotNone(agent.resolve_level(c, 'generations', {**new, 'start_year': 2010}))  # same start year still matches
 
 
+class BindAddressTest(unittest.TestCase):  # S3: loopback or a Tailscale address only
+    def test_loopback_and_tailscale_addresses_are_accepted(self):
+        for h in ('127.0.0.1', 'localhost', 'LOCALHOST', '100.64.0.1', '100.101.102.103', '100.127.255.254'):
+            self.assertTrue(config.host_ok(h), h)
+
+    def test_public_wildcard_and_other_addresses_are_refused(self):
+        for h in ('0.0.0.0', '203.0.113.5', '100.63.255.255', '100.128.0.0', '192.168.1.10', '::', 'example.com', '', '100.64.0.0/10'):
+            self.assertFalse(config.host_ok(h), h)
+
+
 if __name__ == '__main__':
     unittest.main()

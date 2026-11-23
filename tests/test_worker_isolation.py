@@ -50,9 +50,9 @@ class EnvironmentTest(unittest.TestCase):
         with self.env():
             e = worker.run_env(FakeApi(), req())
         self.assertEqual(e['AGENT_TOKEN'], 'req-token')
-        self.assertEqual({e['CAR_API'], e['PATH'], e['ANTHROPIC_API_KEY'], e['CLAUDE_CODE_OAUTH_TOKEN'], e['LC_ALL'], e['XDG_RUNTIME_DIR']},
-                         {'http://site', '/usr/bin', 'k', 'o', 'C', '/run/u'})
-        for gone in ('WORKER_TOKEN', 'CARLOS_ACCOUNT', 'AWS_SECRET_ACCESS_KEY', 'GITHUB_TOKEN', 'WORKER_PASS_ENV'):
+        self.assertEqual({e['CAR_API'], e['PATH'], e['ANTHROPIC_API_KEY'], e['CLAUDE_CODE_OAUTH_TOKEN'], e['LC_ALL']},
+                         {'http://site', '/usr/bin', 'k', 'o', 'C'})
+        for gone in ('WORKER_TOKEN', 'CARLOS_ACCOUNT', 'AWS_SECRET_ACCESS_KEY', 'GITHUB_TOKEN', 'WORKER_PASS_ENV', 'XDG_RUNTIME_DIR'):
             self.assertNotIn(gone, e)
         self.assertNotIn('admin-secret', e.values())
         self.assertNotIn('worker-secret', e.values())

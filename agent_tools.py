@@ -9,7 +9,7 @@ Protocol: docs/cost-research-protocol.md. Usage from a script (standard library 
 
 Every helper writes through the API (never SQLite directly), so the change log and dossiers stay consistent.
 """
-import datetime
+import datetime, math
 import os
 import sys
 
@@ -297,7 +297,8 @@ def resale_values(price, km_now, years, annual_km, electric=False):
     km = km_now + annual_km * years
     def case(name):
         scale, disc = config.RESALE_CASES[name]
-        return max(0, round((price - scale * (config.RESALE_AGE_EUR_PER_YEAR * years + config.RESALE_KM_EUR_PER_KM * km)) * (1 - disc), -1))  # a car is not worth less than 0
+        v = (price - scale * (config.RESALE_AGE_EUR_PER_YEAR * years + config.RESALE_KM_EUR_PER_KM * km)) * (1 - disc)
+        return max(0, round(v, -1)) if math.isfinite(v) else None  # a car is not worth less than 0; NaN/inf is unknown, never 0 (S5)
     return {'low_eur': case('low'), 'expected_eur': case('low' if electric else 'expected'), 'high_eur': case('high')}
 
 

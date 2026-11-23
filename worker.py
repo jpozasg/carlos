@@ -25,10 +25,11 @@ ROOT = Path(__file__).resolve().parent
 SETTINGS = ROOT / 'docs' / 'worker-settings.json'  # deny rules of the headless claude (tracked: .claude/ is git-ignored)
 # the run's environment is an allow-list (#386): Claude Code itself and Chrome need these; nothing of the worker's own secrets
 RUN_ENV = ('PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'TERM', 'TMPDIR', 'DISPLAY', 'WAYLAND_DISPLAY',
-           'DBUS_SESSION_BUS_ADDRESS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY',
+           'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY',
            'https_proxy', 'http_proxy', 'no_proxy')
 RUN_ENV_PREFIXES = ('LC_', 'XDG_', 'ANTHROPIC_', 'CLAUDE_')  # locale, desktop session, Claude's own settings and login
-NEVER_PASSED = {'WORKER_TOKEN', 'AGENT_TOKEN', 'CARLOS_ACCOUNT'}
+# the user's session bus (S1): a run that reached it could start systemd-run --user and read the worker's token file
+NEVER_PASSED = {'WORKER_TOKEN', 'AGENT_TOKEN', 'CARLOS_ACCOUNT', 'DBUS_SESSION_BUS_ADDRESS', 'XDG_RUNTIME_DIR'}
 NO_WORKER_TOKEN = 'no WORKER_TOKEN: the worker refuses to start (set WORKER_TOKEN, docs/deployment.md); there is no admin fallback'
 RESULT = re.compile(r'CARLOS_RESULT (?:listing_id=(\d+)|failed: (.*)|done: (.*))')  # done: a follow-up without a listing (#168)
 
@@ -98,7 +99,7 @@ def run_env(api, req):
     if not req.get('request_token'):
         raise ApiError('no request token: the run is not started')
     extra = {x.strip() for x in os.environ.get('WORKER_PASS_ENV', '').split(',')} - NEVER_PASSED
-    env = {k: v for k, v in os.environ.items() if k in RUN_ENV or k.startswith(RUN_ENV_PREFIXES) or k in extra}
+    env = {k: v for k, v in os.environ.items() if (k in RUN_ENV or k.startswith(RUN_ENV_PREFIXES) or k in extra) and k not in NEVER_PASSED}
     env.update(CAR_API=api.base, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS='0', AGENT_TOKEN=req['request_token'])
     return env
 
@@ -140,9 +141,16 @@ def copy_code(dst, root=ROOT):
 
 
 def token_files(home=None):
-    """The worker's token files on disk: the systemd EnvironmentFile of docs/deployment.md. worker.py reads none itself (WORKER_TOKEN
-    comes from the environment), so a sandboxed run must not be able to read them either."""
-    return [Path(home or Path.home()) / '.config' / 'carlos-worker.env']
+    """The worker's token files on disk: the systemd EnvironmentFile of docs/deployment.md, and the file it points to through a
+    symlink (S2). worker.py reads none itself (WORKER_TOKEN comes from the environment), so a sandboxed run must not read them."""
+    p = Path(home or Path.home()) / '.config' / 'carlos-worker.env'
+    return list(dict.fromkeys([p, Path(os.path.realpath(p))]))
+
+
+def bus_dirs(uid=None):
+    """The user's runtime directory (/run/user/<uid>: the user bus socket, systemd --user) when it exists: hidden in a sandboxed run (S1)."""
+    p = Path('/run/user') / str(os.getuid() if uid is None else uid)
+    return [p] if p.is_dir() else []
 
 
 def token_masks(home=None):
@@ -150,12 +158,12 @@ def token_masks(home=None):
     return [p for p in token_files(home) if p.exists()]
 
 
-def sandbox_argv(root, workdir, rw=(), masks=()):
+def sandbox_argv(root, workdir, rw=(), masks=(), hidden=()):
     """The bwrap prefix of a sandboxed run (pure, so it is tested without bwrap): the real checkout `root` hidden under a tmpfs,
     the code-only copy `workdir` bound at the same path (the prompts' {REPO} still works), the paths in `rw` (claude's state) bound
     read-write, the paths in `masks` (the worker's token files) replaced by an empty file, a fresh /proc in a new pid namespace (the
-    worker's process and environment are not visible), and dies with the worker. The run's environment is already the allow-list
-    of run_env. Ends with `--`; the claude argv follows."""
+    worker's process and environment are not visible), the paths in `hidden` (the user's runtime directory) under an empty tmpfs, and
+    dies with the worker. The run's environment is already the allow-list of run_env. Ends with `--`; the claude argv follows."""
     args = ['bwrap', '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc',
             '--tmpfs', str(root), '--bind', str(workdir), str(root),
             '--unshare-pid', '--die-with-parent', '--chdir', str(root)]
@@ -163,6 +171,8 @@ def sandbox_argv(root, workdir, rw=(), masks=()):
         args += ['--bind', str(p), str(p)]
     for p in masks:  # after rw, so a mask always wins over a bind of its parent
         args += ['--ro-bind', '/dev/null', str(p)]
+    for p in hidden:
+        args += ['--tmpfs', str(p)]
     return args + ['--']
 
 
@@ -255,7 +265,7 @@ def work_one(api, name, cmd, logs, timeout_s, model='haiku', research_timeout_s=
     try:
         if workdir:  # the run sees only this copy of the code, inside the sandbox (#386 follow-up)
             copy_code(workdir)
-            argv = sandbox_argv(ROOT, workdir, claude_state(), token_masks()) + argv
+            argv = sandbox_argv(ROOT, workdir, claude_state(), token_masks(), bus_dirs()) + argv
         p = subprocess.Popen(argv + [prompt_for(req)], cwd=ROOT, env=env, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True)
         deadline = time.time() + timeout_s
