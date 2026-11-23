@@ -289,8 +289,9 @@ def listing_items(u, rows, today):
     if not u['is_reference']:
         add('lst.purchase_sale', 'purchase costs of this car', any(x['category'] == 'purchase_sale' for x in rows['unit_costs']))
         add('lst.checklist', 'a checklist item for every recall and every weak point with an inspection action', rows['weak_points'] <= rows['checked'])
-        add('lst.capture', 'listing captured', rows['captured'])
-        add('lst.photos', 'photos archived', bool(u['photo_count']))
+        if u.get('platform') != 'owner':  # a car the owner entered is not a listing: no capture, no photos required
+            add('lst.capture', 'listing captured', rows['captured'])
+            add('lst.photos', 'photos archived', bool(u['photo_count']))
     return items
 
 
