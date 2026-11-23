@@ -11,8 +11,38 @@ ROOT_FAKE = '/srv/carlos'
 
 
 class ArgvTest(unittest.TestCase):
-    def argv(self, rw=()):
-        return worker.sandbox_argv(Path(ROOT_FAKE), Path('/tmp/carlos-run-x'), rw)
+    def argv(self, rw=(), masks=()):
+        return worker.sandbox_argv(Path(ROOT_FAKE), Path('/tmp/carlos-run-x'), rw, masks)
+
+    def test_each_token_file_is_masked_by_an_empty_file(self):
+        tokens = worker.token_files('/home/w')
+        self.assertTrue(tokens)
+        a = self.argv(masks=tokens)
+        for t in tokens:
+            i = a.index(str(t))
+            self.assertEqual(a[i - 2:i + 1], ['--ro-bind', '/dev/null', str(t)])
+
+    def test_nothing_binds_a_token_file_read_write(self):
+        tokens = [str(t) for t in worker.token_files('/home/w')]
+        a = self.argv(rw=[Path('/home/w/.config')], masks=worker.token_files('/home/w'))  # even under a bound parent
+        for t in tokens:
+            for i, arg in enumerate(a):
+                if arg == t:
+                    self.assertEqual(a[i - 2:i], ['--ro-bind', '/dev/null'], t)
+            self.assertLess(a.index('/home/w/.config'), a.index(t))  # the mask comes after the parent's bind and wins
+
+    def test_the_mask_is_on_the_argument_list_only_when_given(self):
+        self.assertNotIn('/dev/null', self.argv())
+
+    def test_the_token_file_is_masked_in_a_run_that_has_it(self):
+        home = Path(tempfile.mkdtemp())
+        (home / '.config').mkdir()
+        (home / '.config' / 'carlos-worker.env').write_text('WORKER_TOKEN=x')
+        with mock.patch.dict(os.environ, {'HOME': str(home)}):
+            self.assertEqual(worker.token_masks(), worker.token_files())
+        a = self.argv(masks=worker.token_masks(home))
+        self.assertIn(str(home / '.config' / 'carlos-worker.env'), a)
+        self.assertEqual(worker.token_masks(Path(tempfile.mkdtemp())), [])  # no file, nothing to mask (no failing bind)
 
     def test_the_checkout_is_hidden_under_a_tmpfs_and_the_code_copy_is_bound_there(self):
         a = self.argv()
@@ -82,6 +112,15 @@ class RunTest(unittest.TestCase):
         self.assertLess(argv.index('--'), argv.index('claude'))
         self.assertIn(str(worker.ROOT), argv)
         copy.assert_called_once()
+
+    def test_the_sandboxed_run_masks_the_worker_token_file(self):
+        home = Path(tempfile.mkdtemp())
+        (home / '.config').mkdir()
+        tok = home / '.config' / 'carlos-worker.env'
+        tok.write_text('WORKER_TOKEN=x')
+        argv, _ = self.run_once({'CARLOS_SANDBOX': 'bwrap', 'PATH': '/usr/bin', 'HOME': str(home)})
+        i = argv.index(str(tok))
+        self.assertEqual(argv[i - 2:i + 1], ['--ro-bind', '/dev/null', str(tok)])
 
     def test_without_it_nothing_changes(self):
         argv, copy = self.run_once({'PATH': '/usr/bin', 'HOME': '/home/w'})
