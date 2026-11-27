@@ -2,7 +2,7 @@
 score curve (0–100), so a car's points never depend on which other cars are in the list (min–max reshuffled the order
 when one car was added); cost per month and power are scored in percent against an anchor (the current car, else the
 candidates' median), which may shift every shown score by the same amount but never changes the order. A car is scored
-only when every weighted criterion has a value and its research is complete; the reference car is scored the same way.
+only when every weighted criterion has a value; open research items never block a score, they are shown as `research_open` and lower `confidence`. The reference car is scored the same way.
 The maximum budget excludes cars (switchable). Weights 0–5 come from the questionnaire or are set by hand."""
 import json, math, re
 
@@ -211,7 +211,8 @@ def failed_filter(r, p):
 
 def rank(rows, weights, p=None):
     """Fixed-curve 0–100 score with a per-criterion explanation; returns the number of ranking candidates. A car without a
-    value for a weighted criterion, or with research still missing, is 'not scored yet' and says what is missing."""
+    value for a weighted criterion is 'not scored yet' and says what is missing. Open research never blocks a score (#499):
+    it is listed in `research_open` and shows in `confidence`."""
     p = p or {}
     cands = [r for r in rows if not r['is_reference'] and r['listing_status'] != 'WITHDRAWN']
     ref = next((r for r in rows if r['is_reference']), None)
@@ -223,7 +224,7 @@ def rank(rows, weights, p=None):
     all_used = {k: w for k, w in weights.items() if k in CRITERIA and w and w > 0}
     for r in rows:
         m = r['metrics']
-        research_left = [i['id'] for i in (r.get('research') or []) if i.get('grade') == 'MISSING']
+        research_open = [i['id'] for i in (r.get('research') or []) if i.get('grade') == 'MISSING']
         parts = {k: score_of(k, m, ctx) for k in CRITERIA}
         used = {k: w for k, w in all_used.items() if not (r['is_reference'] and k in REFERENCE_SKIPS)  # an owned car has no asking price, no viewing and no trip (#321)
                 and not (k == 'inspection' and m.get('inspection') is None)}  # not inspected yet: scored without it, rescored after the viewing (#323)
@@ -231,11 +232,11 @@ def rank(rows, weights, p=None):
         missing = [k for k in used if parts[k] is None]
         excluded = None if r['is_reference'] else 'over_max' if exclude and r.get('budget_status') == 'over_max' else (
             'filter:' + failed_filter(r, p) if failed_filter(r, p) else None)
-        scored = bool(total_w) and not missing and not research_left and r['listing_status'] != 'WITHDRAWN'
+        scored = bool(total_w) and not missing and r['listing_status'] != 'WITHDRAWN'
         score = round(sum(used[k] * parts[k] for k in used) / total_w, 1) if scored else None
-        r.update(score=score, rank=None, excluded=excluded,
+        r.update(score=score, rank=None, excluded=excluded, research_open=research_open,
                  score_parts={k: round(shown_points(parts[k])) for k in used if parts[k] is not None},
-                 not_scored=None if scored else {'criteria': missing, 'research': research_left},
+                 not_scored=None if scored else {'criteria': missing, 'research': []},  # 'research' kept for the UI; never blocks
                  explain=[{'criterion': k, 'value': m.get(k), 'unit': CRITERIA[k]['unit'], 'better': CRITERIA[k]['better'],
                            'weight': weights.get(k, 0), 'score': None if parts[k] is None else round(shown_points(parts[k])),
                            'coverage': m.get('inspection_coverage') if k == 'inspection' else None,

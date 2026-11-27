@@ -109,7 +109,7 @@ Fifteen pages: root, compare (with six views), ranking, quiz (on ranking and in 
 
 - **Shows:** the ranked list (rank, car, criteria contribution bar with a tip per criterion, one sentence "why", score), the unscored cars with the reason, the criteria legend, the priority profile (weights with the count of answers behind each), the weight sliders (in a closed "fine-tune" block), and the formula table (criterion, better direction, basis).
 - **Endpoints:** no reads of its own (uses `S.ranking`, `S.units`, `S.p` from `/api/tco`). Writes: `POST /api/parameters` with `{ranking_weights}` (slider change, 500 ms after the last move; reset sends `null`), and `{ranking_answers, ranking_weights: null}` when the quiz ends.
-- **Values:** `ranking.criteria`, `ranking.weights`, `ranking.answered`, `ranking.manual`, `ranking.retired_answers`, `ranking.tally` (per criterion: `shown`, `best`, `worst`), `ranking.candidates`. Each car: `rank`, `score`, `explain[]` (`criterion`, `weight`, `score`, `contribution`, `why_missing`), `excluded` (`over_max` or `filter:<name>`), `not_scored` (`criteria`, `research`), `listing_status`.
+- **Values:** `ranking.criteria`, `ranking.weights`, `ranking.answered`, `ranking.manual`, `ranking.retired_answers`, `ranking.tally` (per criterion: `shown`, `best`, `worst`), `ranking.candidates`. Each car: `rank`, `score`, `explain[]` (`criterion`, `weight`, `score`, `contribution`, `why_missing`), `excluded` (`over_max` or `filter:<name>`), `not_scored` (`criteria`; `research` is always empty since #499), `research_open` (ids of open research items, never a gate), `listing_status`.
 - **Formatting:** score `num(score, 0)`; contribution `num(x, 0)` + %; weights integers 0–5; reference car listed by score without a rank ("your current car, not ranked").
 - **User can change:** weights (sliders, integers 0–5), reset to the answers, retake the quiz.
 - **Saved:** server, `POST /api/parameters` (`ranking_weights`, `ranking_answers`). Failed slider save restores the server weights on the sliders and shows the message.
@@ -287,7 +287,7 @@ Each row: the field in the response, what it means, how the UI shows it. Produce
 | `score` | the Carlos score 0–100, null when not scored (`ranking.py`) | score bar, ring, rank badge |
 | `rank` | position among scored candidates | rank column, "#n" |
 | `excluded` | `over_max` or `filter:<name>` | "over your maximum budget" / filter label |
-| `not_scored` | `{criteria, research}` (what blocks the score) | "N cars not scored yet" reason |
+| `not_scored` | `{criteria, research}` (`criteria` blocks the score; `research` always `[]`) | "N cars not scored yet" reason; open research is `research_open`, shown as coverage, never a reason |
 | `explain[]` | per criterion: `criterion`, `value`, `weight`, `score`, `contribution`, `anchor`, `why_missing`, `coverage` | ranking table, ring, bars |
 | `metrics` | the criterion values: `cost_month`, `cash_now`, `mileage`, `age`, `reliability`, `inspection`, `inspection_coverage`, `power`, `budget`, `safety`, `distance`, `confidence`, `km_per_year`, `consumption`, `insurance`, `tax` | details and cards |
 | `metrics.confidence` | mean research grade as a percentage (`research.confidence`) | `num(…,0) %` |
