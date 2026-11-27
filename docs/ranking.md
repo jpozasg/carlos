@@ -2,7 +2,7 @@
 
 The ranking answers one question: *given what matters to this account, which car for sale looks best?* Redesigned in #169 (docs/target-design.md §6): every criterion has a **fixed score curve** 0–100, so a car's points depend only on the car (the earlier min–max among the candidates reshuffled 76 of 300 pairs when one car was added). The reference car is scored exactly the same way and listed at its score, never ranked.
 
-**A car is scored only when it is complete:** every criterion with a weight > 0 has a value **and** no required research item of the car (its levels and the listing, docs/cost-research-protocol.md) is MISSING. Otherwise `score` is null and `not_scored` says what is missing (`criteria`, `research`). Cars over the **maximum budget** are not ranked (`excluded: 'over_max'`) unless the account switches it off (`exclude_over_max = 0`; then they get 0 budget points). Confidence (the share of research done) is shown, never scored.
+**A car is scored when every criterion with a weight > 0 has a value** (#499; a withdrawn car is never scored). Open research items never block a score: they are listed in `research_open` (ids) and lower `confidence`. Otherwise `score` is null and `not_scored.criteria` says what is missing. Cars over the **maximum budget** are not ranked (`excluded: 'over_max'`) unless the account switches it off (`exclude_over_max = 0`; then they get 0 budget points). Confidence (the share of research done, the contract's grades) is shown, never scored.
 
 ## Criteria and their curves
 | Key | Value | Points |

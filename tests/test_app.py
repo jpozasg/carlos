@@ -1640,7 +1640,8 @@ class AppTest(unittest.TestCase):
         self.assertEqual(r[2]['score'], round((2 * 60 + 75 + 60) / 4, 1))
         self.assertAlmostEqual(r[3]['score_parts']['cost_month'], 60 + 112 * __import__('math').log(400 / 360), delta=1)
         self.assertEqual(r[4]['not_scored'], {'criteria': ['mileage', 'power'], 'research': []})    # incomplete: no score
-        self.assertEqual(r[5]['not_scored']['research'], ['gen.safety'])                            # research missing: no score
+        self.assertIsNone(r[5]['not_scored'])                                                        # research open never blocks (#499)
+        self.assertEqual(r[5]['research_open'], ['gen.safety'])
         self.assertEqual((r[1]['score'] is not None, r[1]['rank']), (True, None))                    # reference: scored, never ranked
         self.assertEqual([x['id'] for x in sorted(rows[1:], key=lambda x: x['rank'] or 9)][:2], [3, 2])
         before = {x['id']: x['score'] for x in rows}
@@ -1849,6 +1850,28 @@ class AppTest(unittest.TestCase):
         self.assertEqual(self.req('POST', '/api/preferences', {'Bad Key': 'x'})[0], 400)
         self.assertEqual(self.req('POST', '/api/preferences', ['x'])[0], 400)
 
+    def test_open_research_does_not_block_score_499(self):
+        """#499: a car with all weighted criteria is scored even with open research items; withdrawn is not; no criteria = not scored."""
+        m = lambda **kw: {k: kw.get(k) for k in ranking.CRITERIA}
+        car = lambda i, status='UNDER REVIEW', research=(), **kw: {'id': i, 'is_reference': 0, 'listing_status': status,
+                                                                  'research': [{'id': x, 'grade': 'MISSING'} for x in research], 'metrics': m(**kw)}
+        w = {k: 0 for k in ranking.CRITERIA} | {'cost_month': 2, 'mileage': 1}
+        rows = [car(1, research=('lst.insurance', 'gen.safety'), cost_month=400, mileage=100000),
+                car(2, status='WITHDRAWN', cost_month=400, mileage=100000),
+                car(3, research=('lst.insurance',), cost_month=400)]
+        ranking.rank(rows, w)
+        r = {x['id']: x for x in rows}
+        self.assertIsNotNone(r[1]['score'])
+        self.assertIsNone(r[1]['not_scored'])
+        self.assertEqual(r[1]['research_open'], ['lst.insurance', 'gen.safety'])
+        self.assertIsNone(r[2]['score'])
+        self.assertEqual(r[3]['not_scored']['criteria'], ['mileage'])                              # a missing criterion still blocks
+        rows = [car(4, cost_month=None, mileage=None)]
+        ranking.rank(rows, w)
+        self.assertIsNone(rows[0]['score'])
+        ranking.rank([car(5, research=('lst.insurance',))], {k: 0 for k in ranking.CRITERIA})  # no weighted criterion
+        self.assertIsNone(rows[0]['score'])
+
     def test_budget_ranking_api_and_weights(self):
         st, l = self.agent('POST', 'listings', {'vehicle_id': V_B2, 'source_id': SRC_LISTING, 'platform': 'Test', 'listing_id': 'B2',
                                                 'price_eur': 9000, 'first_registration': '2016-03'})
@@ -1858,7 +1881,7 @@ class AppTest(unittest.TestCase):
         self.assertIsNone(us[None]['budget_status'])
         self.assertEqual(d['ranking']['candidates'], 3)
         self.assertEqual([u['rank'] for u in d['listings'] if u['rank']], [])   # research incomplete: not scored yet (#169)
-        self.assertTrue(all(u['not_scored']['research'] for u in d['listings'] if u['listing_status'] != 'WITHDRAWN'))
+        self.assertTrue(all(u['research_open'] for u in d['listings'] if u['listing_status'] != 'WITHDRAWN'))  # open research is shown, not a gate (#499)
         self.assertEqual(us['B2']['excluded'], 'over_max')                               # over the maximum: not ranked
         self.assertEqual(self.req('POST', '/api/parameters', {'ranking_weights': {'cash_now': 9}})[0], 400)
         self.assertEqual(self.req('POST', '/api/parameters', {'ranking_weights': {'price': 1}})[0], 400)   # old criterion
